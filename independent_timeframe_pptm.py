@@ -27,6 +27,10 @@ import glob
 from osh5io import read_hdf, write_hdf
 
 
+def save(sd, dataset_name):
+    return save_funchook(sd, dataset_name)
+
+
 def launch(func, outdir=None):
     """wrap MPI calls & for loops around user defined postprocessing function"""
     try:
@@ -37,10 +41,10 @@ def launch(func, outdir=None):
     except ImportError:
         comm, rank, size = None, 0, 1
 
-    # define the save function and make it global. we need to define it here to get the outdir info from launch
-    global save
+    # define the save function and make it global. we need to define it here to get the outdir info from launch()
+    global save_funchook
 
-    def save(sd, dataset_name):
+    def save_funchook(sd, dataset_name):
         odir = './' if not outdir else outdir
         odir += '/PPR/' + dataset_name + '/'
         # TODO(1) there is a racing condition. rank>0 nodes may write to a non-existing dir. EDIT: solved
