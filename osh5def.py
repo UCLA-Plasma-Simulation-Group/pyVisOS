@@ -20,6 +20,9 @@ class HDFData:
         self.axes = []           # data axis
         self.data = None         # this is what holding the actual dataset
 
+    def __str__(self):
+        return self.name
+
     def clone(self, meta_data_only=False):
         if meta_data_only:
             n = HDFData()

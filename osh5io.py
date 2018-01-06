@@ -18,7 +18,7 @@ from osh5def import *
 from osunit import *
 
 
-def read_hdf(filename):
+def read_hdf(filename, path=None):
     """
     HDF reader for Osiris/Visxd compatible HDF files... This will slurp in the data
     and the attributes that describe the data (e.g. title, units, scale).
@@ -41,8 +41,8 @@ def read_hdf(filename):
             diag_data.write(diag_data, 'filename.h5')    # writes out Visxd compatible HDF5 data.
 
     """
-
-    data_file = h5py.File(filename, 'r')
+    fname = filename if not path else path + '/' + filename
+    data_file = h5py.File(fname, 'r')
 
     the_data_hdf_object = scan_hdf5_file_for_main_data_array(data_file)
 
@@ -98,15 +98,13 @@ def scan_hdf5_file_for_main_data_array(h5file):
         raise Exception('Main data array not found')
 
 
-def write_hdf(data, filename, dataset_name=None, write_data=True):
-    if os.path.isfile(filename):
-        os.remove(filename)
+def write_hdf(data, filename=None, path=None, dataset_name=None, write_data=True):
     if isinstance(data, HDFData):
         data_object = data
     elif isinstance(data, np.ndarray):
         data_object = HDFData()
         data_object.data = data
-        data_object.sim_dim = np.ndim(data)  # we don't know the simulation dimension. assume it is the same as data
+        data_object.sim_dim = 0  # we don't know the simulation dimension.
     else:
         try:  # maybe it's something we can wrap in a numpy array
             data = np.array(data)
@@ -126,15 +124,18 @@ def write_hdf(data, filename, dataset_name=None, write_data=True):
     else:
         current_name_attr = "Data"
 
-    # now put the data in a group called this...
-
+    fname = path if path else ''
     if filename is not None:
-        h5file = h5py.File(filename)
-    elif data_object.name is not None or data_object.timestamp is not None:
-        h5file = h5py.File(data_object.name + '-' + data_object.timestamp + '.h5')
+        fname += filename
+    elif data_object.timestamp is not None:
+        fname += current_name_attr + '-' + data_object.timestamp + '.h5'
     else:
         raise Exception("You did not specify a filename!!!")
+    if os.path.isfile(fname):
+        os.remove(fname)
+    h5file = h5py.File(fname)
 
+    # now put the data in a group called this...
     h5dataset = h5file.create_dataset(current_name_attr, data_object.data.shape, data=data_object.data)
     # these are required.. so make defaults ones...
     h5dataset.attrs['UNITS'], h5dataset.attrs['LONG_NAME'] = b'', b''
