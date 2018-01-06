@@ -3,7 +3,7 @@
 """osaxis.py: Disk IO for the OSIRIS HDF5 data."""
 
 __author__ = "Han Wen"
-__copyright__ = "Copyright 2018, The Cogent Project"
+__copyright__ = "Copyright 2018, PICKSC"
 __credits__ = ["Adam Tableman", "Frank Tsung", "Thamine Dalichaouch"]
 __license__ = "GPLv2"
 __version__ = "0.1"
