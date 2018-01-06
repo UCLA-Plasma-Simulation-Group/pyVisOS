@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""osaxis.py: Disk IO for the OSIRIS HDF5 data."""
+"""osh5io.py: Disk IO for the OSIRIS HDF5 data."""
 
 __author__ = "Han Wen"
 __copyright__ = "Copyright 2018, PICKSC"

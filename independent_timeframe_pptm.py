@@ -4,12 +4,21 @@
    Example usuage:
     # load your data and define the operations for each time frame
     # note that you don't need to load the data yourself, just specify the file location as keyword parameter and
-    # the names of function and the its keywords are arbitrary
-    def postprocess(data1='/path/to/directory1', data2='/path/to/directory2'[, data3=...]):
+    # the names of the function and its keywords are arbitrary but have to be consistent
+    kwdict = {'data1':'/path/to/directory1', 'data2':'/path/to/directory2'}
+    def postprocess(data1, data2):
         res = fft(data1) + data2
         save(res, 'res')
+        return average(res, dim=1)  # or return nothing at all
     # then simply launch it, MPI parallelism will be invoked if possible
-    launch(postprocess[, outdir='/path/to/save/'])
+    launch(postprocess, kwdict[, outdir='/path/to/save/'])
+
+    # optionally you can collect the result of each timeframe. you will get comm, rank, size and total_time to work with
+    # you will also get an array of results from each node as input:
+    def aggr(lst):
+        r = comm.gather(lst, root=0)
+        # do something to r
+    launch(postprocess, kwdict, afunc=aggr)
 """
 
 __author__ = "Han Wen"
@@ -21,26 +30,25 @@ __maintainer__ = "Han Wen"
 __email__ = "hanwen@ucla.edu"
 __status__ = "Development"
 
-import inspect
 import os
 import glob
 from osh5io import read_hdf, write_hdf
+try:
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+except ImportError:
+    comm, rank, size = None, 0, 1
+total_time = 0
 
 
 def save(sd, dataset_name):
     return save_funchook(sd, dataset_name)
 
 
-def launch(func, outdir=None):
+def launch(func, kw4func, outdir=None, afunc=None):
     """wrap MPI calls & for loops around user defined postprocessing function"""
-    try:
-        from mpi4py import MPI
-        comm = MPI.COMM_WORLD
-        rank = comm.Get_rank()
-        size = comm.Get_size()
-    except ImportError:
-        comm, rank, size = None, 0, 1
-
     # define the save function and make it global. we need to define it here to get the outdir info from launch()
     global save_funchook
 
@@ -55,16 +63,13 @@ def launch(func, outdir=None):
         # print('rank ' + str(rank) + 'writng to '+ odir)
         write_hdf(sd, path=odir, dataset_name=dataset_name)
 
-    # get function signature so that we know what files to load
-    sig = inspect.signature(func)
-
-    fdict, fnum, kwargs = {}, [], {}
+    fdict, fnum, kwargs, sfr = {}, [], {}, []
     if rank == 0:
-        for k, v in sig.parameters.items():
-            fdict[k] = sorted(glob.glob(v.default + '/*.h5'))
+        for k, v in kw4func.items():
+            fdict[k] = sorted(glob.glob(v + '/*.h5'))
             fnum.append(len(fdict[k]))
             if fnum[-1] == 0:
-                raise IOError('No h5 files found in' + v.default)
+                raise IOError('No h5 files found in' + v)
 
         if fnum.count(fnum[0]) != len(fnum):
             raise Exception('Number of files must be the same for all directories')
@@ -72,6 +77,7 @@ def launch(func, outdir=None):
     if comm:
         [fdict, fnum] = comm.bcast([fdict, fnum], root=0)
     # # divide the task
+    global total_time
     total_time = fnum[0]
     my_share = (total_time - 1) // size + 1
     i_begin = rank * my_share
@@ -84,11 +90,14 @@ def launch(func, outdir=None):
             i_begin = 1
             for k in fdict:
                 kwargs[k] = read_hdf(fdict[k][0])
-            func(**kwargs)
+            sfr.append(func(**kwargs))  # store results for final aggregation
         comm.Barrier()
 
     for i in range(i_begin, i_end):
         for k in fdict:
             kwargs[k] = read_hdf(fdict[k][i])
-        func(**kwargs)
+        sfr.append(func(**kwargs))  # store results for final aggregation
 
+    # it is up to the users to decide how to aggregate the results
+    if afunc:
+        afunc(sfr)
