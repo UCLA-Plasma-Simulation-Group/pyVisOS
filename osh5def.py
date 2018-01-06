@@ -41,11 +41,15 @@ class HDFData:
         return v
 
     def __add__(self, other):
+        if self.data_attrs['UNITS'][0] != other.data_attrs['UNITS'][0]:
+            raise TypeError('Error: adding quantities with different units')
         v = self.clone(meta_data_only=True)
         v.data = self.data + other.data
         return v
 
     def __sub__(self, other):
+        if self.data_attrs['UNITS'][0] != other.data_attrs['UNITS'][0]:
+            raise TypeError('Error: subtracting quantities with different units')
         v = self.clone(meta_data_only=True)
         v.data = self.data - other.data
         return v
