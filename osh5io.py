@@ -137,12 +137,13 @@ def write_hdf(data, filename=None, path=None, dataset_name=None, write_data=True
     # these are required.. so make defaults ones...
     h5dataset.attrs['UNITS'], h5dataset.attrs['LONG_NAME'] = np.array([b'']), np.array([b''])
     # convert osunit class back to ascii
+    data_attrs = data_object.data_attrs.copy()
     try:
-        data_object.data_attrs['UNITS'] = np.array([str(data_object.data_attrs['UNITS']).encode('utf-8')])
+        data_attrs['UNITS'] = np.array([str(data_object.data_attrs['UNITS']).encode('utf-8')])
     except:
-        data_object.data_attrs['UNITS'] = np.array([b''])
+        data_attrs['UNITS'] = np.array([b''])
     # copy over any values we have in the 'H5Data' object;
-    for key, value in data_object.data_attrs.items():
+    for key, value in data_attrs.items():
         h5dataset.attrs[key] = np.array([value]) if isinstance(value, bytes) else value
     # these are required so we make defaults..
     h5file.attrs['DT'] = [1.0]
@@ -191,8 +192,8 @@ if __name__ == '__main__':
     # let's read/write a few times and see if there are mutations to the data
     # you should also diff the output h5 files
     for i in range(5):
-        write_hdf(rw, './test' + str(i) + '-123456.h5')
-        rw = read_hdf('./test' + str(i) + '-123456.h5')
+        write_hdf(rw, './test-12345' + str(i) + '.h5')
+        rw = read_hdf('./test-12345' + str(i) + '.h5')
         assert (rw == a).all()
         for axrw, axh5d in zip(rw.axes, h5d.axes):
             assert axrw.attrs == axh5d.attrs
