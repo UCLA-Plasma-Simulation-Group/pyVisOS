@@ -2,89 +2,83 @@
 
 """osh5def.py: Define the OSIRIS HDF5 data class and basic functions."""
 
-
 from osaxis import *
+import numpy as np
 import re
 
+# Important: the first occurrence of serial numbers between '-' and '.' must be the time stamp information
+fn_rule = re.compile(r'-(\d+).')
 
-class HDFData:
-    """Important: the first occurrence of serial numbers between '-' and '.' must be the time stamp information"""
-    fn_rule = re.compile(r'-(\d+).')
 
-    def __init__(self):
-        self.timestamp = '0'*6   # default use six digits for time stamp
-        self.name = 'data'       # default name of the dataset, also use as prefix when write_hdf
-        self.sim_dim = None      # xd simulation
-        self.data_attrs = {}     # attributes related to the data array
-        self.run_attrs = {}      # attributes related to the run
-        self.axes = []           # data axis
-        self.data = None         # this is what holding the actual dataset
+class H5Data(np.ndarray):
+
+    def __new__(cls, input_array, timestamp=None, name=None, data_attrs=None, run_attrs=None, axes=None):
+        obj = input_array.view(cls)
+        if timestamp:
+            obj.timestamp = timestamp
+        if name:
+            obj.name = name
+        if data_attrs:
+            obj.data_attrs = data_attrs.copy()
+        if run_attrs:
+            obj.run_attrs = run_attrs.copy()
+        if axes:
+            obj.axes = axes.copy()
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is None:
+            return
+        self.timestamp = getattr(obj, 'timestamp', '0'*6)
+        self.name = getattr(obj, 'name', 'data')
+        self.data_attrs = getattr(obj, 'data_attrs', {}).copy()
+        self.run_attrs = getattr(obj, 'run_attrs', {}).copy()
+        self.axes = getattr(obj, 'axes', []).copy()
 
     def __str__(self):
-        return self.name
-
-    def clone(self, meta_data_only=False):
-        if meta_data_only:
-            n = HDFData()
-            n.timestamp, n.name, n.sim_dim, n.data_attrs, n.run_attrs, n.axes = \
-                self.timestamp, self.name, self.sim_dim, \
-                copy.deepcopy(self.data_attrs), copy.copy(self.run_attrs), copy.copy(self.axes)
-            return n
-        else:
-            return copy.deepcopy(self)
-
-    def __getitem__(self, item):
-        v = self.clone(meta_data_only=True)
-        v.data = self.data[item]
-        for i, j in enumerate(item):
-            v.axes[i].axisdata = v.axes[i].axisdata[j]
-        return v
+        return ''.join([self.name, '-', self.timestamp])
 
     def __add__(self, other):
-        if self.data_attrs['UNITS'][0] != other.data_attrs['UNITS'][0]:
-            raise TypeError('Error: adding quantities with different units')
-        v = self.clone(meta_data_only=True)
-        v.data = self.data + other.data
-        return v
+        return super(H5Data, self).__add__(other)
 
     def __sub__(self, other):
-        if self.data_attrs['UNITS'][0] != other.data_attrs['UNITS'][0]:
-            raise TypeError('Error: subtracting quantities with different units')
-        v = self.clone(meta_data_only=True)
-        v.data = self.data - other.data
-        return v
+        return super(H5Data, self).__sub__(other)
 
     def __mul__(self, other):
-        v = self.clone(meta_data_only=True)
+        v = super(H5Data, self).__mul__(other)
         if not isinstance(other, (complex, int, float)):
-            v.data_attrs['UNITS'][0] = self.data_attrs['UNITS'][0] * other.data_attrs['UNITS'][0]
-        v.data = self.data * other.data
+            v.data_attrs['UNITS'] = self.data_attrs['UNITS'] * other.data_attrs['UNITS']
         return v
 
     def __truediv__(self, other):
-        v = self.clone(meta_data_only=True)
+        v = super(H5Data, self).__truediv__(other)
         if not isinstance(other, (complex, int, float)):
-            v.data_attrs['UNITS'][0] = self.data_attrs['UNITS'][0] / other.data_attrs['UNITS'][0]
-        v.data = self.data / other.data
+            v.data_attrs['UNITS'] = self.data_attrs['UNITS'] / other.data_attrs['UNITS']
         return v
 
     def __pow__(self, other, modulo=None):
-        v = self.clone(meta_data_only=True)
-        v.data_attrs['UNITS'][0] = pow(self.data_attrs['UNITS'][0], other)
-        v.data = np.power(self.data, other)
+        v = super(H5Data, self).__pow__(other)
+        v.data_attrs['UNITS'] = pow(self.data_attrs['UNITS'], other)
         return v
 
-    def get_axis(self, axis_index):
-        return self.axes[axis_index]
+    def __iadd__(self, other):
+        return super(H5Data, self).__iadd__(other)
 
-    def __remove_axis(self, axis_index):
-        del self.axes[axis_index]
+    def __isub__(self, other):
+        return super(H5Data, self).__isub__(other)
 
-    def remove_axis(self, axis_index):
-        self.__remove_axis(axis_index)
+    def __imul__(self, other):
+        if not isinstance(other, (complex, int, float)):
+            self.data_attrs['UNITS'] = self.data_attrs['UNITS'] * other.data_attrs['UNITS']
+        return self
 
-    def __axis_exists(self, axis_index):
-        for (i, axis) in enumerate(self.axes):
-            if axis.axis_number == axis_index:
-                return True
-        return False
+    def __idiv__(self, other):
+        if not isinstance(other, (complex, int, float)):
+            self.data_attrs['UNITS'] = self.data_attrs['UNITS'] / other.data_attrs['UNITS']
+        return self
+
+    def __ipow__(self, other, modulo=None):
+        self = super(H5Data, self).__ipow__(other)
+        self.data_attrs['UNITS'] = pow(self.data_attrs['UNITS'], other)
+        return self
+

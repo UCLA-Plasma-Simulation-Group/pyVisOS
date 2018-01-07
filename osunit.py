@@ -10,7 +10,6 @@ import re
 class OSUnits:
     name = ['m_e', 'c', '\omega_p', 'e', 'n_0']
     xtrnum = re.compile(r"(?<=\^)\d+|(?<=\^{).*?(?=})")
-    # power = np.array([frac(0), frac(0), frac(0), frac(0), frac(0)])
 
     def __init__(self, s):
         """
@@ -39,7 +38,13 @@ class OSUnits:
                     raise KeyError('Unknown unit: ' + re.findall(r'\w+', ss)[0])
 
     def tex(self):
-        return '$' + self.__str__() + '$'
+        """return byte string as inline tex equation"""
+        return ('$' + self.__str__() + '$').encode('utf-8')
+
+    def limit_denominator(self, max_denominator=64):
+        """call fractions.Fraction.limit_denominator method for each base unit"""
+        return np.array()
+
 
     def __mul__(self, other):
         res = OSUnits('')
@@ -67,7 +72,7 @@ class OSUnits:
             elif p == 1:
                 disp = disp + n + ' '
             else:
-                disp = disp + n + '^{' + str(p) + '}'
+                disp = disp + n + '^{' + str(p) + '} '
         if not disp:
             disp = 'a.u.'
         return disp

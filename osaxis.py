@@ -3,27 +3,22 @@
 """osaxis.py: Define the axis class for OSIRIS output."""
 
 import numpy as np
-import copy
 
 
 class DataAxis:
     def __init__(self, axis_min, axis_max, axis_npoints, attrs=None):
-        # self.axis_min = axis_min
-        # self.axis_max = axis_max
-        # self.axis_nx = axis_npoints
-        # self.increment = (self.axis_max - self.axis_min) / self.axis_nx
-        self.axisdata = np.arange(axis_min, axis_max, (axis_max - axis_min)/axis_npoints)
-        self.attrs = {}
+        self.axisdata = np.linspace(axis_min, axis_max, axis_npoints)
+        # now make attributes for axis that are required..
+        self.attrs = {'UNITS': b"", 'LONG_NAME': b"", 'TYPE': b"", 'NAME': b""}
         # get the attributes for the AXIS
-        for key, value in attrs.items():
-            self.attrs[key] = value
+        try:
+            for key, value in attrs.items():
+                self.attrs[key] = value
+        except AttributeError:  # not a big deal if we can't read attrs (?)
+            pass
 
-    def clone(self):
-        out = copy.deepcopy(self)
-        return out
-
-    # def get_axis_points(self):
-    #     return np.arange(self.axis_min, self.axis_max, self.increment)
+    def __str__(self):
+        return str(self.attrs['NAME']) + ' axis'
 
     def axis_min(self):
         return self.axisdata[0]
@@ -35,11 +30,8 @@ class DataAxis:
         return self.axisdata.size()
 
     def increment(self):
-        return (self.axisdata[-1] - self.axisdata[0]) / self.axisdata.size()
+        try:
+            return self.axisdata[1] - self.axisdata[0]
+        except IndexError:
+            return 0
 
-    # def trim(self, n_pts_start, n_pts_end):
-    #     self.axis_nx -= (n_pts_start + n_pts_end)
-    #     if self.axis_nx < 0:
-    #         raise ValueError('ERROR: empty axis!')
-    #     self.axis_min += n_pts_start * self.increment
-    #     self.axis_max -= n_pts_end * self.increment
