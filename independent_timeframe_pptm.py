@@ -32,6 +32,7 @@ __status__ = "Development"
 
 import os
 import glob
+from itertools import chain
 from osh5io import read_hdf, write_hdf
 try:
     from mpi4py import MPI
@@ -45,6 +46,28 @@ total_time = 0
 
 def save(sd, dataset_name):
     return save_funchook(sd, dataset_name)
+
+
+# define a few commonly used MPI calls for collecting final results
+def gather2list(sublist):
+    lst = comm.gather(sublist, root=0)
+    if rank == 0:
+        lst = list(chain.from_iterable(lst))
+    return lst
+
+
+def allgather2list(sublist):
+    lst = comm.allgather(sublist)
+    lst = np.array(list(chain.from_iterable(lst)))
+    return lst
+
+
+def sum2var(sublist):
+    subtotal, total = 0, 0
+    for v in sublist:
+        subtotal += v
+    comm.Reduce(subtotal, total, op=MPI.SUM, root=0)
+    return total
 
 
 def launch(func, kw4func, outdir=None, afunc=None):
@@ -101,3 +124,4 @@ def launch(func, kw4func, outdir=None, afunc=None):
     # it is up to the users to decide how to aggregate the results
     if afunc:
         afunc(sfr)
+
