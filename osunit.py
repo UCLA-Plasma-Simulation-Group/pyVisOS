@@ -43,8 +43,7 @@ class OSUnits:
 
     def limit_denominator(self, max_denominator=64):
         """call fractions.Fraction.limit_denominator method for each base unit"""
-        return np.array()
-
+        self.power = np.array([u.limit_denominator(max_denominator=max_denominator) for u in self.power])
 
     def __mul__(self, other):
         res = OSUnits('')
@@ -85,7 +84,10 @@ if __name__ == '__main__':
     print(OSUnits('m_e') / OSUnits('m_e'))
     print(OSUnits('m_e')**-1.5)
     print(OSUnits('m_e')**"5/7")
-    print(OSUnits('m_e')**(5/7))  # We should not use this notation when the power has too many decimal digits
+    not_good = OSUnits('m_e')**(5/7)  # We should not use this notation when the power has too many decimal digits
+    print(not_good)
+    not_good.limit_denominator()
+    print(not_good)
     print(OSUnits('n_0') == OSUnits('n_0'))
 
     a = OSUnits('n_0')

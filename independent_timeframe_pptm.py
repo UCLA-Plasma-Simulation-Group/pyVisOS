@@ -32,6 +32,7 @@ __status__ = "Development"
 
 import os
 import glob
+import numpy as np
 from itertools import chain
 from osh5io import read_hdf, write_hdf
 try:
@@ -52,7 +53,7 @@ def save(sd, dataset_name):
 def gather2list(sublist):
     lst = comm.gather(sublist, root=0)
     if rank == 0:
-        lst = list(chain.from_iterable(lst))
+        lst = np.array(list(chain.from_iterable(lst)))
     return lst
 
 

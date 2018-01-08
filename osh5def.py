@@ -79,7 +79,7 @@ class H5Data(np.ndarray):
         return self
 
     def __ipow__(self, other, modulo=None):
-        self = super(H5Data, self).__ipow__(other)
+        super(H5Data, self).__ipow__(other)
         self.data_attrs['UNITS'] = pow(self.data_attrs['UNITS'], other)
         return self
 
@@ -88,38 +88,28 @@ class H5Data(np.ndarray):
              However we would return an ndarray if advace indexing is invoked as it might help things floating...
         """
         v = super(H5Data, self).__getitem__(index)
-        print(type(v))
         # put everything into a list
         try:
             iter(index)
             idxl = index
         except TypeError:
             idxl = [index]
-        # axis2cp = [True,] * self.ndim
-        pn, ellipsis_found, v.run_attrs['TIME'] = 0, False, [888.]
         try:
-            for i, idx in enumerate(idxl):
-                if isinstance(idx, int):  # i is a trivial dimension now
+            pn, i, stop = 0, 0, len(idxl)
+            while i < stop:
+                if isinstance(idxl[i], int):  # i is a trivial dimension now
                     v.axes.pop(i - pn)
                     pn += 1
-                elif isinstance(idx, slice):  # also slice the axis
-                    v.axes[i].axisdata = v.axes[i].axisdata[idx]
-                elif i is Ellipsis:  # let's jump out and count backward
-                    ellipsis_found = True
-                    break
+                elif isinstance(idxl[i], slice):  # also slice the axis
+                    v.axes[i].axisdata = v.axes[i].axisdata[idxl[i]]
+                elif idxl[i] is Ellipsis:  # let's jump out and count backward
+                    i += self.ndim - stop
+                elif idxl[i] is None:
+                    pass
                 else:  # type not supported
                     return v.view(np.ndarray)
-            if ellipsis_found:
-                if isinstance(idx, int):  # i is a trivial dimension now
-                    v.axes.pop(i - pn)
-                    pn += 1
-                elif isinstance(idx, slice):  # also slice the axis
-                    v.axes[i].axisdata = v.axes[i].axisdata[idx]
-                else:  # type not supported
-                    return v.view(np.ndarray)
+                i += 1
         except AttributeError:  #TODO .axes was lost for some reason, need a better look
             pass
         return v.view(H5Data)
-
-
 
