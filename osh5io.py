@@ -14,8 +14,10 @@ __status__ = "Development"
 
 import h5py
 import os
-from osh5def import *
-from osunit import *
+import numpy as np
+from osunit import OSUnits
+from osaxis import DataAxis
+from osh5def import H5Data, fn_rule
 
 
 def read_hdf(filename, path=None):
@@ -166,7 +168,7 @@ def write_hdf(data, filename=None, path=None, dataset_name=None, write_data=True
         if axis_name not in h5file:
             axis_data = h5file.create_dataset(axis_name, (2,), 'float64')
         else:
-            axis_data = h5file[axis_data]
+            axis_data = h5file[axis_name]
 
         # set the extent to the data we have...
         axis_data[0] = data_object.axes[i].axis_min()
@@ -192,8 +194,8 @@ if __name__ == '__main__':
     # let's read/write a few times and see if there are mutations to the data
     # you should also diff the output h5 files
     for i in range(5):
-        write_hdf(rw, './test-12345' + str(i) + '.h5')
-        rw = read_hdf('./test-12345' + str(i) + '.h5')
+        write_hdf(rw, './test' + str(i) + '-123456.h5')
+        rw = read_hdf('./test' + str(i) + '-123456.h5')
         assert (rw == a).all()
         for axrw, axh5d in zip(rw.axes, h5d.axes):
             assert axrw.attrs == axh5d.attrs

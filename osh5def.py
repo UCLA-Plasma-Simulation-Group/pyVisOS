@@ -2,9 +2,9 @@
 
 """osh5def.py: Define the OSIRIS HDF5 data class and basic functions."""
 
-from osaxis import *
 import numpy as np
 import re
+import copy
 
 # Important: the first occurrence of serial numbers between '-' and '.' must be the time stamp information
 fn_rule = re.compile(r'-(\d+).')
@@ -13,17 +13,18 @@ fn_rule = re.compile(r'-(\d+).')
 class H5Data(np.ndarray):
 
     def __new__(cls, input_array, timestamp=None, name=None, data_attrs=None, run_attrs=None, axes=None):
+        """wrap input_array into our class, and we don't copy the data!"""
         obj = input_array.view(cls)
         if timestamp:
             obj.timestamp = timestamp
         if name:
             obj.name = name
         if data_attrs:
-            obj.data_attrs = data_attrs.copy()
+            obj.data_attrs = copy.deepcopy(data_attrs)
         if run_attrs:
             obj.run_attrs = run_attrs.copy()
         if axes:
-            obj.axes = axes.copy()
+            obj.axes = copy.deepcopy(axes)
         return obj
 
     def __array_finalize__(self, obj):
@@ -31,9 +32,9 @@ class H5Data(np.ndarray):
             return
         self.timestamp = getattr(obj, 'timestamp', '0'*6)
         self.name = getattr(obj, 'name', 'data')
-        self.data_attrs = getattr(obj, 'data_attrs', {}).copy()
+        self.data_attrs = copy.deepcopy(getattr(obj, 'data_attrs', {}))  # there is OSUnits obj inside
         self.run_attrs = getattr(obj, 'run_attrs', {}).copy()
-        self.axes = getattr(obj, 'axes', []).copy()
+        self.axes = copy.deepcopy(getattr(obj, 'axes', []))  # the elements are numpy arrays
 
     def __str__(self):
         return ''.join([self.name, '-', self.timestamp])
@@ -81,4 +82,44 @@ class H5Data(np.ndarray):
         self = super(H5Data, self).__ipow__(other)
         self.data_attrs['UNITS'] = pow(self.data_attrs['UNITS'], other)
         return self
+
+    def __getitem__(self, index):
+        """I am inclined to support only basic indexing/slicing. Otherwise it is too difficult to define the axes.
+             However we would return an ndarray if advace indexing is invoked as it might help things floating...
+        """
+        v = super(H5Data, self).__getitem__(index)
+        print(type(v))
+        # put everything into a list
+        try:
+            iter(index)
+            idxl = index
+        except TypeError:
+            idxl = [index]
+        # axis2cp = [True,] * self.ndim
+        pn, ellipsis_found, v.run_attrs['TIME'] = 0, False, [888.]
+        try:
+            for i, idx in enumerate(idxl):
+                if isinstance(idx, int):  # i is a trivial dimension now
+                    v.axes.pop(i - pn)
+                    pn += 1
+                elif isinstance(idx, slice):  # also slice the axis
+                    v.axes[i].axisdata = v.axes[i].axisdata[idx]
+                elif i is Ellipsis:  # let's jump out and count backward
+                    ellipsis_found = True
+                    break
+                else:  # type not supported
+                    return v.view(np.ndarray)
+            if ellipsis_found:
+                if isinstance(idx, int):  # i is a trivial dimension now
+                    v.axes.pop(i - pn)
+                    pn += 1
+                elif isinstance(idx, slice):  # also slice the axis
+                    v.axes[i].axisdata = v.axes[i].axisdata[idx]
+                else:  # type not supported
+                    return v.view(np.ndarray)
+        except AttributeError:  #TODO .axes was lost for some reason, need a better look
+            pass
+        return v.view(H5Data)
+
+
 
