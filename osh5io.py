@@ -81,7 +81,6 @@ def read_h5(filename, path=None):
             attrs = {}
             for k, v in axis.attrs.items():
                 attrs[k] = v.decode('utf-8') if isinstance(v, bytes) else v
-            print(attrs)
             axis_min = axis[0]
             axis_max = axis[1]
             axis_numberpoints = the_data_hdf_object.shape[-axis_number]
