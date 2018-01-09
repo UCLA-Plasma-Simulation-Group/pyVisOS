@@ -38,8 +38,7 @@ class OSUnits:
                     raise KeyError('Unknown unit: ' + re.findall(r'\w+', ss)[0])
 
     def tex(self):
-        """return byte string as inline tex equation"""
-        return ('$' + self.__str__() + '$').encode('utf-8')
+        return '$' + self.__str__() + '$'
 
     def limit_denominator(self, max_denominator=64):
         """call fractions.Fraction.limit_denominator method for each base unit"""
@@ -64,36 +63,29 @@ class OSUnits:
         return (self.power == other.power).all()
 
     def __str__(self):
-        disp = ''
-        for n, p in zip(OSUnits.name, self.power):
-            if p == 0:
-                continue
-            elif p == 1:
-                disp = disp + n + ' '
-            else:
-                disp = disp + n + '^{' + str(p) + '} '
+        disp = ''.join(['' if p == 0 else n+" " if p == 1 else ''.join([n, '^{', str(p), '} '])
+                        for n, p in zip(OSUnits.name, self.power)])
         if not disp:
-            disp = 'a.u.'
+            return 'a.u.'
         return disp
     
 
 # tests
 if __name__ == '__main__':
-    print(OSUnits("e \omega_p^2 / c"))
+    print([OSUnits("e \omega_p^2 / c")])
     print(OSUnits('m_e') * OSUnits('c'))
     print(OSUnits('m_e') / OSUnits('m_e'))
     print(OSUnits('m_e')**-1.5)
     print(OSUnits('m_e')**"5/7")
     not_good = OSUnits('m_e')**(5/7)  # We should not use this notation when the power has too many decimal digits
     print(not_good)
-    not_good.limit_denominator()
+    not_good.limit_denominator()  # we do provide a way to fix the **(5/7) problem
     print(not_good)
     print(OSUnits('n_0') == OSUnits('n_0'))
 
     a = OSUnits('n_0')
     b = a
-    print(b)
+    print(b.tex())
 
-    OSUnits('n_0').tex()
-    print(OSUnits("m_e e / \omega_p c eua^2"))  # this will not raise an error
-    print(OSUnits("m_e e / \omega_p c ua^2"))  # but this will, these corner cases probably won't be fixed
+    print(OSUnits("m_e e / \omega_p c eua^2"))  # this will not raise an error but
+    print(OSUnits("m_e e / \omega_p c ua^2"))  # this will fail, these corner cases probably won't be fixed

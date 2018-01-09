@@ -20,7 +20,7 @@ from osaxis import DataAxis
 from osh5def import H5Data, fn_rule
 
 
-def read_hdf(filename, path=None):
+def read_h5(filename, path=None):
     """
     HDF reader for Osiris/Visxd compatible HDF files... This will slurp in the data
     and the attributes that describe the data (e.g. title, units, scale).
@@ -41,8 +41,8 @@ def read_hdf(filename, path=None):
             diag_data[slice(3)]
                 print(rw.view(np.ndarray))
 
-
-            write(diag_data, 'filename.h5')    # writes out Visxd compatible HDF5 data.
+    We will convert all byte strings stored in the h5 file to strings which are easier to deal with when writing codes
+    see also write_h5() function in this file
 
     """
     fname = filename if not path else path + '/' + filename
@@ -57,12 +57,12 @@ def read_hdf(filename, path=None):
     # now read in attributes of the ROOT of the hdf5..
     #   there's lots of good info there. strip out the array if value is a string
     for key, value in data_file.attrs.items():
-        run_attrs[key] = value[0] if isinstance(value[0], bytes) else value
+        run_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
 
     # attach attributes assigned to the data array to
     #    the H5Data.data_attrs object, remove trivial dimension before assignment
     for key, value in the_data_hdf_object.attrs.items():
-        data_attrs[key] = value[0] if isinstance(value[0], bytes) else value
+        data_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
 
     # convert unit string to osunit object
     try:
@@ -77,11 +77,16 @@ def read_hdf(filename, path=None):
             #  (they are named /AXIS/AXIS1, /AXIS/AXIS2, /AXIS/AXIS3 ...)
             axis_to_look_for = "/AXIS/AXIS" + str(axis_number)
             axis = data_file[axis_to_look_for]
+            # convert byte string attributes to string
+            attrs = {}
+            for k, v in axis.attrs.items():
+                attrs[k] = v.decode('utf-8') if isinstance(v, bytes) else v
+            print(attrs)
             axis_min = axis[0]
             axis_max = axis[1]
             axis_numberpoints = the_data_hdf_object.shape[-axis_number]
 
-            data_axis = DataAxis(axis_min, axis_max, axis_numberpoints, attrs=axis.attrs)
+            data_axis = DataAxis(axis_min, axis_max, axis_numberpoints, attrs=attrs)
             axes.insert(0, data_axis)
         except KeyError:
             break
@@ -102,7 +107,17 @@ def scan_hdf5_file_for_main_data_array(h5file):
         raise Exception('Main data array not found')
 
 
-def write_hdf(data, filename=None, path=None, dataset_name=None, write_data=True):
+def write_h5(data, filename=None, path=None, dataset_name=None, write_data=True):
+    """
+    Usage:
+        write(diag_data, '/path/to/filename.h5')    # writes out Visxd compatible HDF5 data.
+
+    Since h5 format does not support python strings, we will convert all string data (units, names etc)
+    to bytes strings before writing.
+
+    see also read_h5() function in this file
+
+    """
     if isinstance(data, H5Data):
         data_object = data
     elif isinstance(data, np.ndarray):
@@ -143,10 +158,10 @@ def write_hdf(data, filename=None, path=None, dataset_name=None, write_data=True
     try:
         data_attrs['UNITS'] = np.array([str(data_object.data_attrs['UNITS']).encode('utf-8')])
     except:
-        data_attrs['UNITS'] = np.array([b''])
+        data_attrs['UNITS'] = np.array(['a.u.'])
     # copy over any values we have in the 'H5Data' object;
     for key, value in data_attrs.items():
-        h5dataset.attrs[key] = np.array([value]) if isinstance(value, bytes) else value
+        h5dataset.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
     # these are required so we make defaults..
     h5file.attrs['DT'] = [1.0]
     h5file.attrs['ITER'] = [0]
@@ -159,7 +174,7 @@ def write_hdf(data, filename=None, path=None, dataset_name=None, write_data=True
     h5file.attrs['XMAX'] = [0.0]
     # now make defaults/copy over the attributes in the root of the hdf5
     for key, value in data_object.run_attrs.items():
-        h5file.attrs[key] = np.array([value]) if isinstance(value, bytes) else value
+        h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
 
     number_axis_objects_we_need = len(data_object.axes)
     # now go through and set/create our axes HDF entries.
@@ -171,8 +186,8 @@ def write_hdf(data, filename=None, path=None, dataset_name=None, write_data=True
             axis_data = h5file[axis_name]
 
         # set the extent to the data we have...
-        axis_data[0] = data_object.axes[i].axis_min()
-        axis_data[1] = data_object.axes[i].axis_max()
+        axis_data[0] = data_object.axes[i].min()
+        axis_data[1] = data_object.axes[i].max()
 
         # fill in any values we have stored in the Axis object
         for key, value in data_object.axes[i].attrs.items():
@@ -183,23 +198,23 @@ def write_hdf(data, filename=None, path=None, dataset_name=None, write_data=True
 
 if __name__ == '__main__':
     a = np.arange(6.0).reshape(2, 3)
-    ax, ay = DataAxis(0, 3, 3, attrs={'UNITS': b'1 / \omega_p'}), DataAxis(10, 11, 2, attrs={'UNITS': b'c / \omega_p'})
-    da = {'UNITS': OSUnits(b'n_0')}
+    ax, ay = DataAxis(0, 3, 3, attrs={'UNITS': '1 / \omega_p'}), DataAxis(10, 11, 2, attrs={'UNITS': 'c / \omega_p'})
+    da = {'UNITS': OSUnits('n_0')}
     h5d = H5Data(a, timestamp='123456', name='test', data_attrs=da, axes=[ay, ax])
-    write_hdf(h5d, './test-123456.h5')
-    rw = read_hdf('./test-123456.h5')
-    h5d = read_hdf('./test-123456.h5')  # read from file to get all default attrs
+    write_h5(h5d, './test-123456.h5')
+    rw = read_h5('./test-123456.h5')
+    h5d = read_h5('./test-123456.h5')  # read from file to get all default attrs
     print("rw is h5d: ", rw is h5d, '\n')
 
     # let's read/write a few times and see if there are mutations to the data
     # you should also diff the output h5 files
     for i in range(5):
-        write_hdf(rw, './test' + str(i) + '-123456.h5')
-        rw = read_hdf('./test' + str(i) + '-123456.h5')
+        write_h5(rw, './test' + str(i) + '-123456.h5')
+        rw = read_h5('./test' + str(i) + '-123456.h5')
         assert (rw == a).all()
         for axrw, axh5d in zip(rw.axes, h5d.axes):
             assert axrw.attrs == axh5d.attrs
-            assert (axrw.axisdata == axh5d.axisdata).all()
+            assert (axrw == axh5d).all()
         assert h5d.timestamp == rw.timestamp
         assert h5d.name == rw.name
         assert h5d.data_attrs == rw.data_attrs

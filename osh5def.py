@@ -101,7 +101,7 @@ class H5Data(np.ndarray):
                     v.axes.pop(i - pn)
                     pn += 1
                 elif isinstance(idxl[i], slice):  # also slice the axis
-                    v.axes[i].axisdata = v.axes[i].axisdata[idxl[i]]
+                    v.axes[i].ax = v.axes[i].ax[idxl[i]]
                 elif idxl[i] is Ellipsis:  # let's jump out and count backward
                     i += self.ndim - stop
                 elif idxl[i] is None:

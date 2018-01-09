@@ -9,13 +9,13 @@ from osh5def import *
 from osunit import *
 
 
-def read_hdf(filename, path=None):
+def read_h5(filename, path=None):
     fn = filename if not path else path + '/' + filename
     print('reading from ' + fn)
     return 1
 
 
-def write_hdf(data, filename=None, path=None, dataset_name=None, write_data=True):
+def write_h5(data, filename=None, path=None, dataset_name=None, write_data=True):
     if dataset_name is not None:
         current_name_attr = dataset_name
     else:

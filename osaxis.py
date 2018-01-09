@@ -7,31 +7,44 @@ import numpy as np
 
 class DataAxis:
     def __init__(self, axis_min, axis_max, axis_npoints, attrs=None):
-        self.axisdata = np.linspace(axis_min, axis_max, axis_npoints)
+        # attrs should be a dictionary
+        if axis_min > axis_max:
+            raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
+        self.ax = np.linspace(axis_min, axis_max, axis_npoints)
         # now make attributes for axis that are required..
-        self.attrs = {'UNITS': b"", 'LONG_NAME': b"", 'TYPE': b"", 'NAME': b""}
+        self.attrs = {'UNITS': "", 'LONG_NAME': "", 'NAME': ""}
         # get the attributes for the AXIS
-        try:
+        if attrs:
             for key, value in attrs.items():
                 self.attrs[key] = value
-        except AttributeError:  # not a big deal if we can't read attrs (?)
-            pass
 
     def __str__(self):
         return str(self.attrs['NAME']) + ' axis'
 
-    def axis_min(self):
-        return self.axisdata[0]
+    def __getitem__(self, index):
+        return self.ax[index]
 
-    def axis_max(self):
-        return self.axisdata[-1]
+    def __eq__(self, other):
+        return (self.ax == other.ax).all()
 
-    def axis_npoints(self):
-        return self.axisdata.size()
+    def min(self):
+        return self.ax[0]
+
+    def max(self):
+        return self.ax[-1]
+
+    def size(self):
+        return self.ax.size()
 
     def increment(self):
         try:
-            return self.axisdata[1] - self.axisdata[0]
+            return self.ax[1] - self.ax[0]
         except IndexError:
             return 0
 
+
+if __name__ == '__main__':
+    a = DataAxis(0,10,11, attrs={'UNITS':'c'})
+    print(type(a[1:3]))
+    print(a[1:3])
+    a[1:3] = [9, 9]  # we don't allow this
