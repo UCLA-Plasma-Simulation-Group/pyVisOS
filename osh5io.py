@@ -80,7 +80,7 @@ def read_h5(filename, path=None):
             # convert byte string attributes to string
             attrs = {}
             for k, v in axis.attrs.items():
-                attrs[k] = v.decode('utf-8') if isinstance(v, bytes) else v
+                attrs[k] = v[0].decode('utf-8') if isinstance(v[0], bytes) else v
             axis_min = axis[0]
             axis_max = axis[1]
             axis_numberpoints = the_data_hdf_object.shape[-axis_number]
@@ -157,7 +157,7 @@ def write_h5(data, filename=None, path=None, dataset_name=None, write_data=True)
     try:
         data_attrs['UNITS'] = np.array([str(data_object.data_attrs['UNITS']).encode('utf-8')])
     except:
-        data_attrs['UNITS'] = np.array(['a.u.'])
+        data_attrs['UNITS'] = np.array([b'a.u.'])
     # copy over any values we have in the 'H5Data' object;
     for key, value in data_attrs.items():
         h5dataset.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value

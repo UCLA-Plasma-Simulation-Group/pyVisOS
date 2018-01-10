@@ -15,33 +15,48 @@ fn_rule = re.compile(r'-(\d+).')
 
 class H5Data(np.ndarray):
 
-    def __new__(cls, input_array, timestamp, name, data_attrs, run_attrs, axes):
+    def __new__(cls, input_array, timestamp=None, name=None, data_attrs=None, run_attrs=None, axes=None):
         """wrap input_array into our class, and we don't copy the data!"""
         obj = np.asarray(input_array).view(cls)
-        obj.timestamp = timestamp
-        obj.name = name
-        obj.data_attrs = copy.deepcopy(data_attrs)  # there is OSUnits obj inside
-        obj.run_attrs = run_attrs.copy()
-        obj.axes = copy.deepcopy(axes)  # the elements are numpy arrays
+        if timestamp:
+            obj.timestamp = timestamp
+        if name:
+            obj.name = name
+        if data_attrs:
+            obj.data_attrs = data_attrs  # there is OSUnits obj inside
+        if run_attrs:
+            obj.run_attrs = run_attrs
+        if axes:
+            obj.axes = axes   # the elements are numpy arrays
         return obj
 
     def __array_finalize__(self, obj):
         if obj is None:
             return
-        if self.base is obj:
-            self.__dict__ = getattr(obj, '__dict__', {})
-        self.timestamp = getattr(obj, 'timestamp', '0'*6)
+        self.timestamp = getattr(obj, 'timestamp', '0' * 6)
         self.name = getattr(obj, 'name', 'data')
-        self.data_attrs = getattr(obj, 'data_attrs', {})
+        self.data_attrs = copy.deepcopy(getattr(obj, 'data_attrs', {}))
         self.run_attrs = getattr(obj, 'run_attrs', {})
         self.axes = copy.deepcopy(getattr(obj, 'axes', []))
 
+
+
     # need the following two function for mpi4py high level function to work correctly
     def __setstate__(self, state):
-        pass
+        self.__dict__ = state[-1]
+        super(H5Data, self).__setstate__(state[:-1])
+
+    # It looks like mpi4py/ndarray use reduce for pickling. One would think setstate/getstate pair should also work but
+    # it turns out the __getstate__() function is never called!
+    # Luckily ndarray doesn't use __dict__ so we can pack everything in it.
+    def __reduce__(self):
+        ps = super(H5Data, self).__reduce__()
+        ms = ps[2] + (self.__dict__,)
+        return ps[0], ps[1], ms
 
     def __getstate__(self):
-        pass
+        o = [], self.name, self.timestamp, self.run_attrs, self.data_attrs, self.axes
+        return o
 
     def __str__(self):
         return ''.join([self.name, '-', self.timestamp])
@@ -98,8 +113,8 @@ class H5Data(np.ndarray):
              However we would return an ndarray if advace indexing is invoked as it might help things floating...
         """
         v = super(H5Data, self).__getitem__(index)
-        if v.base is not self:  # not a view
-            return v
+        # if v.base is not self:  # not a view  # # we would never return at this point, right?
+        #     return v
         # # v.axes = copy.deepcopy(self.axes)
         # # # # let's say a.shape=(4,4), a[1:3] **= 2 won't make sense any way ...
         # # # v.data_attrs['UNITS'] = copy.deepcopy(self.data_attrs['UNITS'])
@@ -145,9 +160,9 @@ class H5Data(np.ndarray):
     def sum(self, axis=None, out=None, **unused_kw):
         dim = self.ndim
         o = super(H5Data, self).sum(axis=axis, out=out)
-        if out:
-            o = out
-        if not axis:  # default is to sum over all axis, return a value
+        if out is not None:
+            out = o
+        if axis is None:  # default is to sum over all axis, return a value
             return o[0]
         if isinstance(axis, int):
             del o.axes[axis]
