@@ -10,7 +10,7 @@ import os  # if you need to get current working path
 import osh5vis  # if you want to plot something
 
 # Specify what to load in a dictionary. Note that we only need to write down the directories
-__pwd__ = '/u/home/h/hwen/scratch/tmp/mira'  # os.getcwd()
+__pwd__ = os.getcwd()
 __ldq__ = {'e2': __pwd__ + '/MS/FLD/e2-senv',
            'e3': __pwd__ + '/MS/FLD/e3-senv',
            'b2': __pwd__ + '/MS/FLD/b2-senv',
@@ -18,7 +18,7 @@ __ldq__ = {'e2': __pwd__ + '/MS/FLD/e2-senv',
 
 
 # Note that the names must be the same as the keys in the dictionary. However the order is not important.
-def calculate_poyning_flux(b2, b3, e2, e3):
+def calculate_poyning_flux(b2, b3, e2, e3, save2disk=True):
     # inside the function we can treat each arguments as individual files instead of directories
     # what happens is that the itp wrapper function will distribute the workload along timestamp axis and load the
     # files into your named keywords one timestamp at a time. You should now see e2, for example, as an
@@ -38,7 +38,8 @@ def calculate_poyning_flux(b2, b3, e2, e3):
     axis2sum = 0 if s1.ndim == 2 else (1, 0)
     s1 = s1.sum(axis=axis2sum)
 
-    itp.save(s1, 's1')  # not necessary, just to show that you can save intermediate results
+    if save2disk:
+        itp.save(s1, 's1')  # not necessary, just to show that you can save intermediate results
     return s1   # optional, all returns will be wrapped into a list
 
 
@@ -62,5 +63,6 @@ itp.launch(calculate_poyning_flux, __ldq__, outdir='./test', afunc=combine2fig)
 
 # Suppose you also want to use the full fields instead of the enveloped fields. You can
 __ldq__ = {'e2': __pwd__ + '/MS/FLD/e2', 'e3': __pwd__ + '/MS/FLD/e3',
-           'b2': __pwd__ + '/MS/FLD/b2', 'b3': __pwd__ + '/MS/FLD/b3'}
-itp.launch(calculate_poyning_flux, __ldq__, outdir='./test', afunc=combine2fig)
+           'b2': __pwd__ + '/MS/FLD/b2', 'b3': __pwd__ + '/MS/FLD/b3',
+           'save2disk': False}
+itp.launch(calculate_poyning_flux, __ldq__, afunc=combine2fig)

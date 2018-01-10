@@ -88,19 +88,25 @@ def launch(func, kw4func, outdir=None, afunc=None):
         # print('rank ' + str(rank) + 'writng to '+ odir)
         write_h5(sd, path=odir, dataset_name=dataset_name)
 
-    fdict, fnum, kwargs, sfr = {}, [], {}, []
+    fdict, sdict, fnum, kwargs, sfr = {}, {}, [], {}, []
     if rank == 0:
         for k, v in kw4func.items():
-            fdict[k] = sorted(glob.glob(v + '/*.h5'))
-            fnum.append(len(fdict[k]))
-            if fnum[-1] == 0:
-                raise IOError('No h5 files found in ' + v)
+            if isinstance(v, str):  # string is treated as
+                if os.path.isfile(v):  # files
+                    sdict[k] = v
+                else:                  # or as path
+                    fdict[k] = sorted(glob.glob(v + '/*.h5'))
+                    fnum.append(len(fdict[k]))
+                    if fnum[-1] == 0:
+                        raise IOError('No h5 files found in ' + v)
+            else:
+                kwargs[k] = v
 
         if fnum.count(fnum[0]) != len(fnum):
             raise Exception('Number of files must be the same for all directories')
         # TODO(2) we should check if all quantities have exactly the same timestamp
     if comm:
-        [fdict, fnum] = comm.bcast([fdict, fnum], root=0)
+        [fdict, sdict, kwargs, fnum] = comm.bcast([fdict, sdict, kwargs, fnum], root=0)
     # # divide the task
     global total_time
     total_time = fnum[0]
@@ -121,6 +127,16 @@ def launch(func, kw4func, outdir=None, afunc=None):
         except:
             print(traceback.format_exc())
             comm.Abort(errorcode=1)
+
+    # load static files
+    try:
+        for k, v in sdict.items():
+            sdict[k] = read_h5(v)
+    except:
+        print(traceback.format_exc())
+        comm.Abort(errorcode=1)
+
+    kwargs.update(sdict)  # here are all static parameters
 
     for i in range(i_begin, i_end):
         for k in fdict:
