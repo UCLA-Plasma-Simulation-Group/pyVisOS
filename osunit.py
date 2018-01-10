@@ -16,23 +16,23 @@ class OSUnits:
         :param s: string notation of the units. there should be whitespace around quantities and '/' dividing quantities
         """
         self.power = np.array([frac(0), frac(0), frac(0), frac(0), frac(0)])
-        if isinstance(s, bytes):
-            s = s.decode("utf-8")
+        # if isinstance(s, bytes):
+        #     s = s.decode("utf-8")
         if 'a.u.' != s:
             sl = s.split()
-            positive = True
+            nominator = True
             while sl:
                 ss = sl.pop(0)
                 if ss == '/':
-                    positive = False
+                    nominator = False
                     continue
                 for p, n in enumerate(OSUnits.name):
                     if n == ss[0:len(n)]:
                         res = OSUnits.xtrnum.findall(ss)  # extract numbers
                         if res:
-                            self.power[p] = frac(res[0]) if positive else -frac(res[0])
+                            self.power[p] = frac(res[0]) if nominator else -frac(res[0])
                         else:
-                            self.power[p] = frac(1, 1) if positive else frac(-1, 1)
+                            self.power[p] = frac(1, 1) if nominator else frac(-1, 1)
                         break
                 else:
                     raise KeyError('Unknown unit: ' + re.findall(r'\w+', ss)[0])

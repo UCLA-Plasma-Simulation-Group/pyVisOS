@@ -6,17 +6,18 @@ import numpy as np
 
 
 class DataAxis:
-    def __init__(self, axis_min, axis_max, axis_npoints, attrs=None):
-        # attrs should be a dictionary
-        if axis_min > axis_max:
-            raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
-        self.ax = np.linspace(axis_min, axis_max, axis_npoints)
-        # now make attributes for axis that are required..
-        self.attrs = {'UNITS': "", 'LONG_NAME': "", 'NAME': ""}
-        # get the attributes for the AXIS
-        if attrs:
-            for key, value in attrs.items():
-                self.attrs[key] = value
+    def __init__(self, axis_min, axis_max, axis_npoints, attrs=None, new=True):
+        if new:
+            # attrs should be a dictionary
+            if axis_min > axis_max:
+                raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
+            self.ax = np.linspace(axis_min, axis_max, axis_npoints)
+            # now make attributes for axis that are required..
+            self.attrs = {'UNITS': "", 'LONG_NAME': "", 'NAME': ""}
+            # get the attributes for the AXIS
+            if attrs:
+                for key, value in attrs.items():
+                    self.attrs[key] = value
 
     def __str__(self):
         return str(self.attrs['NAME']) + ' axis'
