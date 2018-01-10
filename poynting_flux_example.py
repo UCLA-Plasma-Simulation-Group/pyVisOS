@@ -10,6 +10,8 @@ import os  # if you need to get current working path
 import osh5vis  # if you want to plot something
 
 # Specify what to load in a dictionary. Note that we only need to write down the directories
+# Note that all string values are reserved for the filename and path. If you need to pass in
+# strings, you can either wrap them into list/tuple/dict or use bytes like b'parameters'.
 __pwd__ = os.getcwd()
 __ldq__ = {'e2': __pwd__ + '/MS/FLD/e2-senv',
            'e3': __pwd__ + '/MS/FLD/e3-senv',
