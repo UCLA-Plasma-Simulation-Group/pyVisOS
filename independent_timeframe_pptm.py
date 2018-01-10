@@ -33,8 +33,9 @@ __status__ = "Development"
 import os
 import glob
 import numpy as np
+import traceback
 from itertools import chain
-from osh5io import read_hdf, write_hdf
+from osh5io import read_h5, write_h5
 try:
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
@@ -53,7 +54,7 @@ def save(sd, dataset_name):
 def gather2list(sublist):
     lst = comm.gather(sublist, root=0)
     if rank == 0:
-        lst = np.array(list(chain.from_iterable(lst)))
+        lst = list(chain.from_iterable(lst))
     return lst
 
 
@@ -77,15 +78,15 @@ def launch(func, kw4func, outdir=None, afunc=None):
     global save_funchook
 
     def save_funchook(sd, dataset_name):
-        odir = './' if not outdir else outdir
-        odir += '/PPR/' + dataset_name + '/'
+        odir = './PPR/' if not outdir else outdir
+        odir += '/' + dataset_name + '/'
         # TODO(1) there is a racing condition. rank>0 nodes may write to a non-existing dir. EDIT: solved
         # can't add barrier here due to uneven work load
         if rank == 0:
             if not os.path.exists(odir):  # prepare output dir
                 os.makedirs(odir)
         # print('rank ' + str(rank) + 'writng to '+ odir)
-        write_hdf(sd, path=odir, dataset_name=dataset_name)
+        write_h5(sd, path=odir, dataset_name=dataset_name)
 
     fdict, fnum, kwargs, sfr = {}, [], {}, []
     if rank == 0:
@@ -93,7 +94,7 @@ def launch(func, kw4func, outdir=None, afunc=None):
             fdict[k] = sorted(glob.glob(v + '/*.h5'))
             fnum.append(len(fdict[k]))
             if fnum[-1] == 0:
-                raise IOError('No h5 files found in' + v)
+                raise IOError('No h5 files found in ' + v)
 
         if fnum.count(fnum[0]) != len(fnum):
             raise Exception('Number of files must be the same for all directories')
@@ -110,19 +111,27 @@ def launch(func, kw4func, outdir=None, afunc=None):
         i_end = total_time
     # rank0 loop once to setup necessary dirs. not pretty but solve TODO(1)
     if comm:
-        if rank == 0:
-            i_begin = 1
-            for k in fdict:
-                kwargs[k] = read_hdf(fdict[k][0])
-            sfr.append(func(**kwargs))  # store results for final aggregation
-        comm.Barrier()
+        try:
+            if rank == 0:
+                i_begin = 1
+                for k in fdict:
+                    kwargs[k] = read_h5(fdict[k][0])
+                sfr.append(func(**kwargs))  # store results for final aggregation
+            comm.Barrier()
+        except:
+            print(traceback.format_exc())
+            comm.Abort(errorcode=1)
 
     for i in range(i_begin, i_end):
         for k in fdict:
-            kwargs[k] = read_hdf(fdict[k][i])
+            kwargs[k] = read_h5(fdict[k][i])
         sfr.append(func(**kwargs))  # store results for final aggregation
 
     # it is up to the users to decide how to aggregate the results
     if afunc:
-        afunc(sfr)
+        try:
+            afunc(sfr)
+        except:
+            print(traceback.format_exc())
+            comm.Abort(errorcode=1)
 
