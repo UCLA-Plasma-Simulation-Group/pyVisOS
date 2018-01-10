@@ -190,7 +190,7 @@ def write_h5(data, filename=None, path=None, dataset_name=None, write_data=True)
 
         # fill in any values we have stored in the Axis object
         for key, value in data_object.axes[i].attrs.items():
-            axis_data.attrs[key] = value
+            axis_data.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
     if write_data:
         h5file.close()
 
