@@ -26,7 +26,8 @@ def metasl(func, mapping=(0, 0)):
             raise Exception('Cannot find the ' + str(kl[-1][0]) + '-th argument for meta data saving')
         # save meta data into a list
         for tp in kl:
-            saved.insert(0, (args[tp[0]].meta2dict(), tp[1]))
+            if hasattr(args[tp[0]], 'meta2dict'):
+                saved.insert(0, (args[tp[0]].meta2dict(), tp[1]))
         # execute user function
         out = func(*args, **kwargs)
         # load saved meta data into specified positions
@@ -42,7 +43,7 @@ def metasl(func, mapping=(0, 0)):
             raise IndexError('Output does not have ' + str(tp[1]) + ' elements')
         except:
             raise TypeError('Output[' + str(tp[1]) + '] is not/cannot convert to H5Data')
-        tmp = tuple(ol) if len(ol) > 1 else ol[0]
+        tmp = tuple(ol) if len(ol) > 1 else ol[0] if ol else out
         return tmp
     return sl
 
@@ -244,9 +245,14 @@ if __name__ == '__main__':
     import osh5io
     fn = 'test-123456.h5'
     d = osh5io.read_h5(fn)
+    # d = np.ones((3,2))
     c = hfft(d)
     b = ihfft(c)
     print('b is d? ', b is d)
     e = d - b
     print('b - d = ', e.view(np.ndarray))
+    print(b.data_attrs['UNITS'])
+    b = np.sqrt(b)
+    print(b.data_attrs['UNITS'])
+
 
