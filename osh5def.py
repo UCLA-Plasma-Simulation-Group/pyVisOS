@@ -39,8 +39,6 @@ class H5Data(np.ndarray):
         self.run_attrs = getattr(obj, 'run_attrs', {})
         self.axes = copy.deepcopy(getattr(obj, 'axes', []))
 
-
-
     # need the following two function for mpi4py high level function to work correctly
     def __setstate__(self, state):
         self.__dict__ = state[-1]
@@ -55,8 +53,7 @@ class H5Data(np.ndarray):
         return ps[0], ps[1], ms
 
     def __getstate__(self):
-        o = [], self.name, self.timestamp, self.run_attrs, self.data_attrs, self.axes
-        return o
+        return self.__reduce__()
 
     def __str__(self):
         return ''.join([self.name, '-', self.timestamp])
@@ -141,14 +138,13 @@ class H5Data(np.ndarray):
                 else:  # type not supported
                     return v.view(np.ndarray)
                 i += 1
-        except AttributeError:  #TODO .axes was lost for some reason, need a better look
+        except AttributeError:  #TODO(1) .axes was lost for some reason, need a better look
             pass
         return v
 
-    def meta2dic(self):
-        """return a shallow copy of the meta data as a dictionary"""
-        return {'timestamp': self.timestamp, 'name': self.name, 'data_attrs': self.data_attrs,
-                'run_attrs': self.run_attrs, 'axes': self.axes}
+    def meta2dict(self):
+        """return a deep copy of the meta data as a dictionary"""
+        return copy.deepcopy(self.__dict__)
 
     def transpose(self, *axes):
         v = super(H5Data, self).transpose(*axes)

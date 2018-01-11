@@ -12,11 +12,11 @@ import osh5vis  # if you want to plot something
 # Specify what to load in a dictionary. Note that we only need to write down the directories
 # Note that all string values are reserved for the filename and path. If you need to pass in
 # strings, you can either wrap them into list/tuple/dict or use bytes like b'parameters'.
-__pwd__ = os.getcwd()
-__ldq__ = {'e2': __pwd__ + '/MS/FLD/e2-senv',
-           'e3': __pwd__ + '/MS/FLD/e3-senv',
-           'b2': __pwd__ + '/MS/FLD/b2-senv',
-           'b3': __pwd__ + '/MS/FLD/b3-senv'}
+__pwd = os.getcwd()
+__ldq = {'e2': __pwd + '/MS/FLD/e2-senv',
+           'e3': __pwd + '/MS/FLD/e3-senv',
+           'b2': __pwd + '/MS/FLD/b2-senv',
+           'b3': __pwd + '/MS/FLD/b3-senv'}
 
 
 # Note that the names must be the same as the keys in the dictionary. However the order is not important.
@@ -55,16 +55,16 @@ def combine2fig(subl):
     full_list = itp.gather2list(subl)
     if itp.rank == 0:
         data = osh5utils.stack(full_list)  # similar to numpy.stack, the new dimension is assumed to be time by default
-        osh5vis.new_fig(data)  # create a new plot and display
+        osh5vis.new_fig(data.transpose())  # create a new plot of transposed data, and display
 
 
 # Now we need to run it
 # Keyword arguments are optional.
 # outdir specifies the root output dir, default is ./PPR/. In our case the output will be stored at ./test/s1/
-itp.launch(calculate_poyning_flux, __ldq__, outdir='./test', afunc=combine2fig)
+itp.launch(calculate_poyning_flux, __ldq, outdir='./test', afunc=combine2fig)
 
 # Suppose you also want to use the full fields instead of the enveloped fields. You can
-__ldq__ = {'e2': __pwd__ + '/MS/FLD/e2', 'e3': __pwd__ + '/MS/FLD/e3',
-           'b2': __pwd__ + '/MS/FLD/b2', 'b3': __pwd__ + '/MS/FLD/b3',
+__ldq = {'e2': __pwd + '/MS/FLD/e2', 'e3': __pwd + '/MS/FLD/e3',
+           'b2': __pwd + '/MS/FLD/b2', 'b3': __pwd + '/MS/FLD/b3',
            'save2disk': False}
-itp.launch(calculate_poyning_flux, __ldq__, afunc=combine2fig)
+itp.launch(calculate_poyning_flux, __ldq, afunc=combine2fig)
