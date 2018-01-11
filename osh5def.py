@@ -59,13 +59,7 @@ class H5Data(np.ndarray):
         return ''.join([self.name, '-', self.timestamp])
 
     def __repr__(self):
-        return self.__str__()
-
-    def __add__(self, other):
-        return super(H5Data, self).__add__(other)
-
-    def __sub__(self, other):
-        return super(H5Data, self).__sub__(other)
+        return ''.join([str(self.__class__), ' [', self.__str__(), ': ', str(self.shape), ']'])
 
     def __mul__(self, other):
         v = super(H5Data, self).__mul__(other)
@@ -79,30 +73,14 @@ class H5Data(np.ndarray):
             v.data_attrs['UNITS'] = self.data_attrs['UNITS'] / other.data_attrs['UNITS']
         return v
 
-    def __pow__(self, other, modulo=None):
-        v = super(H5Data, self).__pow__(other)
-        v.data_attrs['UNITS'] = pow(self.data_attrs['UNITS'], other)
-        return v
-
-    def __iadd__(self, other):
-        return super(H5Data, self).__iadd__(other)
-
-    def __isub__(self, other):
-        return super(H5Data, self).__isub__(other)
-
     def __imul__(self, other):
         if isinstance(other, H5Data):
             self.data_attrs['UNITS'] = self.data_attrs['UNITS'] * other.data_attrs['UNITS']
         return self
 
-    def __idiv__(self, other):
+    def __itruediv__(self, other):
         if isinstance(other, H5Data):
             self.data_attrs['UNITS'] = self.data_attrs['UNITS'] / other.data_attrs['UNITS']
-        return self
-
-    def __ipow__(self, other, modulo=None):
-        super(H5Data, self).__ipow__(other)
-        self.data_attrs['UNITS'] = pow(self.data_attrs['UNITS'], other)
         return self
 
     def __getitem__(self, index):
@@ -153,11 +131,11 @@ class H5Data(np.ndarray):
         v.axes = [self.axes[i] for i in axes]
         return v
 
-    def sum(self, axis=None, out=None, **unused_kw):
+    def sum(self, axis=None, out=None, dtype=None, **unused_kw):
         dim = self.ndim
         o = super(H5Data, self).sum(axis=axis, out=out)
         if out is not None:
-            out = o.asdtye(out.dtype)
+            out = o.asdtype(dtpye) if dtype else o.asdtye(out.dtype)
         if axis is None:  # default is to sum over all axis, return a value
             return o[0]
         if isinstance(axis, int):
@@ -167,3 +145,20 @@ class H5Data(np.ndarray):
             o.axes = [v for i, v in enumerate(o.axes) if i not in axis and i-dim not in axis]
         return o
 
+    def __array_wrap__(self, out, context=None):
+        """Here we handle the unit attribute
+        We do not check the legitimacy of ufunc operating on certain unit. We hard code a few unit changing
+        rules according to what ufunc is called
+        For now we only support powers, numpy.multiply/numpy.divide etc are not implemented
+        """
+        # the document says that __array_wrap__ could be deprecated in the future but this is the most direct way...
+        __ufunc_mapping = {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': 0}
+        op = __ufunc_mapping.get(context[0].__name__)
+        if op is not None:
+            if not op:  # op is 'power', get the second operand
+                op = context[1][1]
+            try:
+                out.data_attrs['UNITS'] **= op
+            except KeyError:  # no units defined, return silently
+                pass
+        return np.ndarray.__array_wrap__(self, out, context)
