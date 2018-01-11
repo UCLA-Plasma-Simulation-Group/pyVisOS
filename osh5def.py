@@ -69,13 +69,13 @@ class H5Data(np.ndarray):
 
     def __mul__(self, other):
         v = super(H5Data, self).__mul__(other)
-        if not isinstance(other, (complex, int, float)):
+        if isinstance(other, H5Data):
             v.data_attrs['UNITS'] = self.data_attrs['UNITS'] * other.data_attrs['UNITS']
         return v
 
     def __truediv__(self, other):
         v = super(H5Data, self).__truediv__(other)
-        if not isinstance(other, (complex, int, float)):
+        if isinstance(other, H5Data):
             v.data_attrs['UNITS'] = self.data_attrs['UNITS'] / other.data_attrs['UNITS']
         return v
 
@@ -91,12 +91,12 @@ class H5Data(np.ndarray):
         return super(H5Data, self).__isub__(other)
 
     def __imul__(self, other):
-        if not isinstance(other, (complex, int, float)):
+        if isinstance(other, H5Data):
             self.data_attrs['UNITS'] = self.data_attrs['UNITS'] * other.data_attrs['UNITS']
         return self
 
     def __idiv__(self, other):
-        if not isinstance(other, (complex, int, float)):
+        if isinstance(other, H5Data):
             self.data_attrs['UNITS'] = self.data_attrs['UNITS'] / other.data_attrs['UNITS']
         return self
 
@@ -157,7 +157,7 @@ class H5Data(np.ndarray):
         dim = self.ndim
         o = super(H5Data, self).sum(axis=axis, out=out)
         if out is not None:
-            out = o
+            out = o.asdtye(out.dtype)
         if axis is None:  # default is to sum over all axis, return a value
             return o[0]
         if isinstance(axis, int):

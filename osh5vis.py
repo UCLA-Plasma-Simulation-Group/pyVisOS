@@ -30,6 +30,8 @@ def plot(h5data, **kwpassthrough):
 
 
 def new_fig(h5data, **kwpassthrough):
-    plt.figure()
-    plot(h5data, **kwpassthrough)
+    fig = plt.figure()
+    p = plot(h5data, **kwpassthrough)
+    cb = fig.colorbar(p)
+    cb.set_label(h5data.data_attrs['UNITS'].tex())
     plt.show()

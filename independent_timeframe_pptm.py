@@ -149,5 +149,6 @@ def launch(func, kw4func, outdir=None, afunc=None):
             afunc(sfr)
         except:
             print(traceback.format_exc())
-            comm.Abort(errorcode=1)
+            if comm:
+                comm.Abort(errorcode=1)
 

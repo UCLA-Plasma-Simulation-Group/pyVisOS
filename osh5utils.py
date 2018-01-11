@@ -65,7 +65,7 @@ def stack(arr, axis=0, axesdata=None):
     else:  # we assume the new dimension is time
         taxis_attrs = {'UNITS': "1 / \omega_p", 'LONG_NAME': "time", 'NAME': "t"}
         ax.insert(axis, osaxis.DataAxis(arr[0].run_attrs['TIME'],
-                                        arr[-1].run_attrs['TIME'], np.size(arr), attrs=taxis_attrs))
+                                        arr[-1].run_attrs['TIME'], len(arr), attrs=taxis_attrs))
     r = np.stack(arr, axis=axis)
     return osh5def.H5Data(r, md.timestamp, md.name, md.data_attrs, md.run_attrs, axes=ax)
 
@@ -237,7 +237,7 @@ def ihfft(a, s, axes, norm):
     if axes is None:
         axes = -1
     return np.fft.ihfft(a, n=s, axis=axes, norm=norm)
-#----------------------------------- FFT Wrappers ----------------------------------------
+# ----------------------------------- FFT Wrappers ----------------------------------------
 
 
 if __name__ == '__main__':
