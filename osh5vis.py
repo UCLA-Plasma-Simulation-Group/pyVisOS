@@ -26,12 +26,12 @@ def osplot(h5data, **kwpassthrough):
         plt.xlabel(axis_format(h5data.axes[1].attrs['LONG_NAME'], h5data.axes[1].attrs['UNITS']))
         plt.ylabel(axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS']))
         plt.title(tex(h5data.data_attrs['LONG_NAME']))
-        cb = fig.colorbar(plot_object)
+        cb = plt.colorbar(plot_object)
         cb.set_label(h5data.data_attrs['UNITS'].tex())
     return plot_object
 
 
 def new_fig(h5data, **kwpassthrough):
-    fig = plt.figure()
-    plot(h5data, **kwpassthrough)
+    plt.figure()
+    osplot(h5data, **kwpassthrough)
     plt.show()

@@ -56,6 +56,8 @@ def save(sd, dataset_name):
 
 # define a few commonly used MPI calls for collecting final results
 def gather2list(sublist):
+    if not comm:
+        return sublist
     lst = comm.gather(sublist, root=0)
     if rank == 0:
         lst = list(chain.from_iterable(lst))
@@ -63,6 +65,8 @@ def gather2list(sublist):
 
 
 def allgather2list(sublist):
+    if not comm:
+        return sublist
     lst = comm.allgather(sublist)
     lst = np.array(list(chain.from_iterable(lst)))
     return lst

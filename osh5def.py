@@ -131,7 +131,8 @@ class H5Data(np.ndarray):
         v.axes = [self.axes[i] for i in axes]
         return v
 
-    def sum(self, axis=None, out=None, dtype=None, **unused_kw):
+    def sum(self, axis=None, out=None, dtype=None, **unused_kwargs):
+        """numpy.sum with keepdim=False"""
         dim = self.ndim
         o = super(H5Data, self).sum(axis=axis, out=out)
         if out is not None:
@@ -152,8 +153,9 @@ class H5Data(np.ndarray):
         For now we only support powers, numpy.multiply/numpy.divide etc are not implemented
         """
         # the document says that __array_wrap__ could be deprecated in the future but this is the most direct way...
-        __ufunc_mapping = {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': 0}
-        op = __ufunc_mapping.get(context[0].__name__)
+        __ufunc_mapping, op = {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': 0}, None
+        if context:
+            op = __ufunc_mapping.get(context[0].__name__)
         if op is not None:
             if not op:  # op is 'power', get the second operand
                 op = context[1][1]

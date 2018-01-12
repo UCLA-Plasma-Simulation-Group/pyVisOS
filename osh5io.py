@@ -51,7 +51,10 @@ def read_h5(filename, path=None):
     the_data_hdf_object = scan_hdf5_file_for_main_data_array(data_file)
 
     timestamp, name, run_attrs, data_attrs, axes = '', '', {}, {}, []
-    timestamp = fn_rule.findall(os.path.basename(filename))[0]
+    try:
+        timestamp = fn_rule.findall(os.path.basename(filename))[0]
+    except IndexError:
+        timestamp = '000000'
     name = the_data_hdf_object.name[1:]  # ignore the beginning '/'
 
     # now read in attributes of the ROOT of the hdf5..
