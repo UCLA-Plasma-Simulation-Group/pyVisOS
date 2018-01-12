@@ -55,21 +55,45 @@ def save(sd, dataset_name):
 
 
 # define a few commonly used MPI calls for collecting final results
-def gather2list(sublist):
-    if not comm:
-        return sublist
-    lst = comm.gather(sublist, root=0)
-    if rank == 0:
-        lst = list(chain.from_iterable(lst))
-    return lst
+# we separate the collecting method from filler function to final container. user can freely combine the two
+def mpi_gather(towhat):
+    def collector(sublist):
+        if not comm:
+            return sublist
+        lst = comm.gather(sublist, root=0)
+        if rank == 0:
+            return towhat(lst)
+    return collector
 
 
-def allgather2list(sublist):
-    if not comm:
-        return sublist
-    lst = comm.allgather(sublist)
-    lst = np.array(list(chain.from_iterable(lst)))
-    return lst
+def mpi_allgather(towhat):
+    def collector(sublist):
+        if not comm:
+            return sublist
+        lst = comm.allgather(sublist)
+        return towhat(lst)
+    return collector
+
+
+# a few examples
+@mpi_gather
+def gather2list_iter(lst):
+    return chain.from_iterable(lst)  # this will flatten the list, e. g. [[1,2],[3]] -> [1,2,3]
+
+
+@mpi_gather
+def gather2list(lst):
+    return list(chain.from_iterable(lst))
+
+
+@mpi_allgather
+def allgather2list(lst):
+    return [r for sl in lst for r in sl]  # another way to flatten the list, 2 for-loops that read backwards
+
+
+@mpi_gather
+def gather_to_zipped_tuples_group_by_quantity(lst):  # e.g. [ (,), (,), (,) ] -> /[, , ,], [, , ,]/
+    return zip(*chain.from_iterable(lst))
 
 
 def sum2var(sublist):
