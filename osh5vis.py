@@ -14,7 +14,7 @@ def axis_format(name=None, unit=None):
     return s
 
 
-def plot(h5data, **kwpassthrough):
+def osplot(h5data, **kwpassthrough):
     if h5data.ndim == 1:
         plot_object = plt.plot(h5data.axes[0].ax, h5data, **kwpassthrough)
         plt.xlabel(axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS']))
@@ -26,12 +26,12 @@ def plot(h5data, **kwpassthrough):
         plt.xlabel(axis_format(h5data.axes[1].attrs['LONG_NAME'], h5data.axes[1].attrs['UNITS']))
         plt.ylabel(axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS']))
         plt.title(tex(h5data.data_attrs['LONG_NAME']))
+        cb = fig.colorbar(plot_object)
+        cb.set_label(h5data.data_attrs['UNITS'].tex())
     return plot_object
 
 
 def new_fig(h5data, **kwpassthrough):
     fig = plt.figure()
-    p = plot(h5data, **kwpassthrough)
-    cb = fig.colorbar(p)
-    cb.set_label(h5data.data_attrs['UNITS'].tex())
+    plot(h5data, **kwpassthrough)
     plt.show()

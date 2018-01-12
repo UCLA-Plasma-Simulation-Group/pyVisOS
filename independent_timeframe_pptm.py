@@ -37,10 +37,14 @@ import traceback
 from itertools import chain
 from osh5io import read_h5, write_h5
 try:
-    from mpi4py import MPI
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    size = comm.Get_size()
+    # importing mpi4py cause hard crash on some login nodes, use the following flag to disable mpi4py
+    if not os.environ.get('IGNORE_MPI4PY_IMPORT'):
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        size = comm.Get_size()
+    else:
+        raise ImportError
 except ImportError:
     comm, rank, size = None, 0, 1
 total_time = 0
@@ -80,7 +84,6 @@ def launch(func, kw4func, outdir=None, afunc=None):
     def save_funchook(sd, dataset_name):
         odir = './PPR/' if not outdir else outdir
         odir += '/' + dataset_name + '/'
-        # TODO(1) there is a racing condition. rank>0 nodes may write to a non-existing dir. EDIT: solved
         # can't add barrier here due to uneven work load
         if rank == 0:
             if not os.path.exists(odir):  # prepare output dir
@@ -115,7 +118,7 @@ def launch(func, kw4func, outdir=None, afunc=None):
     i_end = (rank + 1) * my_share
     if i_end > total_time:
         i_end = total_time
-    # rank0 loop once to setup necessary dirs. not pretty but solve TODO(1)
+    # rank0 loop once to setup necessary dirs. not pretty but solve the racing condition
     if comm:
         try:
             if rank == 0:
@@ -134,7 +137,8 @@ def launch(func, kw4func, outdir=None, afunc=None):
             sdict[k] = read_h5(v)
     except:
         print(traceback.format_exc())
-        comm.Abort(errorcode=1)
+        if comm:
+            comm.Abort(errorcode=1)
 
     kwargs.update(sdict)  # here are all static parameters
 
