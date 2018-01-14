@@ -15,11 +15,16 @@ class DataAxis:
         self.attrs = {'UNITS': "", 'LONG_NAME': "", 'NAME': ""}
         # get the attributes for the AXIS
         if attrs:
-            for key, value in attrs.items():
-                self.attrs[key] = value
+            self.attrs.update(attrs)
 
     def __str__(self):
-        return str(self.attrs['NAME']) + ' axis'
+        return ''.join([str(self.attrs['NAME']), ': [', str(self.ax[0]), ', ', str(self.ax[-1]), '] ',
+                        self.attrs['UNITS']])
+
+    def __repr__(self):
+        return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
+                        ': size=', str(self.ax.size), ', (min, max)=(', repr(self.ax[0]), ', ',
+                        repr(self.ax[-1]), '), ', repr(self.attrs)])
 
     def __getitem__(self, index):
         return self.ax[index]
@@ -53,5 +58,6 @@ class DataAxis:
 if __name__ == '__main__':
     a = DataAxis(0,10,11, attrs={'UNITS':'c'})
     print(type(a.size()))
-    print(a.ax[1:3])
+    print(a)
+    print(repr(a))
     # a[1:3] = [9, 9]  # we don't allow this

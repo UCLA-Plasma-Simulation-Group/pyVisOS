@@ -109,7 +109,7 @@ def scan_hdf5_file_for_main_data_array(h5file):
         raise Exception('Main data array not found')
 
 
-def write_h5(data, filename=None, path=None, dataset_name=None, write_data=True):
+def write_h5(data, filename=None, *, path=None, dataset_name=None, overwrite=True):
     """
     Usage:
         write(diag_data, '/path/to/filename.h5')    # writes out Visxd compatible HDF5 data.
@@ -148,7 +148,13 @@ def write_h5(data, filename=None, path=None, dataset_name=None, write_data=True)
     else:
         raise Exception("You did not specify a filename!!!")
     if os.path.isfile(fname):
-        os.remove(fname)
+        if overwrite:
+            os.remove(fname)
+        else:
+            c = 1
+            while os.path.isfile(fname[:-3]+'.copy'+str(c)+'.h5'):
+                c += 1
+            fname = fname[:-3]+'.copy'+str(c)+'.h5'
     h5file = h5py.File(fname)
 
     # now put the data in a group called this...
@@ -194,8 +200,7 @@ def write_h5(data, filename=None, path=None, dataset_name=None, write_data=True)
         # fill in any values we have stored in the Axis object
         for key, value in data_object.axes[i].attrs.items():
             axis_data.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
-    if write_data:
-        h5file.close()
+    h5file.close()
 
 
 if __name__ == '__main__':

@@ -68,6 +68,10 @@ class OSUnits:
         if not disp:
             return 'a.u.'
         return disp
+
+    def __repr__(self):
+        return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
+                        ': ', repr(self.name), '=[', ', '.join([str(fr) for fr in self.power]), ']'])
     
 
 # tests
@@ -84,8 +88,9 @@ if __name__ == '__main__':
     print(OSUnits('n_0') == OSUnits('n_0'))
 
     a = OSUnits('n_0')
-    b = a
+    b = a**(1/8)
     print(b.tex())
+    print(repr(b))
 
     print(OSUnits("m_e e / \omega_p c eua^2"))  # this will not raise an error but
     print(OSUnits("m_e e / \omega_p c ua^2"))  # this will fail, these corner cases probably won't be fixed

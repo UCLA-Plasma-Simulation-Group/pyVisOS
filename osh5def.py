@@ -8,6 +8,7 @@
 import numpy as np
 import re
 import copy
+import osaxis
 
 # Important: the first occurrence of serial numbers between '-' and '.' must be the time stamp information
 fn_rule = re.compile(r'-(\d+).')
@@ -23,11 +24,11 @@ class H5Data(np.ndarray):
         if name:
             obj.name = name
         if data_attrs:
-            obj.data_attrs = data_attrs  # there is OSUnits obj inside
+            obj.data_attrs = copy.deepcopy(data_attrs)  # there is OSUnits obj inside
         if run_attrs:
             obj.run_attrs = run_attrs
         if axes:
-            obj.axes = axes   # the elements are numpy arrays
+            obj.axes = copy.deepcopy(axes)   # the elements are numpy arrays
         return obj
 
     def __array_finalize__(self, obj):
@@ -35,9 +36,14 @@ class H5Data(np.ndarray):
             return
         self.timestamp = getattr(obj, 'timestamp', '0' * 6)
         self.name = getattr(obj, 'name', 'data')
-        self.data_attrs = copy.deepcopy(getattr(obj, 'data_attrs', {}))
-        self.run_attrs = getattr(obj, 'run_attrs', {})
-        self.axes = copy.deepcopy(getattr(obj, 'axes', []))
+        if self.base is obj:
+            self.data_attrs = getattr(obj, 'data_attrs', {})
+            self.run_attrs = getattr(obj, 'run_attrs', {})
+            self.axes = getattr(obj, 'axes', [])
+        else:
+            self.data_attrs = copy.deepcopy(getattr(obj, 'data_attrs', {}))
+            self.run_attrs = copy.deepcopy(getattr(obj, 'run_attrs', {}))
+            self.axes = copy.deepcopy(getattr(obj, 'axes', []))
 
     # need the following two function for mpi4py high level function to work correctly
     def __setstate__(self, state):
@@ -56,10 +62,12 @@ class H5Data(np.ndarray):
         return self.__reduce__()
 
     def __str__(self):
-        return ''.join([self.name, '-', self.timestamp])
+        return ''.join([self.name, '-', self.timestamp, ' of shape ', str(self.shape)])
 
     def __repr__(self):
-        return ''.join([str(self.__class__), ' [', self.__str__(), ': ', str(self.shape), ']'])
+        return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
+                        ', shape', str(self.shape), ',\naxis:\n  ', '\n  '.join([repr(ax) for ax in self.axes]),
+                        '\ndata_attrs: ', repr(self.data_attrs), '\nrun_attrs:', repr(self.run_attrs)])
 
     def __mul__(self, other):
         v = super(H5Data, self).__mul__(other)
@@ -87,7 +95,10 @@ class H5Data(np.ndarray):
         """I am inclined to support only basic indexing/slicing. Otherwise it is too difficult to define the axes.
              However we would return an ndarray if advace indexing is invoked as it might help things floating...
         """
-        v = super(H5Data, self).__getitem__(index)
+        try:
+            v = super(H5Data, self).__getitem__(index)
+        except IndexError:
+            return self.view(np.ndarray)  # maybe it is a scalar
         # if v.base is not self:  # not a view  # # we would never return at this point, right?
         #     return v
         # # v.axes = copy.deepcopy(self.axes)
@@ -100,24 +111,23 @@ class H5Data(np.ndarray):
             idxl = index
         except TypeError:
             idxl = [index]
-        try:
-            pn, i, stop = 0, 0, len(idxl)
-            while i < stop:
-                if isinstance(idxl[i], int):  # i is a trivial dimension now
-                    del v.axes[i - pn]
-                    pn += 1
-                elif isinstance(idxl[i], slice):  # also slice the axis
-                    v.axes[i] = copy.deepcopy(v.axes[i])  # numpy array deepcopy
-                    v.axes[i].ax = v.axes[i].ax[idxl[i]]
-                elif idxl[i] is Ellipsis:  # let's jump out and count backward
-                    i += self.ndim - stop
-                elif idxl[i] is None:
-                    pass
-                else:  # type not supported
-                    return v.view(np.ndarray)
-                i += 1
-        except AttributeError:  #TODO(1) .axes was lost for some reason, need a better look
-            pass
+        #try:
+        pn, i, stop = 0, 0, len(idxl)
+        while i < stop:
+            if isinstance(idxl[i], int):  # i is a trivial dimension now
+                del v.axes[i - pn]
+                pn += 1
+            elif isinstance(idxl[i], slice):  # also slice the axis
+                v.axes[i].ax = v.axes[i].ax[idxl[i]]
+            elif idxl[i] is Ellipsis:  # let's fast forward to the next explicitly referred axis
+                i += self.ndim - stop
+            elif idxl[i] is None:  # in numpy None means newAxis
+                v.axes.insert(i, osaxis.DataAxis(0., 0., 1))
+            else:  # type not supported
+                return v.view(np.ndarray)
+            i += 1
+        # except AttributeError:  #TODO(1) .axes was lost for some reason, need a better look
+        #     pass
         return v
 
     def meta2dict(self):
@@ -136,15 +146,23 @@ class H5Data(np.ndarray):
         dim = self.ndim
         o = super(H5Data, self).sum(axis=axis, out=out)
         if out is not None:
-            out = o.asdtype(dtpye) if dtype else o.asdtye(out.dtype)
+            out = o.astype(dtype) if dtype else o.astye(out.dtype)
         if axis is None:  # default is to sum over all axis, return a value
-            return o[0]
+            return o.view(np.ndarray)
         if isinstance(axis, int):
             del o.axes[axis]
         else:
             # remember axis index can be negative
             o.axes = [v for i, v in enumerate(o.axes) if i not in axis and i-dim not in axis]
         return o
+
+    def squeeze(self, axis=None):
+        v = super(H5Data, self).squeeze(axis=axis)
+        if axis is None:
+            axis = [i for i, d in enumerate(self.shape) if d == 1]
+        for i in axis:
+            del v.axes[i]
+        return v
 
     def __array_wrap__(self, out, context=None):
         """Here we handle the unit attribute
