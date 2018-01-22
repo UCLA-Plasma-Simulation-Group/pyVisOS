@@ -46,9 +46,9 @@ class H5Data(np.ndarray):
             self.axes = copy.deepcopy(getattr(obj, 'axes', []))
 
     # need the following two function for mpi4py high level function to work correctly
-    def __setstate__(self, state):
+    def __setstate__(self, state, *args):
         self.__dict__ = state[-1]
-        super(H5Data, self).__setstate__(state[:-1])
+        super(H5Data, self).__setstate__(*args, state[:-1])
 
     # It looks like mpi4py/ndarray use reduce for pickling. One would think setstate/getstate pair should also work but
     # it turns out the __getstate__() function is never called!
@@ -68,28 +68,6 @@ class H5Data(np.ndarray):
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
                         ', shape', str(self.shape), ',\naxis:\n  ', '\n  '.join([repr(ax) for ax in self.axes]),
                         '\ndata_attrs: ', repr(self.data_attrs), '\nrun_attrs:', repr(self.run_attrs)])
-
-    def __mul__(self, other):
-        v = super(H5Data, self).__mul__(other)
-        if isinstance(other, H5Data):
-            v.data_attrs['UNITS'] = self.data_attrs['UNITS'] * other.data_attrs['UNITS']
-        return v
-
-    def __truediv__(self, other):
-        v = super(H5Data, self).__truediv__(other)
-        if isinstance(other, H5Data):
-            v.data_attrs['UNITS'] = self.data_attrs['UNITS'] / other.data_attrs['UNITS']
-        return v
-
-    def __imul__(self, other):
-        if isinstance(other, H5Data):
-            self.data_attrs['UNITS'] = self.data_attrs['UNITS'] * other.data_attrs['UNITS']
-        return self
-
-    def __itruediv__(self, other):
-        if isinstance(other, H5Data):
-            self.data_attrs['UNITS'] = self.data_attrs['UNITS'] / other.data_attrs['UNITS']
-        return self
 
     def __getitem__(self, index):
         """I am inclined to support only basic indexing/slicing. Otherwise it is too difficult to define the axes.
@@ -171,14 +149,23 @@ class H5Data(np.ndarray):
         For now we only support powers, numpy.multiply/numpy.divide etc are not implemented
         """
         # the document says that __array_wrap__ could be deprecated in the future but this is the most direct way...
-        __ufunc_mapping, op = {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': 0}, None
+        op, __ufunc_mapping = None, {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': '',
+                                     'true_divide': 1, 'floor_divide': 1, 'reciprocal': '-1', 'multiply': 2}
         if context:
             op = __ufunc_mapping.get(context[0].__name__)
         if op is not None:
-            if not op:  # op is 'power', get the second operand
-                op = context[1][1]
             try:
-                out.data_attrs['UNITS'] **= op
-            except KeyError:  # no units defined, return silently
+                if isinstance(op, str):
+                    if not op:  # op is 'power', get the second operand
+                        op = context[1][1]
+                    out.data_attrs['UNITS'] **= op
+                elif op == 1:
+                    if not isinstance(context[1][0], H5Data):  # nominator has no unit
+                        out.data_attrs['UNITS'] **= '-1'
+                    else:
+                        out.data_attrs['UNITS'] = context[1][0].data_attrs['UNITS'] / context[1][1].data_attrs['UNITS']
+                else:
+                    out.data_attrs['UNITS'] = context[1][0].data_attrs['UNITS'] * context[1][1].data_attrs['UNITS']
+            except (AttributeError, KeyError):  # .data_attrs['UNITS'] failed
                 pass
         return np.ndarray.__array_wrap__(self, out, context)
