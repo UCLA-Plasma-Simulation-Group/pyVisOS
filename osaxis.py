@@ -8,9 +8,9 @@ import numpy as np
 class DataAxis:
     def __init__(self, axis_min, axis_max, axis_npoints, attrs=None):
         # attrs should be a dictionary
-        if axis_min > axis_max:
+        if axis_min >= axis_max:
             raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
-        self.ax = np.linspace(axis_min, axis_max, axis_npoints)
+        self.ax = np.arange(axis_min, axis_max, (axis_max - axis_min) / axis_npoints)
         # now make attributes for axis that are required..
         self.attrs = {'UNITS': "", 'LONG_NAME': "", 'NAME': ""}
         # get the attributes for the AXIS
@@ -24,7 +24,7 @@ class DataAxis:
     def __repr__(self):
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
                         ': size=', str(self.ax.size), ', (min, max)=(', repr(self.ax[0]), ', ',
-                        repr(self.ax[-1]), '), ', repr(self.attrs)])
+                        repr(self.max()), '), ', repr(self.attrs)])
 
     def __getitem__(self, index):
         return self.ax[index]
@@ -43,7 +43,10 @@ class DataAxis:
         return self.ax[0]
 
     def max(self):
-        return self.ax[-1]
+        try:
+            return self.ax[-1] + self.ax[1] - self.ax[0]
+        except IndexError:
+            return self.ax[-1]
 
     def size(self):
         return self.ax.size
