@@ -71,7 +71,7 @@ class H5Data(np.ndarray):
 
     def __getitem__(self, index):
         """I am inclined to support only basic indexing/slicing. Otherwise it is too difficult to define the axes.
-             However we would return an ndarray if advace indexing is invoked as it might help things floating...
+             However we would return an ndarray if advance indexing is invoked as it might help things floating...
         """
         try:
             v = super(H5Data, self).__getitem__(index)
@@ -146,7 +146,6 @@ class H5Data(np.ndarray):
         """Here we handle the unit attribute
         We do not check the legitimacy of ufunc operating on certain unit. We hard code a few unit changing
         rules according to what ufunc is called
-        For now we only support powers, numpy.multiply/numpy.divide etc are not implemented
         """
         # the document says that __array_wrap__ could be deprecated in the future but this is the most direct way...
         op, __ufunc_mapping = None, {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': '',
@@ -159,12 +158,12 @@ class H5Data(np.ndarray):
                     if not op:  # op is 'power', get the second operand
                         op = context[1][1]
                     out.data_attrs['UNITS'] **= op
-                elif op == 1:
+                elif op == 1:  # op is divide
                     if not isinstance(context[1][0], H5Data):  # nominator has no unit
                         out.data_attrs['UNITS'] **= '-1'
                     else:
                         out.data_attrs['UNITS'] = context[1][0].data_attrs['UNITS'] / context[1][1].data_attrs['UNITS']
-                else:
+                else:  # op is multiply
                     out.data_attrs['UNITS'] = context[1][0].data_attrs['UNITS'] * context[1][1].data_attrs['UNITS']
             except (AttributeError, KeyError):  # .data_attrs['UNITS'] failed
                 pass

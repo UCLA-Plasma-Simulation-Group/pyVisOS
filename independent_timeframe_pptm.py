@@ -92,7 +92,7 @@ def allgather2list(lst):
 
 
 @mpi_gather
-def gather_to_zipped_tuple_of_lists_group_by_quantity(lst):  # e.g. [ (,), (,), (,) ] -> /[, , ,], [, , ,]/
+def gather_to_zipped_tuple_of_lists_group_by_quantity(lst):  # e.g. [ [(,), (,)], [(,)] ] -> /[, , ,], [, , ,]/
     return zip(*chain.from_iterable(lst))
 
 
