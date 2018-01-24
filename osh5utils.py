@@ -380,12 +380,46 @@ def subrange(data, bound=None, axesdata=None, new=False):
         return data[index]
 
 
+# modified from SciPy cookbook
+def rebin(a, fac):
+    """
+    rebin ndarray or H5Data into a smaller ndarray or H5Data of the same rank whose dimensions
+    are factors of the original dimensions. If fac in some dimension is not whole divided by
+    a.shape, the residual is trimmed from the last part of array.
+    example usages:
+     a=rand(6,4); b=rebin(a, fac=[3,2])
+     a=rand(10); b=rebin(a, fac=[3])
+    """
+    index = [slice(0, u - u % fac[i]) if u % fac[i] else slice(0, u) for i, u in enumerate(a.shape)]
+    a = a[index]
+    # update axes first
+    if isinstance(a, osh5def.H5Data):
+        for i, x in enumerate(a.axes):
+            x.ax = x.ax[::fac[i]]
+
+    @metasl
+    def __rebin(h, fac):
+        # have to convert to ndarray otherwise sum will fail
+        h = h.view(np.ndarray)
+        shape = h.shape
+        lenShape = len(shape)
+        newshape = np.floor_divide(shape, np.asarray(fac))
+        evList = ['h.reshape('] + \
+                 ['newshape[%d],fac[%d],'%(i,i) for i in range(lenShape)] + \
+                 [')'] + ['.sum(%d)'%(i+1) for i in range(lenShape)] + \
+                 ['/fac[%d]'%i for i in range(lenShape)]
+        return eval(''.join(evList))
+
+    return __rebin(a, fac)
+
+
 if __name__ == '__main__':
     import osh5io
     fn = 'n0-123456.h5'
     d = osh5io.read_h5(fn)
-    d = subrange(d, ((0, 35.5), (0, 166)))
-    # d = np.ones((3,2))
+    # d = subrange(d, ((0, 35.5), (0, 166)))
+    # d = np.ones((7, 20))
+    # d = rebin(d, fac=[3, 3])
     print(repr(d))
     c = hfft(d)
     print('c = ', repr(c))
