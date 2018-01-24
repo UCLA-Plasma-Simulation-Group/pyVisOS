@@ -339,10 +339,52 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     return tuple(res)
 
 
+def subrange(data, bound=None, axesdata=None, new=False):
+    """
+    obtain a subarray of the data array
+
+    :param data: array_like
+    :param bound: tuple or tuples that mark the min and max of axes range after this function, if the number of
+            tuples (n) in bound is smaller than the dimension of data, only the [0:n] axes will be modified
+    :param axesdata: change the range according to axesdata. if data is H5Data this will be ignored
+    :param new: if true return new array instead of view
+    :return: same type as input
+    """
+    if isinstance(data, osh5def.H5Data):
+        axesdata = data.axes
+    elif axesdata is None:
+        raise ValueError('Need to specify axesdata if input array is not H5Data')
+    if bound is None:
+        return data
+    if not isinstance(bound[0], tuple):
+        bound = (bound,)
+    axes = tuple(range(len(bound)))
+
+    # get default: full range
+    inds, inde = [0, ] * len(axesdata), list(data.shape)
+    # trim to desired range
+    for i, ax in enumerate(axes):
+        if bound[i][0] >= bound[i][1]:
+            raise ValueError('Illegal axes range:' + str(bound[i][0]) + ' - ' + str(bound[i][1]))
+        inds[ax] = int(round((bound[i][0] - axesdata[ax].min()) / axesdata[ax].increment()))
+        inde[ax] = int(round((bound[i][1] - axesdata[ax].min()) / axesdata[ax].increment()))
+        # clip to legal range
+        if inds[ax] < 0:
+            inds[ax] = 0
+        if inde[ax] > data.shape[ax]:
+            inde[ax] = data.shape[ax]
+    index = tuple(slice(s, e) for s, e in zip(inds, inde))
+    if new:
+        return copy.deepcopy(data[index])
+    else:
+        return data[index]
+
+
 if __name__ == '__main__':
     import osh5io
     fn = 'n0-123456.h5'
     d = osh5io.read_h5(fn)
+    d = subrange(d, ((0, 35.5), (0, 166)))
     # d = np.ones((3,2))
     print(repr(d))
     c = hfft(d)
