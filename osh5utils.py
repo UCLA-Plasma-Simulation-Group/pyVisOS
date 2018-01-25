@@ -1,7 +1,6 @@
 """Provide basic operations for H5Data"""
 
 import osh5def
-import osaxis
 import numpy as np
 import copy
 import re
@@ -68,7 +67,7 @@ def stack(arr, axis=0, axesdata=None):
         ax.insert(axis, axesdata)
     else:  # we assume the new dimension is time
         taxis_attrs = {'UNITS': "1 / \omega_p", 'LONG_NAME': "time", 'NAME': "t"}
-        ax.insert(axis, osaxis.DataAxis(arr[0].run_attrs['TIME'],
+        ax.insert(axis, osh5def.DataAxis(arr[0].run_attrs['TIME'],
                                         arr[-1].run_attrs['TIME'], len(arr), attrs=taxis_attrs))
     r = np.stack(arr, axis=axis)
     return osh5def.H5Data(r, md.timestamp, md.name, md.data_attrs, md.run_attrs, axes=ax)

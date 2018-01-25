@@ -8,7 +8,128 @@
 import numpy as np
 import re
 import copy
-import osaxis
+from fractions import Fraction as frac
+
+
+class DataAxis:
+    def __init__(self, axis_min, axis_max, axis_npoints, attrs=None):
+        # attrs should be a dictionary
+        if axis_min >= axis_max:
+            raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
+        self.ax = np.arange(axis_min, axis_max, (axis_max - axis_min) / axis_npoints)
+        # now make attributes for axis that are required..
+        self.attrs = {'UNITS': "", 'LONG_NAME': "", 'NAME': ""}
+        # get the attributes for the AXIS
+        if attrs:
+            self.attrs.update(attrs)
+
+    def __str__(self):
+        return ''.join([str(self.attrs['NAME']), ': [', str(self.ax[0]), ', ', str(self.ax[-1]), '] ',
+                        self.attrs['UNITS']])
+
+    def __repr__(self):
+        return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
+                        ': size=', str(self.ax.size), ', (min, max)=(', repr(self.ax[0]), ', ',
+                        repr(self.max()), '), ', repr(self.attrs)])
+
+    def __getitem__(self, index):
+        return self.ax[index]
+
+    def __eq__(self, other):
+        return (self.ax == other.ax).all()
+
+    # def __getstate__(self):
+    #     return self.ax[0], self.ax[-1], self.size(), self.attrs
+    #
+    # def __setstate__(self, state):
+    #     self.ax = np.linspace(state[0], state[1], state[2])
+    #     self.attrs = state[3]
+
+    def min(self):
+        return self.ax[0]
+
+    def max(self):
+        try:
+            return self.ax[-1] + self.ax[1] - self.ax[0]
+        except IndexError:
+            return self.ax[-1]
+
+    def size(self):
+        return self.ax.size
+
+    def increment(self):
+        try:
+            return self.ax[1] - self.ax[0]
+        except IndexError:
+            return 0
+
+
+class OSUnits:
+    name = ['m_e', 'c', '\omega_p', 'e', 'n_0']
+    xtrnum = re.compile(r"(?<=\^)\d+|(?<=\^{).*?(?=})")
+
+    def __init__(self, s):
+        """
+        :param s: string notation of the units. there should be whitespace around quantities and '/' dividing quantities
+        """
+        self.power = np.array([frac(0), frac(0), frac(0), frac(0), frac(0)])
+        # if isinstance(s, bytes):
+        #     s = s.decode("utf-8")
+        if 'a.u.' != s:
+            sl = s.split()
+            nominator = True
+            while sl:
+                ss = sl.pop(0)
+                if ss == '/':
+                    nominator = False
+                    continue
+                for p, n in enumerate(OSUnits.name):
+                    if n == ss[0:len(n)]:
+                        res = OSUnits.xtrnum.findall(ss)  # extract numbers
+                        if res:
+                            self.power[p] = frac(res[0]) if nominator else -frac(res[0])
+                        else:
+                            self.power[p] = frac(1, 1) if nominator else frac(-1, 1)
+                        break
+                else:
+                    raise KeyError('Unknown unit: ' + re.findall(r'\w+', ss)[0])
+
+    def tex(self):
+        return '$' + self.__str__() + '$'
+
+    def limit_denominator(self, max_denominator=64):
+        """call fractions.Fraction.limit_denominator method for each base unit"""
+        self.power = np.array([u.limit_denominator(max_denominator=max_denominator) for u in self.power])
+
+    def __mul__(self, other):
+        res = OSUnits('')
+        res.power = self.power + other.power
+        return res
+
+    def __truediv__(self, other):
+        res = OSUnits('')
+        res.power = self.power - other.power
+        return res
+
+    def __pow__(self, other, modulo=1):
+        res = OSUnits('')
+        res.power = self.power * frac(other)
+        return res
+
+    def __eq__(self, other):
+        return (self.power == other.power).all()
+
+    def __str__(self):
+        disp = ''.join(['' if p == 0 else n + " " if p == 1 else ''.join([n, '^{', str(p), '} '])
+                        for n, p in zip(OSUnits.name, self.power)])
+        if not disp:
+            return 'a.u.'
+        return disp
+
+    def __repr__(self):
+        return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
+                        ': ', repr(self.name), '=[', ', '.join([str(fr) for fr in self.power]), ']'])
+
 
 # Important: the first occurrence of serial numbers between '-' and '.' must be the time stamp information
 fn_rule = re.compile(r'-(\d+).')
@@ -89,7 +210,6 @@ class H5Data(np.ndarray):
             idxl = index
         except TypeError:
             idxl = [index]
-        #try:
         pn, i, stop = 0, 0, len(idxl)
         while i < stop:
             if isinstance(idxl[i], int):  # i is a trivial dimension now
@@ -100,12 +220,10 @@ class H5Data(np.ndarray):
             elif idxl[i] is Ellipsis:  # let's fast forward to the next explicitly referred axis
                 i += self.ndim - stop
             elif idxl[i] is None:  # in numpy None means newAxis
-                v.axes.insert(i, osaxis.DataAxis(0., 0., 1))
+                v.axes.insert(i, DataAxis(0., 0., 1))
             else:  # type not supported
                 return v.view(np.ndarray)
             i += 1
-        # except AttributeError:  #TODO(1) .axes was lost for some reason, need a better look
-        #     pass
         return v
 
     def meta2dict(self):
@@ -170,7 +288,7 @@ class H5Data(np.ndarray):
         return np.ndarray.__array_wrap__(self, out, context)
 
     @staticmethod
-    def __get_axes_bound(axes, bound):
+    def __get_axes_bound(axes, bound):  # bound should have depth of 2
 
         def get_index(ax, bd):
             tmp = [int(round((co - ax.min()) / ax.increment())) if co else None for co in bd]
