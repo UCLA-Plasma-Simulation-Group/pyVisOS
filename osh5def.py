@@ -168,3 +168,124 @@ class H5Data(np.ndarray):
             except (AttributeError, KeyError):  # .data_attrs['UNITS'] failed
                 pass
         return np.ndarray.__array_wrap__(self, out, context)
+
+    @staticmethod
+    def __get_axes_bound(axes, bound):
+
+        def get_index(ax, bd):
+            tmp = [int(round((co - ax.min()) / ax.increment())) if co else None for co in bd]
+            # clip to legal range
+            if not tmp[0] or tmp[0] < 0:
+                tmp[0] = 0
+            if not tmp[1] or tmp[1] > ax.size():
+                tmp[1] = ax.size()
+            return tmp
+
+        # i keeps track of the axes we are working on
+        ind, i = [], 0
+        for bnd in bound:
+            if bnd is ...:
+                # fill in all missing axes
+                for j in range(len(axes) - len(bound) + 1):
+                    ind.append(slice(None))
+                    i += 1
+                continue
+            elif not bnd:  # None or empty list/tuple or 0
+                ind.append(slice(None))
+            elif len(bnd) == 3:  # slice with step, None can appear at any places
+                sgn = int(np.sign(bnd[2]))
+                if sgn == 1:
+                    se = get_index(axes[i], bnd[0:2])
+                else:
+                    se = get_index(axes[i], reversed(bnd[0:2]))
+                    se = list(reversed(se))
+                step = int(round(bnd[2] / axes[i].increment()))
+                se.append(step if abs(step) > 0 else sgn)
+                ind.append(slice(*se))
+            else:  # len(bnd) == 1 or 2
+                ind.append(slice(*get_index(axes[i], bnd)))
+            i += 1
+        return ind
+
+    # get the depth of list/tuple recursively, empty list/tuple will raise ValueError
+    @staticmethod
+    def __check_bound_depth(bnd):
+        return max(H5Data.__check_bound_depth(b) for b in bnd) + 1 if isinstance(bnd, (tuple, list, np.ndarray)) else 0
+
+    @staticmethod
+    def __get_symmetric_bound(axes, index):
+        return [slice(*[None if idx.stop is None else ax.size() - idx.stop,
+                        None if idx.start is None else ax.size() - idx.start,
+                        idx.step]) for ax, idx in zip(axes, index)]
+
+    def subrange(self, bound=None, new=False):
+        """
+        use .axes[:] data to index the array
+        :param bound: see bound as using slice indexing with floating points. [1:3, :, 2:9:2, ..., :8] for a 6-D array
+            with dx=0.1 in all directions would look like bound=[(0.1, 0.3), None, (0.2, 0.9, 0.2), ..., (None, 0.8)]
+        :param new: if true return a new array instead of a view
+        """
+        if not bound:  # None or empty list/tuple or 0
+            return self
+        if H5Data.__check_bound_depth(bound) == 1:
+            bound = (bound,)
+        index = self.__get_axes_bound(self.axes, bound)
+        if new:
+            return copy.deepcopy(self[index])
+        else:
+            return self[index]
+
+    def set_value(self, bound=None, val=(0,), symmetric=True, inverse_select=False, method=None):
+        """
+        set values inside bound using val
+        :param bound: lists of triples of elements marking the lower and higher bound of the bound, e.g.
+                [(l1,u1), (l2,u2), (l3,u3)] in 3d data marks data[l1<z<u1, l2<y<u2, l3<x<u3]. See bound parameter
+                in function subrange for more detail. There can be multiple lists like this marking multiple regions.
+                Note that if ln or un is out of bound they will be clipped to the array boundary.
+        :param val: what value to set, default is (0,). val can also be list of arrays with the same size
+                as each respective bound.
+        :param inverse_select: set array elements OUTSIDE specified bound to val. This will used more memory
+                as temp array will be created. If true val can only be a number.
+        :param symmetric: if true then the mask will also apply to the center-symmetric regions where center is define
+                as nx/2 for each dimension
+        :param method: how to set the value. if None the val will be assigned. User can provide function that accept
+                two parameters, and the result is self[bound[i]] = user_func(self[bound[i]], val[i]). Note that
+                method always acts on the specified bound regardless of inverse_select being true or not.
+        """
+        if not bound:
+            return
+        # convert to ndarray for maximum compatibility
+        v = self.view(np.ndarray)
+        bdp = H5Data.__check_bound_depth(bound)
+        if bdp == 1:  # probably 1D data
+            bound = ((bound,),)
+        elif bdp == 2:  # only one region is set
+            bound = (bound,)
+        elif bdp > 3:  # 3 level max: list of regions; list of bounds in a region; start, end, step in one bound
+            raise ValueError('Too many levels in the bound parameter')
+        try:
+            iter(val)
+        except TypeError:
+            val = (val,)
+        rec, vallen = [], len(val)
+        for i, bnd in enumerate(bound):
+            index = [self.__get_axes_bound(self.axes, bnd)]
+            if symmetric:
+                index.append(H5Data.__get_symmetric_bound(self.axes, index[0]))
+            for idx in index:
+                if inverse_select:  # record original data for later use
+                    if method:
+                        rec.append((idx, copy.deepcopy(method(v[idx], val[i % vallen]))))
+                    else:
+                        rec.append((idx, copy.deepcopy(v[idx])))
+                else:
+                    if method:
+                        v[idx] = method(v[idx], val[i % vallen])
+                    else:
+                        v[idx] = val[i % vallen]
+        if inverse_select:
+            # set everything to val and restore the original data in regions
+            self.fill(val[0])
+            for r in rec:
+                v[r[0]] = r[1]
+
