@@ -18,7 +18,7 @@ import numpy as np
 from osh5def import H5Data, fn_rule, DataAxis, OSUnits
 
 
-def read_h5(filename, path=None):
+def read_h5(filename, path=None, axis_name=None):
     """
     HDF reader for Osiris/Visxd compatible HDF files... This will slurp in the data
     and the attributes that describe the data (e.g. title, units, scale).
@@ -63,7 +63,10 @@ def read_h5(filename, path=None):
     # attach attributes assigned to the data array to
     #    the H5Data.data_attrs object, remove trivial dimension before assignment
     for key, value in the_data_hdf_object.attrs.items():
-        data_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
+        try:
+            data_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
+        except IndexError:
+            data_attrs[key] = value.decode('utf-8') if isinstance(value, bytes) else value
 
     # convert unit string to osunit object
     try:
@@ -71,19 +74,25 @@ def read_h5(filename, path=None):
     except KeyError:
         data_attrs['UNITS'] = OSUnits('')
 
+    if not axis_name:
+        axis_name = "AXIS/AXIS"
     axis_number = 1
     while True:
         try:
             # try to open up another AXIS object in the HDF's attribute directory
             #  (they are named /AXIS/AXIS1, /AXIS/AXIS2, /AXIS/AXIS3 ...)
-            axis_to_look_for = "/AXIS/AXIS" + str(axis_number)
+            axis_to_look_for = axis_name + str(axis_number)
             axis = data_file[axis_to_look_for]
             # convert byte string attributes to string
             attrs = {}
             for k, v in axis.attrs.items():
-                attrs[k] = v[0].decode('utf-8') if isinstance(v[0], bytes) else v
+                try:
+                    attrs[k] = v[0].decode('utf-8') if isinstance(v[0], bytes) else v
+                except IndexError:
+                    attrs[k] = v.decode('utf-8') if isinstance(v, bytes) else v
+
             axis_min = axis[0]
-            axis_max = axis[1]
+            axis_max = axis[-1]
             axis_numberpoints = the_data_hdf_object.shape[-axis_number]
 
             data_axis = DataAxis(axis_min, axis_max, axis_numberpoints, attrs=attrs)
@@ -107,7 +116,7 @@ def scan_hdf5_file_for_main_data_array(h5file):
         raise Exception('Main data array not found')
 
 
-def write_h5(data, filename=None, *, path=None, dataset_name=None, overwrite=True):
+def write_h5(data, filename=None, *, path=None, dataset_name=None, overwrite=True, axis_name=None):
     """
     Usage:
         write(diag_data, '/path/to/filename.h5')    # writes out Visxd compatible HDF5 data.
@@ -184,12 +193,14 @@ def write_h5(data, filename=None, *, path=None, dataset_name=None, overwrite=Tru
 
     number_axis_objects_we_need = len(data_object.axes)
     # now go through and set/create our axes HDF entries.
+    if not axis_name:
+        axis_name = "AXIS/AXIS"
     for i in range(0, number_axis_objects_we_need):
-        axis_name = "AXIS/AXIS%d" % (number_axis_objects_we_need - i)
-        if axis_name not in h5file:
-            axis_data = h5file.create_dataset(axis_name, (2,), 'float64')
+        _axis_name = axis_name + str(number_axis_objects_we_need - i)
+        if _axis_name not in h5file:
+            axis_data = h5file.create_dataset(_axis_name, (2,), 'float64')
         else:
-            axis_data = h5file[axis_name]
+            axis_data = h5file[_axis_name]
 
         # set the extent to the data we have...
         axis_data[0] = data_object.axes[i].min()
