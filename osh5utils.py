@@ -287,7 +287,7 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
 
     def wrap_up(data):
         if idim:
-            return fftn(data, axes=idim)
+            return ifftn(data, axes=idim)
         else:
             return data
 
