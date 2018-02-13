@@ -5,7 +5,7 @@ import numpy as np
 import copy
 import re
 from functools import wraps, partial
-
+import warnings
 
 def metasl(func, mapping=(0, 0)):
     """save meta data before calling the function and restore them to output afterwards
@@ -113,11 +113,19 @@ def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
 @__try_update_axes
 def _update_ifft_axes(axes, idx,  shape, sfunc, ffunc):
     key, en = ['NAME', 'LONG_NAME', 'UNITS'], [2, 2, 3]
+    warned = False
     for i in idx:
         axes[i].ax = ffunc(shape[i], d=axes[i].increment(), min=axes[i].attrs.get('shift', 0))
         for k, e in zip(key, en):
             try:
-                axes[i].attrs[k] = axes[i].attrs[k][e:-1]
+                # the last character should be ')' if our fft routine was used
+                if ')' == axes[i].attrs[k][-1]:
+                    axes[i].attrs[k] = axes[i].attrs[k][e:-1]
+                else:
+                    if not warned:
+                        warnings.warn('Maybe doing IFFT on non-FFT data. '
+                                      'Make sure to use our FFT routine for forward FFT', RuntimeWarning)
+                        warned = True
             except (KeyError, AttributeError):
                 pass
 
