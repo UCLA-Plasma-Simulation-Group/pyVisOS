@@ -28,6 +28,8 @@ class DataAxis:
                         self.attrs['UNITS']])
 
     def __repr__(self):
+        if not self.ax:
+            return 'None'
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
                         ': size=', str(self.ax.size), ', (min, max)=(', repr(self.ax[0]), ', ',
                         repr(self.max()), '), ', repr(self.attrs)])
@@ -186,8 +188,10 @@ class H5Data(np.ndarray):
         return ''.join([self.name, '-', self.timestamp, ' of shape ', str(self.shape)])
 
     def __repr__(self):
+        aa = self.axes
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
-                        ', shape', str(self.shape), ',\naxis:\n  ', '\n  '.join([repr(ax) for ax in self.axes]),
+                        ', shape', str(self.shape), ',\naxis:\n  ',
+                        '\n  '.join([repr(ax) for ax in self.axes]) if self.axes else 'None',
                         '\ndata_attrs: ', repr(self.data_attrs), '\nrun_attrs:', repr(self.run_attrs)])
 
     def __getitem__(self, index):
@@ -220,7 +224,7 @@ class H5Data(np.ndarray):
             elif idxl[i] is Ellipsis:  # let's fast forward to the next explicitly referred axis
                 i += self.ndim - stop
             elif idxl[i] is None:  # in numpy None means newAxis
-                v.axes.insert(i, DataAxis(0., 0., 1))
+                v.axes.insert(i, DataAxis(0., 1., 1))
             else:  # type not supported
                 return v.view(np.ndarray)
             i += 1
@@ -237,26 +241,43 @@ class H5Data(np.ndarray):
         v.axes = [self.axes[i] for i in axes]
         return v
 
-    def sum(self, axis=None, out=None, dtype=None, **unused_kwargs):
-        """numpy.sum with keepdim=False"""
-        dim = self.ndim
-        o = super(H5Data, self).sum(axis=axis, out=out)
-        if out is not None:
-            out = o.astype(dtype) if dtype else o.astye(out.dtype)
-        if axis is None:  # default is to sum over all axis, return a value
-            return o.view(np.ndarray)
+    def __del_axis(self, axis):
+        # axis cannot be None
         if isinstance(axis, int):
-            del o.axes[axis]
+            del self.axes[axis]
         else:
             # remember axis index can be negative
-            o.axes = [v for i, v in enumerate(o.axes) if i not in axis and i-dim not in axis]
+            self.axes = [v for i, v in enumerate(self.axes) if i not in axis and i - self.dim not in axis]
+
+    # handel extra metadata when calling reduce methods like sum, min/max etc
+    @staticmethod
+    def __handle_reduce_ex(o, axis=None, keepdims=False):
+        if not keepdims:
+            if axis is None:  # default is to reduce over all axis, return a value
+                axis = range(0, o.ndim)
+            o.__del_axis(axis)
+        return o
+
+    def sum(self, axis=None, out=None, dtype=None, keepdims=False):
+        """numpy.sum with keepdim=False"""
+        o = super(H5Data, self).sum(axis=axis, out=out, dtype=dtype, keepdims=keepdims)
+        H5Data.__handle_reduce_ex(o, keepdims=keepdims)
+
+    def min(self, axis=None, out=None, keepdims=False):
+        o = super(H5Data, self).min(axis=axis, out=out, keepdims=keepdims)
+        H5Data.__handle_reduce_ex(o, keepdims=keepdims)
+        return o
+
+    def max(self, axis=None, out=None, keepdims=False):
+        o = super(H5Data, self).max(axis=axis, out=out, keepdims=keepdims)
+        H5Data.__handle_reduce_ex(o, keepdims=keepdims)
         return o
 
     def squeeze(self, axis=None):
         v = super(H5Data, self).squeeze(axis=axis)
         if axis is None:
             axis = [i for i, d in enumerate(self.shape) if d == 1]
-        for i in axis:
+        for i in reversed(axis):
             del v.axes[i]
         return v
 
