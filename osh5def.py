@@ -28,7 +28,7 @@ class DataAxis:
                         self.attrs['UNITS']])
 
     def __repr__(self):
-        if not self.ax:
+        if len(self.ax) == 0:
             return 'None'
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
                         ': size=', str(self.ax.size), ', (min, max)=(', repr(self.ax[0]), ', ',
@@ -134,7 +134,7 @@ class OSUnits:
 
 
 # Important: the first occurrence of serial numbers between '-' and '.' must be the time stamp information
-fn_rule = re.compile(r'-(\d+).')
+fn_rule = re.compile(r'-(\d+)\.')
 
 
 class H5Data(np.ndarray):
@@ -188,10 +188,9 @@ class H5Data(np.ndarray):
         return ''.join([self.name, '-', self.timestamp, ' of shape ', str(self.shape)])
 
     def __repr__(self):
-        aa = self.axes
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
                         ', shape', str(self.shape), ',\naxis:\n  ',
-                        '\n  '.join([repr(ax) for ax in self.axes]) if self.axes else 'None',
+                        '\n  '.join([repr(ax) for ax in self.axes]) if len(self.axes) else 'None',
                         '\ndata_attrs: ', repr(self.data_attrs), '\nrun_attrs:', repr(self.run_attrs)])
 
     def __getitem__(self, index):
@@ -247,30 +246,65 @@ class H5Data(np.ndarray):
             del self.axes[axis]
         else:
             # remember axis index can be negative
-            self.axes = [v for i, v in enumerate(self.axes) if i not in axis and i - self.dim not in axis]
+            self.axes = [v for i, v in enumerate(self.axes) if i not in axis and i - self.ndim not in axis]
 
     # handel extra metadata when calling reduce methods like sum, min/max etc
-    @staticmethod
-    def __handle_reduce_ex(o, axis=None, keepdims=False):
+    def __handle_reduce_ex(self, out=None, axis=None, keepdims=False):
         if not keepdims:
             if axis is None:  # default is to reduce over all axis, return a value
-                axis = range(0, o.ndim)
-            o.__del_axis(axis)
+                axis = range(0, self.ndim)
+            self.__del_axis(axis)
+            if out:
+                out.__del_axis(axis)
+
+    def mean(self, axis=None, dtype=None, out=None, keepdims=False):
+        o = super(H5Data, self).mean(axis=axis, out=out, dtype=dtype, keepdims=keepdims)
+        o.__handle_reduce_ex(out=out, axis=axis, keepdims=keepdims)
         return o
 
     def sum(self, axis=None, out=None, dtype=None, keepdims=False):
-        """numpy.sum with keepdim=False"""
         o = super(H5Data, self).sum(axis=axis, out=out, dtype=dtype, keepdims=keepdims)
-        H5Data.__handle_reduce_ex(o, keepdims=keepdims)
+        o.__handle_reduce_ex(o, out=out, axis=axis, keepdims=keepdims)
+        return o
 
     def min(self, axis=None, out=None, keepdims=False):
         o = super(H5Data, self).min(axis=axis, out=out, keepdims=keepdims)
-        H5Data.__handle_reduce_ex(o, keepdims=keepdims)
+        o.__handle_reduce_ex(out=out, axis=axis, keepdims=keepdims)
         return o
 
     def max(self, axis=None, out=None, keepdims=False):
         o = super(H5Data, self).max(axis=axis, out=out, keepdims=keepdims)
-        H5Data.__handle_reduce_ex(o, keepdims=keepdims)
+        o.__handle_reduce_ex(out=out, axis=axis, keepdims=keepdims)
+        return o
+
+    def std(self, axis=None, dtype=None, out=None, ddof=0, keepdims=False):
+        o = super(H5Data, self).std(axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
+        o.__handle_reduce_ex(out=out, axis=axis, keepdims=keepdims)
+        return o
+
+    def argmax(self, axis=None, out=None):
+        o = super(H5Data, self).argmax(axis=axis, out=out)
+        o.__handle_reduce_ex(out=out, axis=axis, keepdims=False)
+        return
+
+    def argmin(self, axis=None, out=None):
+        o = super(H5Data, self).argmin(axis=axis, out=out)
+        o.__handle_reduce_ex(out=out, axis=axis, keepdims=False)
+        return o
+
+    def ptp(self, axis=None, out=None):
+        o = super(H5Data, self).ptp(axis=axis, out=out)
+        o.__handle_reduce_ex(out=out, axis=axis, keepdims=False)
+        return o
+
+    def swapaxes(self, axis1, axis2):
+        o = super(H5Data, self).swapaxes(axis1, axis2)
+        o.axes[axis1], o.axes[axis2] = o.axes[axis2], o.axes[axis1]
+        return o
+
+    def var(self, axis=None, dtype=None, out=None, ddof=0, keepdims=False):
+        o = super(H5Data, self).var(axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
+        o.__handle_reduce_ex(out=out, axis=axis, keepdims=False)
         return o
 
     def squeeze(self, axis=None):
@@ -287,8 +321,9 @@ class H5Data(np.ndarray):
         rules according to what ufunc is called
         """
         # the document says that __array_wrap__ could be deprecated in the future but this is the most direct way...
+        div, mul = 1, 2
         op, __ufunc_mapping = None, {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': '',
-                                     'true_divide': 1, 'floor_divide': 1, 'reciprocal': '-1', 'multiply': 2}
+                                     'true_divide': div, 'floor_divide': div, 'reciprocal': '-1', 'multiply': mul}
         if context:
             op = __ufunc_mapping.get(context[0].__name__)
         if op is not None:
@@ -297,7 +332,7 @@ class H5Data(np.ndarray):
                     if not op:  # op is 'power', get the second operand
                         op = context[1][1]
                     out.data_attrs['UNITS'] **= op
-                elif op == 1:  # op is divide
+                elif op == div:  # op is divide
                     if not isinstance(context[1][0], H5Data):  # nominator has no unit
                         out.data_attrs['UNITS'] **= '-1'
                     else:
