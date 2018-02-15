@@ -156,7 +156,7 @@ def launch(func, kw4func, outdir=None, afunc=None):
                 sfr.append(func(**kwargs))  # store results for final aggregation
             comm.Barrier()
         except:
-            print(traceback.format_exc())
+            print(traceback.format_exc(), flush=True)
             comm.Abort(errorcode=1)
 
     # load static files
@@ -164,9 +164,9 @@ def launch(func, kw4func, outdir=None, afunc=None):
         for k, v in sdict.items():
             sdict[k] = read_h5(v)
     except:
-        print(traceback.format_exc())
+        print(traceback.format_exc(), flush=True)
         if comm:
-            comm.Abort(errorcode=1)
+            comm.Abort(errorcode=2)
 
     kwargs.update(sdict)  # here are all static parameters
 
@@ -180,7 +180,7 @@ def launch(func, kw4func, outdir=None, afunc=None):
         try:
             afunc(sfr)
         except:
-            print(traceback.format_exc())
+            print(traceback.format_exc(), flush=True)
             if comm:
-                comm.Abort(errorcode=1)
+                comm.Abort(errorcode=3)
 
