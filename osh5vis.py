@@ -16,7 +16,7 @@ def axis_format(name=None, unit=None):
 
 def osplot(h5data, **kwpassthrough):
     if h5data.ndim == 1:
-        plot_object = plt.plot(h5data.axes[0].ax, h5data, **kwpassthrough)
+        plot_object = plt.plot(h5data.axes[0].ax, h5data.view(np.ndarray), **kwpassthrough)
         plt.xlabel(axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS']))
         plt.ylabel(axis_format(h5data.data_attrs['LONG_NAME'], str(h5data.data_attrs['UNITS'])))
     elif h5data.ndim == 2:

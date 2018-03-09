@@ -264,7 +264,7 @@ class H5Data(np.ndarray):
 
     def sum(self, axis=None, out=None, dtype=None, keepdims=False):
         o = super(H5Data, self).sum(axis=axis, out=out, dtype=dtype, keepdims=keepdims)
-        o.__handle_reduce_ex(o, out=out, axis=axis, keepdims=keepdims)
+        o.__handle_reduce_ex(out=out, axis=axis, keepdims=keepdims)
         return o
 
     def min(self, axis=None, out=None, keepdims=False):
