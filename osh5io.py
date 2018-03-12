@@ -46,33 +46,13 @@ def read_h5(filename, path=None, axis_name=None):
     fname = filename if not path else path + '/' + filename
     data_file = h5py.File(fname, 'r')
 
-    the_data_hdf_object = scan_hdf5_file_for_main_data_array(data_file)
+    n_data = scan_hdf5_file_for_main_data_array(data_file)
 
-    timestamp, name, run_attrs, data_attrs, axes = '', '', {}, {}, []
+    timestamp, name, run_attrs, data_attrs, axes, data_bundle= '', '', {}, {}, [], []
     try:
         timestamp = fn_rule.findall(os.path.basename(filename))[0]
     except IndexError:
         timestamp = '000000'
-    name = the_data_hdf_object.name[1:]  # ignore the beginning '/'
-
-    # now read in attributes of the ROOT of the hdf5..
-    #   there's lots of good info there. strip out the array if value is a string
-    for key, value in data_file.attrs.items():
-        run_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
-
-    # attach attributes assigned to the data array to
-    #    the H5Data.data_attrs object, remove trivial dimension before assignment
-    for key, value in the_data_hdf_object.attrs.items():
-        try:
-            data_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
-        except IndexError:
-            data_attrs[key] = value.decode('utf-8') if isinstance(value, bytes) else value
-
-    # convert unit string to osunit object
-    try:
-        data_attrs['UNITS'] = OSUnits(data_attrs['UNITS'])
-    except KeyError:
-        data_attrs['UNITS'] = OSUnits('')
 
     if not axis_name:
         axis_name = "AXIS/AXIS"
@@ -93,7 +73,7 @@ def read_h5(filename, path=None, axis_name=None):
 
             axis_min = axis[0]
             axis_max = axis[-1]
-            axis_numberpoints = the_data_hdf_object.shape[-axis_number]
+            axis_numberpoints = n_data[0].shape[-axis_number]
 
             data_axis = DataAxis(axis_min, axis_max, axis_numberpoints, attrs=attrs)
             axes.insert(0, data_axis)
@@ -101,19 +81,47 @@ def read_h5(filename, path=None, axis_name=None):
             break
         axis_number += 1
 
-    # data_bundle.data = the_data_hdf_object[()]
-    data_bundle = H5Data(the_data_hdf_object[()], timestamp=timestamp, name=name,
-                         data_attrs=data_attrs, run_attrs=run_attrs, axes=axes)
+    # we need a loop here primarily (I think) for n_ene_bin phasespace data
+    for the_data_hdf_object in n_data:
+        name = the_data_hdf_object.name[1:]  # ignore the beginning '/'
+
+        # now read in attributes of the ROOT of the hdf5..
+        #   there's lots of good info there. strip out the array if value is a string
+        for key, value in data_file.attrs.items():
+            run_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
+
+        # attach attributes assigned to the data array to
+        #    the H5Data.data_attrs object, remove trivial dimension before assignment
+        for key, value in the_data_hdf_object.attrs.items():
+            try:
+                data_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
+            except IndexError:
+                data_attrs[key] = value.decode('utf-8') if isinstance(value, bytes) else value
+
+        # convert unit string to osunit object
+        try:
+            data_attrs['UNITS'] = OSUnits(data_attrs['UNITS'])
+        except KeyError:
+            data_attrs['UNITS'] = OSUnits('')
+
+        # data_bundle.data = the_data_hdf_object[()]
+        data_bundle.append(H5Data(the_data_hdf_object[()], timestamp=timestamp, name=name,
+                                  data_attrs=data_attrs, run_attrs=run_attrs, axes=axes))
     data_file.close()
-    return data_bundle
+    if len(data_bundle) == 1:
+        return data_bundle[0]
+    else:
+        return data_bundle
 
 
 def scan_hdf5_file_for_main_data_array(h5file):
+    res = []
     for k, v in h5file.items():
         if isinstance(v, h5py.Dataset):
-            return h5file[k]
-    else:
+            res.append(h5file[k])
+    if not res:
         raise Exception('Main data array not found')
+    return res
 
 
 def write_h5(data, filename=None, *, path=None, dataset_name=None, overwrite=True, axis_name=None):
