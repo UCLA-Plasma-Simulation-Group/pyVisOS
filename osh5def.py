@@ -171,7 +171,7 @@ class H5Data(np.ndarray):
     # need the following two function for mpi4py high level function to work correctly
     def __setstate__(self, state, *args):
         self.__dict__ = state[-1]
-        super(H5Data, self).__setstate__(*args, state[:-1])
+        super(H5Data, self).__setstate__(state[:-1], *args)
 
     # It looks like mpi4py/ndarray use reduce for pickling. One would think setstate/getstate pair should also work but
     # it turns out the __getstate__() function is never called!
@@ -358,7 +358,7 @@ class H5Data(np.ndarray):
         # i keeps track of the axes we are working on
         ind, i = [], 0
         for bnd in bound:
-            if bnd is ...:
+            if bnd is Ellipsis:
                 # fill in all missing axes
                 for j in range(len(axes) - len(bound) + 1):
                     ind.append(slice(None))

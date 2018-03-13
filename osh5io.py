@@ -124,7 +124,7 @@ def scan_hdf5_file_for_main_data_array(h5file):
     return res
 
 
-def write_h5(data, filename=None, *, path=None, dataset_name=None, overwrite=True, axis_name=None):
+def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, axis_name=None):
     """
     Usage:
         write(diag_data, '/path/to/filename.h5')    # writes out Visxd compatible HDF5 data.
