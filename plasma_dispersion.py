@@ -27,7 +27,7 @@ def plasma_wave_w(wp, vth, k, maxwellian_convention_factor=2.0, inital_root_gues
     if inital_root_guess is None:
         #    # use the Bohm-Gross dispersion formulas to get an initial guess for w
         inital_root_guess = np.sqrt(wp * wp + 3 * k * k * vth * vth)
-        epsilon_root = scipy.optimize.newton(plasma_epsilon1, inital_root_guess)
+    epsilon_root = scipy.optimize.newton(plasma_epsilon1, inital_root_guess)
 
     return epsilon_root * k * vth * np.sqrt(maxwellian_convention_factor)
 
