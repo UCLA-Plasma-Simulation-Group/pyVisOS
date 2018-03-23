@@ -14,7 +14,7 @@ from fractions import Fraction as frac
 class DataAxis:
     def __init__(self, axis_min, axis_max, axis_npoints, attrs=None):
         # attrs should be a dictionary
-        if axis_min >= axis_max:
+        if axis_min > axis_max:
             raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
         self.ax = np.arange(axis_min, axis_max, (axis_max - axis_min) / axis_npoints)
         # now make attributes for axis that are required..
@@ -57,6 +57,9 @@ class DataAxis:
             return self.ax[-1]
 
     def size(self):
+        return self.ax.size
+    
+    def __len__(self):
         return self.ax.size
 
     def increment(self):
@@ -197,6 +200,7 @@ class H5Data(np.ndarray):
         """I am inclined to support only basic indexing/slicing. Otherwise it is too difficult to define the axes.
              However we would return an ndarray if advance indexing is invoked as it might help things floating...
         """
+        ndim = self.ndim
         try:
             v = super(H5Data, self).__getitem__(index)
         except IndexError:
@@ -213,20 +217,20 @@ class H5Data(np.ndarray):
             idxl = index
         except TypeError:
             idxl = [index]
-        pn, i, stop = 0, 0, len(idxl)
-        while i < stop:
+        stop = len(idxl)
+        i = ndim - 1 if Ellipsis in idxl else len(idxl) - 1
+        while i >= 0:
             if isinstance(idxl[i], int):  # i is a trivial dimension now
-                del v.axes[i - pn]
-                pn += 1
+                del v.axes[i]
             elif isinstance(idxl[i], slice):  # also slice the axis
                 v.axes[i].ax = v.axes[i].ax[idxl[i]]
             elif idxl[i] is Ellipsis:  # let's fast forward to the next explicitly referred axis
-                i += self.ndim - stop
+                i -= ndim - stop
             elif idxl[i] is None:  # in numpy None means newAxis
                 v.axes.insert(i, DataAxis(0., 1., 1))
             else:  # type not supported
                 return v.view(np.ndarray)
-            i += 1
+            i -= 1
         return v
 
     def meta2dict(self):

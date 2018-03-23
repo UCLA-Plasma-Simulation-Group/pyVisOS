@@ -6,6 +6,8 @@ import copy
 import re
 from functools import wraps, partial
 import warnings
+import osh5io
+import glob
 
 def metasl(func, mapping=(0, 0)):
     """save meta data before calling the function and restore them to output afterwards
@@ -71,6 +73,26 @@ def stack(arr, axis=0, axesdata=None):
                                         arr[-1].run_attrs['TIME'], len(arr), attrs=taxis_attrs))
     r = np.stack(arr, axis=axis)
     return osh5def.H5Data(r, md.timestamp, md.name, md.data_attrs, md.run_attrs, axes=ax)
+
+
+def combine(dirname, axesdata=None, save=None):
+    """
+    stack a directory of grid data and optionally save the result to a file
+    :param dirname: name of the directory
+    :param axesdata: user difined axes, see stack for more detail
+    :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
+    :return: combined grid data, one dimension more than the original
+    """
+    flist = sorted(glob.glob(dirname + '/*.h5'))
+    tmp = []
+    for f in flist:
+        tmp.append(osh5io.read_h5(f))
+    res = stack(tmp, axesdata=axesdata)
+    if save:
+        if not isinstance(save, str):
+            save = dirname + res.name + '.h5'
+        osh5io.write_h5(res, save)
+    return res
 
 
 # #----------------------------------- FFT Wrappers ----------------------------------------
@@ -380,7 +402,6 @@ def rebin(a, fac):
 
 
 if __name__ == '__main__':
-    import osh5io
     fn = 'n0-123456.h5'
     d = osh5io.read_h5(fn)
     # d = subrange(d, ((0, 35.5), (0, 166)))
