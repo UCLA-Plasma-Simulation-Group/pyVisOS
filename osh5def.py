@@ -171,6 +171,10 @@ class H5Data(np.ndarray):
             self.run_attrs = copy.deepcopy(getattr(obj, 'run_attrs', {}))
             self.axes = copy.deepcopy(getattr(obj, 'axes', []))
 
+    @property
+    def T(self):
+        return self.transpose()
+
     # need the following two function for mpi4py high level function to work correctly
     def __setstate__(self, state, *args):
         self.__dict__ = state[-1]
@@ -239,7 +243,7 @@ class H5Data(np.ndarray):
 
     def transpose(self, *axes):
         v = super(H5Data, self).transpose(*axes)
-        if not axes:  # axes is none, numpy default is to reverse the order
+        if axes is () or axes[0] is None:  # axes is none, numpy default is to reverse the order
             axes = range(len(v.axes)-1, -1, -1)
         v.axes = [self.axes[i] for i in axes]
         return v
