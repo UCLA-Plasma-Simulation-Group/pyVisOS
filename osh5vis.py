@@ -1,6 +1,11 @@
-import osh5def
+# import osh5def
 import matplotlib.pyplot as plt
 import numpy as np
+try:
+    import osh5gui
+    gui_fname = osh5gui.gui_fname
+except ImportError:
+    print('Fail to import GUI routines. Check your PyQT installation')
 
 
 def tex(s):
@@ -37,3 +42,4 @@ def new_fig(h5data, figsize=None, dpi=None, facecolor=None, edgecolor=None, line
                tight_layout=tight_layout, constrained_layout=constrained_layout)
     osplot(h5data, **kwpassthrough)
     plt.show()
+
