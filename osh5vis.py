@@ -31,7 +31,9 @@ def osplot(h5data, **kwpassthrough):
     return plot_object
 
 
-def new_fig(h5data, **kwpassthrough):
-    plt.figure()
+def new_fig(h5data, figsize=None, dpi=None, facecolor=None, edgecolor=None, linewidth=0.0, frameon=None,
+               tight_layout=None, constrained_layout=None, **kwpassthrough):
+    plt.figure(figsize=figsize, dpi=dpi, facecolor=facecolor, edgecolor=edgecolor, linewidth=linewidth, frameon=frameon,
+               tight_layout=tight_layout, constrained_layout=constrained_layout)
     osplot(h5data, **kwpassthrough)
     plt.show()
