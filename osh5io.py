@@ -71,6 +71,11 @@ def read_h5(filename, path=None, axis_name=None):
                 except IndexError:
                     attrs[k] = v.decode('utf-8') if isinstance(v, bytes) else v
 
+            # convert unit string to osunit object
+            try:
+                attrs['UNITS'] = OSUnits(attrs['UNITS'])
+            except KeyError:
+                attrs['UNITS'] = OSUnits('')
             axis_min = axis[0]
             axis_max = axis[-1]
             axis_numberpoints = n_data[0].shape[-axis_number]
@@ -216,11 +221,18 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
 
         # fill in any values we have stored in the Axis object
         for key, value in data_object.axes[i].attrs.items():
-            axis_data.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
+            if key == 'UNITS':
+                try:
+                    axis_data.attrs['UNITS'] = np.array([str(data_object.axes[i].attrs['UNITS']).encode('utf-8')])
+                except:
+                    axis_data.attrs['UNITS'] = np.array([b'a.u.'])
+            else:
+                axis_data.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
     h5file.close()
 
 
 if __name__ == '__main__':
+    import osh5utils as ut
     a = np.arange(6.0).reshape(2, 3)
     ax, ay = DataAxis(0, 3, 3, attrs={'UNITS': '1 / \omega_p'}), DataAxis(10, 11, 2, attrs={'UNITS': 'c / \omega_p'})
     da = {'UNITS': OSUnits('n_0')}
@@ -229,6 +241,11 @@ if __name__ == '__main__':
     rw = read_h5('./test-123456.h5')
     h5d = read_h5('./test-123456.h5')  # read from file to get all default attrs
     print("rw is h5d: ", rw is h5d, '\n')
+    print(repr(rw))
+    rw = ut.fft2(rw)
+    rw = ut.ifft2(rw)
+    print(repr(rw))
+    print(OSUnits('\omega_p^{-1}'))
 
     # let's read/write a few times and see if there are mutations to the data
     # you should also diff the output h5 files

@@ -18,7 +18,7 @@ class DataAxis:
             raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
         self.ax = np.arange(axis_min, axis_max, (axis_max - axis_min) / axis_npoints)
         # now make attributes for axis that are required..
-        self.attrs = {'UNITS': "", 'LONG_NAME': "", 'NAME': ""}
+        self.attrs = {'UNITS': OSUnits('a.u.'), 'LONG_NAME': "", 'NAME': ""}
         # get the attributes for the AXIS
         if attrs:
             self.attrs.update(attrs)
@@ -68,6 +68,31 @@ class DataAxis:
         except IndexError:
             return 0
 
+    def to_phys_unit(self, wavelength=None, density=None):
+        """
+        convert this axis to physical units. note that this function won't change the actual axis.
+        the copy of the axis data is returned
+        :param wavelength: laser wavelength in micron
+        :param density: critical plasma density in cm^-3
+        :return: a converted axes, unit
+        """
+        if not wavelength:
+            if not density:
+                wavelength = 0.351
+                density = 1.12e21
+            else:
+                wavelength = 1.98e10 * np.sqrt(1./density)
+        elif not density:
+            density = 3.93e20 * wavelength**2
+        if self.attrs['UNITS'].is_frequency():
+            return self.ax * 2.998e2 / wavelength, 'THz'
+        if self.attrs['UNITS'].is_time():
+            return self.ax * wavelength * 5.31e-4, 'ps'
+        if self.attrs['UNITS'].is_length():
+            return self.ax * wavelength / (2 * np.pi), '\mu m'
+        if self.attrs['UNITS'].is_density():
+            return self.ax * density, 'cm^{-3}'
+
 
 class OSUnits:
     name = ['m_e', 'c', '\omega_p', 'e', 'n_0']
@@ -96,6 +121,8 @@ class OSUnits:
                         else:
                             self.power[p] = frac(1, 1) if nominator else frac(-1, 1)
                         break
+                    elif ss in ['1', '2', '\pi', '2\pi']:
+                        break
                 else:
                     raise KeyError('Unknown unit: ' + re.findall(r'\w+', ss)[0])
 
@@ -105,6 +132,21 @@ class OSUnits:
     def limit_denominator(self, max_denominator=64):
         """call fractions.Fraction.limit_denominator method for each base unit"""
         self.power = np.array([u.limit_denominator(max_denominator=max_denominator) for u in self.power])
+
+    def is_time(self):
+        return (self.power == np.array([frac(0), frac(0), frac(-1), frac(0), frac(0)])).all()
+
+    def is_frequency(self):
+        return (self.power == np.array([frac(0), frac(0), frac(1), frac(0), frac(0)])).all()
+
+    def is_velocity(self):
+        return (self.power == np.array([frac(0), frac(1), frac(0), frac(0), frac(0)])).all()
+
+    def is_length(self):
+        return (self.power == np.array([frac(0), frac(1), frac(-1), frac(0), frac(0)])).all()
+
+    def is_density(self):
+        return (self.power == np.array([frac(0), frac(0), frac(0), frac(0), frac(1)])).all()
 
     def __mul__(self, other):
         res = OSUnits('')

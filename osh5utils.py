@@ -9,6 +9,7 @@ import warnings
 import osh5io
 import glob
 
+
 def metasl(func, mapping=(0, 0)):
     """save meta data before calling the function and restore them to output afterwards
     The input to output mapping is specified in the keyword "mapping" where (i, o) is the
@@ -68,9 +69,9 @@ def stack(arr, axis=0, axesdata=None):
             raise ValueError('Number of points in axesdata is different from the new dimension to be created')
         ax.insert(axis, axesdata)
     else:  # we assume the new dimension is time
-        taxis_attrs = {'UNITS': "1 / \omega_p", 'LONG_NAME': "time", 'NAME': "t"}
+        taxis_attrs = {'UNITS': "\omega_p^{-1}", 'LONG_NAME': "time", 'NAME': "t"}
         ax.insert(axis, osh5def.DataAxis(arr[0].run_attrs['TIME'],
-                                        arr[-1].run_attrs['TIME'], len(arr), attrs=taxis_attrs))
+                                         arr[-1].run_attrs['TIME'], len(arr), attrs=taxis_attrs))
     r = np.stack(arr, axis=axis)
     return osh5def.H5Data(r, md.timestamp, md.name, md.data_attrs, md.run_attrs, axes=ax)
 
@@ -121,25 +122,30 @@ def __try_update_axes(updfunc):
 
 @__try_update_axes
 def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
-    key, en = ['NAME', 'LONG_NAME', 'UNITS'], ['K(', 'K(', '1/(']
     for i in idx:
         axes[i].attrs.setdefault('shift', axes[i].min())  # save lower bound. value of axes
         axes[i].ax = sfunc(ffunc(shape[i], d=axes[i].increment())) * 2 * np.pi
-        for k, e in zip(key, en):
-            try:
-                axes[i].attrs[k] = ''.join([e, axes[i].attrs[k], ')'])
-            except (KeyError, AttributeError):
-                pass
+        if axes[i].attrs['NAME'] == 't' or axes[i].attrs['LONG_NAME'] == 'time' or axes[i].attrs['UNITS'].is_time():
+            axes[i].attrs['NAME'] = 'w'
+            axes[i].attrs['LONG_NAME'] = '\omega'
+        else:
+            axes[i].attrs['NAME'] = ''.join(['K(', axes[i].attrs['NAME'], ')'])
+            axes[i].attrs['LONG_NAME'] = ''.join(['K(', axes[i].attrs['LONG_NAME'], ')'])
+        axes[i].attrs['UNITS'] **= -1
 
 
 @__try_update_axes
 def _update_ifft_axes(axes, idx,  shape, sfunc, ffunc):
-    key, en = ['NAME', 'LONG_NAME', 'UNITS'], [2, 2, 3]
+    key, en = ['NAME', 'LONG_NAME'], [2, 2]
     warned = False
     for i in idx:
         axes[i].ax = ffunc(shape[i], d=axes[i].increment(), min=axes[i].attrs.get('shift', 0))
-        for k, e in zip(key, en):
-            try:
+        if (axes[i].attrs['NAME'] == 'w' or axes[i].attrs['LONG_NAME'] == '\omega' or
+                axes[i].attrs['UNITS'].is_frequency()):
+            axes[i].attrs['NAME'] = 't'
+            axes[i].attrs['LONG_NAME'] = 'time'
+        else:
+            for k, e in zip(key, en):
                 # the last character should be ')' if our fft routine was used
                 if ')' == axes[i].attrs[k][-1]:
                     axes[i].attrs[k] = axes[i].attrs[k][e:-1]
@@ -148,8 +154,7 @@ def _update_ifft_axes(axes, idx,  shape, sfunc, ffunc):
                         warnings.warn('Maybe doing IFFT on non-FFT data. '
                                       'Make sure to use our FFT routine for forward FFT', RuntimeWarning)
                         warned = True
-            except (KeyError, AttributeError):
-                pass
+        axes[i].attrs['UNITS'] **= -1
 
 
 def _get_ihfft_axis(n, d=1.0, min=0.0):
