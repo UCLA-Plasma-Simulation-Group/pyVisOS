@@ -65,7 +65,7 @@ def stack(arr, axis=0, axesdata=None):
     md = arr[-1]
     ax = copy.deepcopy(md.axes)
     if axesdata:
-        if axesdata.size() != len(arr):
+        if axesdata.size != len(arr):
             raise ValueError('Number of points in axesdata is different from the new dimension to be created')
         ax.insert(axis, axesdata)
     else:  # we assume the new dimension is time
@@ -123,8 +123,8 @@ def __try_update_axes(updfunc):
 @__try_update_axes
 def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
     for i in idx:
-        axes[i].attrs.setdefault('shift', axes[i].min())  # save lower bound. value of axes
-        axes[i].ax = sfunc(ffunc(shape[i], d=axes[i].increment())) * 2 * np.pi
+        axes[i].attrs.setdefault('shift', axes[i].min)  # save lower bound. value of axes
+        axes[i].ax = sfunc(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
         if axes[i].attrs['NAME'] == 't' or axes[i].attrs['LONG_NAME'] == 'time' or axes[i].attrs['UNITS'].is_time():
             axes[i].attrs['NAME'] = 'w'
             axes[i].attrs['LONG_NAME'] = '\omega'
@@ -139,7 +139,7 @@ def _update_ifft_axes(axes, idx,  shape, sfunc, ffunc):
     key, en = ['NAME', 'LONG_NAME'], [2, 2]
     warned = False
     for i in idx:
-        axes[i].ax = ffunc(shape[i], d=axes[i].increment(), min=axes[i].attrs.get('shift', 0))
+        axes[i].ax = ffunc(shape[i], d=axes[i].increment, min=axes[i].attrs.get('shift', 0))
         if (axes[i].attrs['NAME'] == 'w' or axes[i].attrs['LONG_NAME'] == '\omega' or
                 axes[i].attrs['UNITS'].is_frequency()):
             axes[i].attrs['NAME'] = 't'

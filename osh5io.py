@@ -216,8 +216,8 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
             axis_data = h5file[_axis_name]
 
         # set the extent to the data we have...
-        axis_data[0] = data_object.axes[i].min()
-        axis_data[1] = data_object.axes[i].max()
+        axis_data[0] = data_object.axes[i].min
+        axis_data[1] = data_object.axes[i].max
 
         # fill in any values we have stored in the Axis object
         for key, value in data_object.axes[i].attrs.items():

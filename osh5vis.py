@@ -25,8 +25,8 @@ def osplot(h5data, **kwpassthrough):
         plt.xlabel(axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS']))
         plt.ylabel(axis_format(h5data.data_attrs['LONG_NAME'], str(h5data.data_attrs['UNITS'])))
     elif h5data.ndim == 2:
-        extent_stuff = [h5data.axes[1].min(), h5data.axes[1].max(),
-                        h5data.axes[0].min(), h5data.axes[0].max()]
+        extent_stuff = [h5data.axes[1].min, h5data.axes[1].max,
+                        h5data.axes[0].min, h5data.axes[0].max]
         plot_object = plt.imshow(h5data, extent=extent_stuff, aspect='auto', origin='lower', **kwpassthrough)
         plt.xlabel(axis_format(h5data.axes[1].attrs['LONG_NAME'], h5data.axes[1].attrs['UNITS']))
         plt.ylabel(axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS']))

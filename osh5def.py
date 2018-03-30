@@ -32,7 +32,7 @@ class DataAxis:
             return 'None'
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
                         ': size=', str(self.ax.size), ', (min, max)=(', repr(self.ax[0]), ', ',
-                        repr(self.max()), '), ', repr(self.attrs)])
+                        repr(self.max), '), ', repr(self.attrs)])
 
     def __getitem__(self, index):
         return self.ax[index]
@@ -41,27 +41,31 @@ class DataAxis:
         return (self.ax == other.ax).all()
 
     # def __getstate__(self):
-    #     return self.ax[0], self.ax[-1], self.size(), self.attrs
+    #     return self.ax[0], self.ax[-1], self.size, self.attrs
     #
     # def __setstate__(self, state):
     #     self.ax = np.linspace(state[0], state[1], state[2])
     #     self.attrs = state[3]
 
+    @property
     def min(self):
         return self.ax[0]
 
+    @property
     def max(self):
         try:
             return self.ax[-1] + self.ax[1] - self.ax[0]
         except IndexError:
             return self.ax[-1]
 
+    @property
     def size(self):
         return self.ax.size
-    
+
     def __len__(self):
         return self.ax.size
 
+    @property
     def increment(self):
         try:
             return self.ax[1] - self.ax[0]
@@ -391,12 +395,12 @@ class H5Data(np.ndarray):
     def __get_axes_bound(axes, bound):  # bound should have depth of 2
 
         def get_index(ax, bd):
-            tmp = [int(round((co - ax.min()) / ax.increment())) if co else None for co in bd]
+            tmp = [int(round((co - ax.min) / ax.increment)) if co else None for co in bd]
             # clip to legal range
             if not tmp[0] or tmp[0] < 0:
                 tmp[0] = 0
-            if not tmp[1] or tmp[1] > ax.size():
-                tmp[1] = ax.size()
+            if not tmp[1] or tmp[1] > ax.size:
+                tmp[1] = ax.size
             return tmp
 
         # i keeps track of the axes we are working on
@@ -417,7 +421,7 @@ class H5Data(np.ndarray):
                 else:
                     se = get_index(axes[i], reversed(bnd[0:2]))
                     se = list(reversed(se))
-                step = int(round(bnd[2] / axes[i].increment()))
+                step = int(round(bnd[2] / axes[i].increment))
                 se.append(step if abs(step) > 0 else sgn)
                 ind.append(slice(*se))
             else:  # len(bnd) == 1 or 2
@@ -432,8 +436,8 @@ class H5Data(np.ndarray):
 
     @staticmethod
     def __get_symmetric_bound(axes, index):
-        return [slice(*[None if idx.stop is None else ax.size() - idx.stop,
-                        None if idx.start is None else ax.size() - idx.start,
+        return [slice(*[None if idx.stop is None else ax.size - idx.stop,
+                        None if idx.start is None else ax.size - idx.start,
                         idx.step]) for ax, idx in zip(axes, index)]
 
     def subrange(self, bound=None, new=False):
