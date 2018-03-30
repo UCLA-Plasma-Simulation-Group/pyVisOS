@@ -25,7 +25,7 @@ class DataAxis:
 
     def __str__(self):
         return ''.join([str(self.attrs['NAME']), ': [', str(self.ax[0]), ', ', str(self.ax[-1]), '] ',
-                        self.attrs['UNITS']])
+                        str(self.attrs['UNITS'])])
 
     def __repr__(self):
         if len(self.ax) == 0:
@@ -251,32 +251,26 @@ class H5Data(np.ndarray):
             v = super(H5Data, self).__getitem__(index)
         except IndexError:
             return self.view(np.ndarray)  # maybe it is a scalar
-        # if v.base is not self:  # not a view  # # we would never return at this point, right?
-        #     return v
-        # # v.axes = copy.deepcopy(self.axes)
-        # # # # let's say a.shape=(4,4), a[1:3] **= 2 won't make sense any way ...
-        # # # v.data_attrs['UNITS'] = copy.deepcopy(self.data_attrs['UNITS'])
-        # #
-        # # put everything into a list
         try:
             iter(index)
             idxl = index
         except TypeError:
             idxl = [index]
         stop = len(idxl)
-        i = ndim - 1 if Ellipsis in idxl else len(idxl) - 1
-        while i >= 0:
+        na = ndim - stop
+        dn = 0
+        for i in range(len(idxl)):
             if isinstance(idxl[i], int):  # i is a trivial dimension now
-                del v.axes[i]
+                del v.axes[i - dn]
+                dn += 1
             elif isinstance(idxl[i], slice):  # also slice the axis
-                v.axes[i].ax = v.axes[i].ax[idxl[i]]
+                v.axes[i - dn].ax = v.axes[i - dn].ax[idxl[i]]
             elif idxl[i] is Ellipsis:  # let's fast forward to the next explicitly referred axis
-                i -= ndim - stop
+                i += na
             elif idxl[i] is None:  # in numpy None means newAxis
-                v.axes.insert(i, DataAxis(0., 1., 1))
+                v.axes.insert(i - dn, DataAxis(0., 1., 1))
             else:  # type not supported
                 return v.view(np.ndarray)
-            i -= 1
         return v
 
     def meta2dict(self):
