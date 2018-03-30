@@ -257,7 +257,6 @@ class H5Data(np.ndarray):
         except TypeError:
             idxl = [index]
         stop = len(idxl)
-        na = ndim - stop
         dn = 0
         for i in range(len(idxl)):
             if isinstance(idxl[i], int):  # i is a trivial dimension now
@@ -266,7 +265,8 @@ class H5Data(np.ndarray):
             elif isinstance(idxl[i], slice):  # also slice the axis
                 v.axes[i - dn].ax = v.axes[i - dn].ax[idxl[i]]
             elif idxl[i] is Ellipsis:  # let's fast forward to the next explicitly referred axis
-                i += na
+                # i += ndim - stop
+                dn -= ndim - stop
             elif idxl[i] is None:  # in numpy None means newAxis
                 v.axes.insert(i - dn, DataAxis(0., 1., 1))
             else:  # type not supported
