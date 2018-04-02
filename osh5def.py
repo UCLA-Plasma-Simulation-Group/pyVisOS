@@ -264,8 +264,11 @@ class H5Data(np.ndarray):
         dn = 0
         for i in range(len(idxl)):
             if isinstance(idxl[i], int):  # i is a trivial dimension now
-                del v.axes[i - dn]
-                dn += 1
+                try:
+                    del v.axes[i - dn]
+                    dn += 1
+                except AttributeError:
+                    break
             elif isinstance(idxl[i], slice):  # also slice the axis
                 v.axes[i - dn].ax = v.axes[i - dn].ax[idxl[i]]
             elif idxl[i] is Ellipsis:  # let's fast forward to the next explicitly referred axis
