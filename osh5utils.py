@@ -70,7 +70,7 @@ def stack(arr, axis=0, axesdata=None):
             raise ValueError('Number of points in axesdata is different from the new dimension to be created')
         ax.insert(axis, axesdata)
     else:  # we assume the new dimension is time
-        taxis_attrs = {'UNITS': osh5def.OSUnits("\omega_p^{-1}"), 'LONG_NAME': "time", 'NAME': "t"}
+        taxis_attrs = {'UNITS': "\omega_p^{-1}", 'LONG_NAME': "time", 'NAME': "t"}
         ax.insert(axis, osh5def.DataAxis(arr[0].run_attrs['TIME'],
                                          arr[-1].run_attrs['TIME'], len(arr), attrs=taxis_attrs))
     r = np.stack(arr, axis=axis)
