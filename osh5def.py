@@ -185,6 +185,9 @@ class OSUnits:
         res = OSUnits('a.u.')
         res.power = self.power - other.power
         return res
+    
+    __floordiv__ = __truediv__
+    __div__ = __truediv__
 
     def __pow__(self, other, modulo=1):
         res = OSUnits('a.u.')
@@ -417,7 +420,7 @@ class H5Data(np.ndarray):
         """
         # the document says that __array_wrap__ could be deprecated in the future but this is the most direct way...
         div, mul = 1, 2
-        op, __ufunc_mapping = None, {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': '',
+        op, __ufunc_mapping = None, {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': '', 'divide': div, 
                                      'true_divide': div, 'floor_divide': div, 'reciprocal': '-1', 'multiply': mul}
         if context:
             op = __ufunc_mapping.get(context[0].__name__)

@@ -173,7 +173,7 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
     h5file = h5py.File(fname)
 
     # now put the data in a group called this...
-    h5dataset = h5file.create_dataset(current_name_attr, data_object.data.shape, data=data_object.data)
+    h5dataset = h5file.create_dataset(current_name_attr, data_object.shape, data=data_object.view(np.ndarray))
     # these are required.. so make defaults ones...
     h5dataset.attrs['UNITS'], h5dataset.attrs['LONG_NAME'] = np.array([b'']), np.array([b''])
     # convert osunit class back to ascii
