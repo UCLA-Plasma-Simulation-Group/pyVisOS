@@ -8,6 +8,11 @@ except ImportError:
     print('Fail to import GUI routines. Check your PyQT installation')
 
 
+def default_title(h5data):
+    return ''.join([tex(h5data.data_attrs['LONG_NAME']), ', $t = ', "{:.2f}".format(h5data.run_attrs['TIME'][0]),
+                    '$  [$', h5data.run_attrs['TIME UNITS'], '$]'])
+
+
 def tex(s):
     return ''.join(['$', s, '$']) if s else ''
 
@@ -29,10 +34,22 @@ def osplot(h5data, **kwpassthrough):
     return plot_object
 
 
-def __osplot1d(func, h5data, **kwpassthrough):
+def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, title=None, **kwpassthrough):
     plot_object = func(h5data.axes[0].ax, h5data.view(np.ndarray), **kwpassthrough)
-    plt.xlabel(axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS']))
-    plt.ylabel(axis_format(h5data.data_attrs['LONG_NAME'], str(h5data.data_attrs['UNITS'])))
+    if xlabel is None:
+        xlabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS'])
+    if ylabel is None:
+        ylabel = axis_format(h5data.data_attrs['LONG_NAME'], str(h5data.data_attrs['UNITS']))
+    if xlim is not None:
+        plt.xlim(xlim)
+    if ylim is not None:
+        plt.ylim(ylim)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    if title is None:
+        title = default_title(h5data)
+        
+    plt.title(title)
     return plot_object
 
 
@@ -52,15 +69,29 @@ def osloglog(h5data, **kwpassthrough):
     return __osplot1d(plt.loglog, h5data, **kwpassthrough)
 
 
-def __osplot2d(func, h5data, **kwpassthrough):
+def __osplot2d(func, h5data, xlabel=None, ylabel=None, title=None, xlim=None, ylim=None, clim=None, colorbar=True,
+               **kwpassthrough):
     extent_stuff = [h5data.axes[1].min, h5data.axes[1].max,
                     h5data.axes[0].min, h5data.axes[0].max]
     plot_object = func(h5data.view(np.ndarray), extent=extent_stuff, aspect='auto', origin='lower', **kwpassthrough)
-    plt.xlabel(axis_format(h5data.axes[1].attrs['LONG_NAME'], h5data.axes[1].attrs['UNITS']))
-    plt.ylabel(axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS']))
-    plt.title(tex(h5data.data_attrs['LONG_NAME']))
-    cb = plt.colorbar(plot_object)
-    cb.set_label(h5data.data_attrs['UNITS'].tex())
+    if xlim is not None:
+        plt.xlim(xlim)
+    if ylim is not None:
+        plt.ylim(ylim)
+    if xlabel is None:
+        xlabel = axis_format(h5data.axes[1].attrs['LONG_NAME'], h5data.axes[1].attrs['UNITS'])
+    if ylabel is None:
+        ylabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS'])
+    if title is None:
+        title = default_title(h5data)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    if clim is not None:
+        plt.clim(clim)
+    if colorbar:
+        cb = plt.colorbar(plot_object)
+        cb.set_label(h5data.data_attrs['UNITS'].tex())
     return plot_object
 
 

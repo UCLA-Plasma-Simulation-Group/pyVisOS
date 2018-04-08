@@ -18,8 +18,12 @@ class DataAxis:
             raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
         self.ax = np.arange(axis_min, axis_max, (axis_max - axis_min) / axis_npoints)
         # now make attributes for axis that are required..
-        self.attrs = {'UNITS': OSUnits('a.u.'), 'LONG_NAME': "", 'NAME': ""}
-        # get the attributes for the AXIS
+        if attrs is None:
+            self.attrs = {'UNITS': OSUnits('a.u.'), 'LONG_NAME': "", 'NAME': ""}
+        else:
+            self.attrs = {'UNITS': OSUnits(attrs.pop('UNITS', 'a.u.')),
+                          'LONG_NAME': attrs.pop('LONG_NAME', ""), 'NAME': attrs.pop('NAME', "")}
+        # get other attributes for the AXIS
         if attrs:
             self.attrs.update(attrs)
 
@@ -46,6 +50,26 @@ class DataAxis:
     # def __setstate__(self, state):
     #     self.ax = np.linspace(state[0], state[1], state[2])
     #     self.attrs = state[3]
+
+    @property
+    def name(self):
+        return self.attrs['NAME']
+
+    @name.setter
+    def name(self, s):
+        self.attrs['NAME'] = str(s)
+
+    @property
+    def long_name(self):
+        return self.attrs['LONG_NAME']
+
+    @long_name.setter
+    def long_name(self, s):
+        self.attrs['LONG_NAME'] = str(s)
+
+    @property
+    def units(self):
+        return self.attrs['UNITS']
 
     @property
     def min(self):
@@ -153,17 +177,17 @@ class OSUnits:
         return (self.power == np.array([frac(0), frac(0), frac(0), frac(0), frac(1)])).all()
 
     def __mul__(self, other):
-        res = OSUnits('')
+        res = OSUnits('a.u.')
         res.power = self.power + other.power
         return res
 
     def __truediv__(self, other):
-        res = OSUnits('')
+        res = OSUnits('a.u.')
         res.power = self.power - other.power
         return res
 
     def __pow__(self, other, modulo=1):
-        res = OSUnits('')
+        res = OSUnits('a.u.')
         res.power = self.power * frac(other)
         return res
 
@@ -188,13 +212,13 @@ fn_rule = re.compile(r'-(\d+)\.')
 
 class H5Data(np.ndarray):
 
-    def __new__(cls, input_array, timestamp=None, name=None, data_attrs=None, run_attrs=None, axes=None):
+    def __new__(cls, input_array, timestamp=None, data_attrs=None, run_attrs=None, axes=None):
         """wrap input_array into our class, and we don't copy the data!"""
         obj = np.asarray(input_array).view(cls)
         if timestamp:
             obj.timestamp = timestamp
-        if name:
-            obj.name = name
+        # if name:
+        #     obj.name = name
         if data_attrs:
             obj.data_attrs = copy.deepcopy(data_attrs)  # there is OSUnits obj inside
         if run_attrs:
@@ -207,7 +231,7 @@ class H5Data(np.ndarray):
         if obj is None:
             return
         self.timestamp = getattr(obj, 'timestamp', '0' * 6)
-        self.name = getattr(obj, 'name', 'data')
+        # self.name = getattr(obj, 'name', 'data')
         if self.base is obj:
             self.data_attrs = getattr(obj, 'data_attrs', {})
             self.run_attrs = getattr(obj, 'run_attrs', {})
@@ -220,6 +244,26 @@ class H5Data(np.ndarray):
     @property
     def T(self):
         return self.transpose()
+
+    @property
+    def name(self):
+        return self.data_attrs['NAME']
+
+    @name.setter
+    def name(self, s):
+        self.data_attrs['NAME'] = str(s)
+
+    @property
+    def long_name(self):
+        return self.data_attrs['LONG_NAME']
+
+    @long_name.setter
+    def long_name(self, s):
+        self.data_attrs['LONG_NAME'] = str(s)
+
+    @property
+    def units(self):
+        return self.data_attrs['UNITS']
 
     # need the following two function for mpi4py high level function to work correctly
     def __setstate__(self, state, *args):
@@ -398,7 +442,7 @@ class H5Data(np.ndarray):
     def __get_axes_bound(axes, bound):  # bound should have depth of 2
 
         def get_index(ax, bd):
-            tmp = [int(round((co - ax.min) / ax.increment)) if co else None for co in bd]
+            tmp = [int(round((co - ax.min) / ax.increment)) if co is not None else None for co in bd]
             # clip to legal range
             if not tmp[0] or tmp[0] < 0:
                 tmp[0] = 0

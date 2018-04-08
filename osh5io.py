@@ -71,11 +71,6 @@ def read_h5(filename, path=None, axis_name=None):
                 except IndexError:
                     attrs[k] = v.decode('utf-8') if isinstance(v, bytes) else v
 
-            # convert unit string to osunit object
-            try:
-                attrs['UNITS'] = OSUnits(attrs['UNITS'])
-            except KeyError:
-                attrs['UNITS'] = OSUnits('')
             axis_min = axis[0]
             axis_max = axis[-1]
             axis_numberpoints = n_data[0].shape[-axis_number]
@@ -107,10 +102,10 @@ def read_h5(filename, path=None, axis_name=None):
         try:
             data_attrs['UNITS'] = OSUnits(data_attrs['UNITS'])
         except KeyError:
-            data_attrs['UNITS'] = OSUnits('')
+            data_attrs['UNITS'] = OSUnits('a.u.')
 
         # data_bundle.data = the_data_hdf_object[()]
-        data_bundle.append(H5Data(the_data_hdf_object[()], timestamp=timestamp, name=name,
+        data_bundle.append(H5Data(the_data_hdf_object[()], timestamp=timestamp,
                                   data_attrs=data_attrs, run_attrs=run_attrs, axes=axes))
     data_file.close()
     if len(data_bundle) == 1:
@@ -235,17 +230,13 @@ if __name__ == '__main__':
     import osh5utils as ut
     a = np.arange(6.0).reshape(2, 3)
     ax, ay = DataAxis(0, 3, 3, attrs={'UNITS': '1 / \omega_p'}), DataAxis(10, 11, 2, attrs={'UNITS': 'c / \omega_p'})
-    da = {'UNITS': OSUnits('n_0')}
-    h5d = H5Data(a, timestamp='123456', name='test', data_attrs=da, axes=[ay, ax])
+    da = {'UNITS': 'n_0', 'NAME': 'test', }
+    h5d = H5Data(a, timestamp='123456', data_attrs=da, axes=[ay, ax])
     write_h5(h5d, './test-123456.h5')
     rw = read_h5('./test-123456.h5')
     h5d = read_h5('./test-123456.h5')  # read from file to get all default attrs
     print("rw is h5d: ", rw is h5d, '\n')
     print(repr(rw))
-    rw = ut.fft2(rw)
-    rw = ut.ifft2(rw)
-    print(repr(rw))
-    print(OSUnits('\omega_p^{-1}'))
 
     # let's read/write a few times and see if there are mutations to the data
     # you should also diff the output h5 files

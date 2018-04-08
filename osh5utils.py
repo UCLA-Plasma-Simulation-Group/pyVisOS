@@ -8,6 +8,7 @@ from functools import wraps, partial
 import warnings
 import osh5io
 import glob
+from scipy import signal
 
 
 def metasl(func, mapping=(0, 0)):
@@ -73,7 +74,7 @@ def stack(arr, axis=0, axesdata=None):
         ax.insert(axis, osh5def.DataAxis(arr[0].run_attrs['TIME'],
                                          arr[-1].run_attrs['TIME'], len(arr), attrs=taxis_attrs))
     r = np.stack(arr, axis=axis)
-    return osh5def.H5Data(r, md.timestamp, md.name, md.data_attrs, md.run_attrs, axes=ax)
+    return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
 def combine(dirname, axesdata=None, save=None):
@@ -295,6 +296,18 @@ def hfft(a, n=None, axis=-1, norm=None):
 def ihfft(a, n=None, axis=-1, norm=None):
     return __shifted_ihfft(np.fft.ihfft)(a, s=n, axes=axis, norm=norm)
 # ----------------------------------- FFT Wrappers ----------------------------------------
+
+
+# ---------------------------------- SciPy Wrappers ---------------------------------------
+@metasl
+def hilbert(x, N=None, axis=-1):
+    return signal.hilbert(x, N=N, axis=axis)
+
+
+@metasl
+def hilbert2(x, N=None):
+    return signal.hilbert2(x, N=N)
+# ---------------------------------- SciPy Wrappers ---------------------------------------
 
 
 def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't')):
