@@ -10,14 +10,15 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
 
 
-class Generic2DPlotCtrl:
+print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/ipython notebook")
+
+
+class Generic2DPlotCtrl(object):
     tab_contents = ['Labels', 'Data', 'Colormaps']
     eps = 1e-40
 
     def __init__(self, data, slcs=(slice(None, ), ), title=None, norm=None):
         self._data, self._slcs = data, slcs
-        if not norm:
-            norm = Normalize
         # # # -------------------- Tab0 --------------------------
         # title
         if not title:
@@ -27,17 +28,23 @@ class Generic2DPlotCtrl:
                                   description='Title:', disabled=self.if_reset_title.value)
         # x label
         self.if_reset_xlabel = widgets.Checkbox(value=True, description='Auto')
-        self.xlabel = widgets.Text(value=osh5vis.axis_format(data.axes[1].long_name, data.axes[1].units), placeholder='data',
+        self.xlabel = widgets.Text(value=osh5vis.axis_format(data.axes[1].long_name, data.axes[1].units), placeholder='x',
                                    continuous_update=False,
                                    description='X label:', disabled=self.if_reset_xlabel.value)
         # y label
         self.if_reset_ylabel = widgets.Checkbox(value=True, description='Auto')
-        self.ylabel = widgets.Text(value=osh5vis.axis_format(data.axes[0].long_name, data.axes[0].units), placeholder='data',
+        self.ylabel = widgets.Text(value=osh5vis.axis_format(data.axes[0].long_name, data.axes[0].units), placeholder='y',
                                    continuous_update=False,
                                    description='Y label:', disabled=self.if_reset_ylabel.value)
+        # colorbar
+        self.if_reset_cbar = widgets.Checkbox(value=True, description='Auto')
+        self.cbar = widgets.Text(value=data.units.tex(), placeholder='a.u.', continuous_update=False,
+                                 description='Colorbar:', disabled=self.if_reset_cbar.value)
+        
         tab0 = widgets.VBox([widgets.HBox([self.title, self.if_reset_title]),
                              widgets.HBox([self.xlabel, self.if_reset_xlabel]),
-                             widgets.HBox([self.ylabel, self.if_reset_ylabel])])
+                             widgets.HBox([self.ylabel, self.if_reset_ylabel]),
+                             widgets.HBox([self.cbar, self.if_reset_cbar])])
 
         # # # -------------------- Tab1 --------------------------
         items_layout = Layout(flex='1 1 auto', width='auto')
@@ -73,11 +80,10 @@ class Generic2DPlotCtrl:
              widgets.HBox([self.vmax_wgt, self.if_vmax_auto]), self.if_clip_cm, self.linthresh, self.linscale]))
 
         # find out default value for norm_selector
-        norm_wgt_dflt = [w for w in (ln_wgt, n_wgt, pn_wgt, sln_wgt) if w[0] == norm][0]
-
-        self.norm_selector = widgets.Dropdown(
-            options={'LogNorm': ln_wgt, 'Normalize': n_wgt, 'PowerNorm': pn_wgt, 'SymLogNorm': sln_wgt},
-            value=norm_wgt_dflt, description='Normalization')
+        norm_avail = {'Log': ln_wgt, 'Normalize': n_wgt, 'Power': pn_wgt, 'SymLog': sln_wgt}
+        self.norm_selector = widgets.Dropdown(options=norm_avail, 
+                                              value=norm_avail.get(norm, n_wgt), description='Normalization')
+        # additional care for LorNorm()
         self.__handle_lognorm()
         # re-plot button
         self.norm_btn_wgt = widgets.Button(description='Apply', disabled=False, tooltip='set colormap', icon='refresh')
@@ -98,6 +104,7 @@ class Generic2DPlotCtrl:
         self.if_reset_title.observe(self.__update_title, 'value')
         self.if_reset_xlabel.observe(self.__update_xlabel, 'value')
         self.if_reset_ylabel.observe(self.__update_ylabel, 'value')
+        self.if_reset_cbar.observe(self.__update_cbar, 'value')
         self.norm_btn_wgt.on_click(self.set_norm)
         self.if_vmin_auto.observe(self.__update_vmin, 'value')
         self.if_vmax_auto.observe(self.__update_vmax, 'value')
@@ -106,6 +113,7 @@ class Generic2DPlotCtrl:
         self.title.observe(self.update_title, 'value')
         self.xlabel.observe(self.update_xlabel, 'value')
         self.ylabel.observe(self.update_ylabel, 'value')
+        self.cbar.observe(self.update_cbar, 'value')
 
         # plotting and then setting normalization colors
         self.im = self.plot_data()
@@ -128,6 +136,9 @@ class Generic2DPlotCtrl:
 
     def update_ylabel(self, change):
         self.im.axes.yaxis.set_label_text(change['new'])
+
+    def update_cbar(self, change):
+        self.im.colorbar.set_label(change['new'])
 
     def update_cmap(self, change):
         self.im.set_cmap(change['new'])
@@ -228,6 +239,13 @@ class Generic2DPlotCtrl:
             self.ylabel.disabled = True
         else:
             self.ylabel.disabled = False
+
+    def __update_cbar(self, *args):
+        if self.if_reset_cbar.value:
+            self.cbar.value = self._data.units.tex()
+            self.cbar.disabled = True
+        else:
+            self.cbar.disabled = False
 
 
 class Slicer(Generic2DPlotCtrl):
