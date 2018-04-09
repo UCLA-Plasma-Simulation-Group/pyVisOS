@@ -250,7 +250,7 @@ class H5Data(np.ndarray):
 
     @property
     def name(self):
-        return self.data_attrs['NAME']
+        return self.data_attrs.get('NAME', '')
 
     @name.setter
     def name(self, s):
@@ -258,7 +258,7 @@ class H5Data(np.ndarray):
 
     @property
     def long_name(self):
-        return self.data_attrs['LONG_NAME']
+        return self.data_attrs.get('LONG_NAME', '')
 
     @long_name.setter
     def long_name(self, s):
@@ -266,7 +266,7 @@ class H5Data(np.ndarray):
 
     @property
     def units(self):
-        return self.data_attrs['UNITS']
+        return self.data_attrs.get('UNITS', OSUnits('a.u.'))
 
     # need the following two function for mpi4py high level function to work correctly
     def __setstate__(self, state, *args):

@@ -103,6 +103,7 @@ def read_h5(filename, path=None, axis_name=None):
             data_attrs['UNITS'] = OSUnits(data_attrs['UNITS'])
         except KeyError:
             data_attrs['UNITS'] = OSUnits('a.u.')
+        data_attrs['NAME'] = name
 
         # data_bundle.data = the_data_hdf_object[()]
         data_bundle.append(H5Data(the_data_hdf_object[()], timestamp=timestamp,
