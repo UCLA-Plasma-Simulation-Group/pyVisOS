@@ -227,8 +227,13 @@ class _LocIndexer(object):
         return H5Data.get_index_list(self.__data.axes[i], iterable)
 
     def __getitem__(self, index):
-        converted, nn, dn = [], self.__data.ndim - len(index) + index.count(None) + 1, 0
-        for i, idx in enumerate(index):
+        try:
+            iter(index)
+            idxl = index
+        except TypeError:
+            idxl = [index]
+        converted, nn, dn = [], self.__data.ndim - len(idxl) + idxl.count(None) + 1, 0
+        for i, idx in enumerate(idxl):
             if isinstance(idx, slice):
                 converted.append(self.label_slice2int_slice(dn, idx))
                 dn += 1
@@ -351,7 +356,7 @@ class H5Data(np.ndarray):
             idxl = index
         except TypeError:
             idxl = [index]
-        converted, nn, dn = [], ndim - len(idxl) + index.count(None) + 1, 0
+        converted, nn, dn = [], ndim - len(idxl) + idxl.count(None) + 1, 0
         for idx in idxl:
             if isinstance(idx, int):  # i is a trivial dimension now
                 try:
@@ -410,9 +415,6 @@ class H5Data(np.ndarray):
             if kwargs['out']:
                 kwargs['out'].__del_axis(_axis)
         return o
-
-    def reduce(self, axis=None, dtype=None, out=None, keepdims=False):
-        pass
 
     def mean(self, axis=None, dtype=None, out=None, keepdims=False):
         return self.__ufunc_with_axis_handled(super(H5Data, self).mean,
@@ -499,9 +501,9 @@ class H5Data(np.ndarray):
         # clip upper bound
         if tmp[1] is not None:
             tmp[1] = min(ax.size, tmp[1])
-        # determine step
+        # determine step, step must be >= 1
         if len(bd) == 3:
-            tmp.append(None if bd[2] is None else int(round(bd[2] / ax.increment)))
+            tmp.append(None if bd[2] is None else max(int(round(bd[2] / ax.increment)), 1))
         return tmp
 
     @staticmethod
