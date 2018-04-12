@@ -4,7 +4,7 @@ import osh5def
 import numpy as np
 import copy
 import re
-from functools import wraps, partial
+from functools import wraps, partial, reduce
 import warnings
 import osh5io
 import glob
@@ -153,22 +153,69 @@ def stack(arr, axis=0, axesdata=None):
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
-def combine(dirname, axesdata=None, save=None):
+def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None):
     """
     stack a directory of grid data and optionally save the result to a file
-    :param dirname: name of the directory
+    :param dir_or_filelist: name of the directory
+    :param prefix: string, match file names with specific prefix
+    :param file_slice: a slice that applies to the file name list, useful for skipping every other files or start
+                        in the middle of the list for example
+    :param preprocess: a list of callable (and their args and kwargs if any) that will act on the data before stacking
+                        happens. It has to accept one H5Data objects as argument and return one H5Data objects.
+                        Note that it has to be a list, not tuple or any other type, aka if isinstance(preprocess, list)
+                        returns False then this parameter will be ignored entirely.
     :param axesdata: user difined axes, see stack for more detail
     :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
-    :return: combined grid data, one dimension more than the original
+    :return: combined grid data, one dimension more than the preprocessed original data
+    Usage of preprocess:
+    The functino list should look like:
+    [func, arg1, arg2, ..., argn, {'kwarg1': val1, 'kwarg2': val2, ..., 'kwargn', valn}] where any of the *args and/or
+    **args can be omitted. see also __parse_func_param for limitations.
+        if preprocess=[(numpy.power, 2), (numpy.average, {axis=0}), numpy.sqrt], then the data to be stacked is
+        numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
     """
-    flist = sorted(glob.glob(dirname + '/*.h5'))
-    tmp = [osh5io.read_h5(f) for f in flist]
+    prfx = str(prefix).strip() if prefix else ''
+
+    if isinstance(dir_or_filelist, str):
+        flist = sorted(glob.glob(dir_or_filelist + '/' + prfx + '*.h5'))[file_slice]
+    else:  # dir_or_filelist is a list of file names
+        flist = dir_or_filelist[file_slice]
+    if isinstance(preprocess, list) and preprocess:
+        func_list = [__parse_func_param(item) for item in preprocess]
+        tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(fn)) for fn in flist]
+    else:
+        tmp = [osh5io.read_h5(f) for f in flist]
     res = stack(tmp, axesdata=axesdata)
     if save:
         if not isinstance(save, str):
-            save = dirname + res.name + '.h5'
+            save = dir_or_filelist + res.name + '.h5'
         osh5io.write_h5(res, save)
     return res
+
+
+def __parse_func_param(item):
+    """
+    The limitation here is that
+    1) (solvable by user defined functions) it can not handle a function with the following signature:
+        function f has only positional arguments, i.e. f(arg1, arg2, ..., argn), and argn is expecting a dict.
+        User can define a wrapper function to switch the argument positions or add a dummy argument at the end.
+    2) (solvable within our notation) user wants to pass a dict as the last positional argument to the
+        following function: g(arg1, arg2, ..., argn, kwarg1=val1, ..., kwargn=valn) where argn is expecting a
+        dict. The problem can be avoid by adding an empty dict to the end (g, arg1, ..., argn, {}).
+        It may confuse users though.
+    """
+    # we don't return functools.partial here because it will break the ufunc behavior
+    try:
+        iter(item)
+        # assuming if last element is not a dictionary then it is one of the positional arguments
+        if isinstance(item[-1], dict):
+            args, kwargs = item[1:-1], item[-1]
+        else:
+            args, kwargs = item[1:], {}
+    except TypeError:
+        # unary function, nothing to do
+        return item, (), {}
+    return item[0], args, kwargs
 
 
 # #----------------------------------- FFT Wrappers ----------------------------------------
