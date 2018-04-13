@@ -148,7 +148,6 @@ class Generic2DPlotCtrl(object):
         self.xlabel.observe(self.update_xlabel, 'value')
         self.ylabel.observe(self.update_ylabel, 'value')
         self.cbar.observe(self.update_cbar, 'value')
-        self.cbar.observe(self.update_cbar, 'value')
         self.y_max_wgt.observe(self.__update_y_max, 'value')
         self.y_min_wgt.observe(self.__update_y_min, 'value')
         self.x_max_wgt.observe(self.__update_x_max, 'value')
@@ -195,7 +194,6 @@ class Generic2DPlotCtrl(object):
         bnd = [(self.y_min_wgt.value, self.y_max_wgt.value, self.y_step_wgt.value),
                (self.x_min_wgt.value, self.x_max_wgt.value, self.x_step_wgt.value)]
         self._slcs = tuple(slice(*self._data.get_index_slice(self._data.axes[i], bd)) for i, bd in enumerate(bnd))
-        print(self._slcs)
         self.im.figure.clf()
         self.im = self.plot_data()
         # dirty hack
@@ -213,7 +211,9 @@ class Generic2DPlotCtrl(object):
 
     def plot_data(self, **passthrough):
         return osh5vis.osimshow(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
-                                norm=self.norm_selector.value[0](**self.__get_norm()), **passthrough)
+                                norm=self.norm_selector.value[0](**self.__get_norm()), title=self.title.value,
+                                xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
+                                **passthrough)
 
     def __get_tab0(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt])

@@ -69,8 +69,8 @@ def osloglog(h5data, **kwpassthrough):
     return __osplot1d(plt.loglog, h5data, **kwpassthrough)
 
 
-def __osplot2d(func, h5data, xlabel=None, ylabel=None, title=None, xlim=None, ylim=None, clim=None, colorbar=True,
-               **kwpassthrough):
+def __osplot2d(func, h5data, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
+               colorbar=True, **kwpassthrough):
     extent_stuff = [h5data.axes[1].min, h5data.axes[1].max,
                     h5data.axes[0].min, h5data.axes[0].max]
     plot_object = func(h5data.view(np.ndarray), extent=extent_stuff, aspect='auto', origin='lower', **kwpassthrough)
@@ -91,7 +91,10 @@ def __osplot2d(func, h5data, xlabel=None, ylabel=None, title=None, xlim=None, yl
         plt.clim(clim)
     if colorbar:
         cb = plt.colorbar(plot_object)
-        cb.set_label(h5data.data_attrs['UNITS'].tex())
+        if cblabel is None:
+            cb.set_label(h5data.data_attrs['UNITS'].tex())
+        else:
+            cb.set_label(cblabel)
     return plot_object
 
 

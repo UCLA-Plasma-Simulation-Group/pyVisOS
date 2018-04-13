@@ -169,8 +169,11 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
     :return: combined grid data, one dimension more than the preprocessed original data
     Usage of preprocess:
     The functino list should look like:
-    [func, arg1, arg2, ..., argn, {'kwarg1': val1, 'kwarg2': val2, ..., 'kwargn', valn}] where any of the *args and/or
-    **args can be omitted. see also __parse_func_param for limitations.
+    [(func1, arg11, arg21, ..., argn1, {'kwarg11': val11, 'kwarg21': val21, ..., 'kwargn1', valn1}),
+     (func2, arg12, arg22, ..., argn2, {'kwarg12': val12, 'kwarg22': val22, ..., 'kwargn2', valn2}),
+     ...,
+     (func2, arg1n, arg2n, ..., argnn, {'kwarg1n': val1n, 'kwarg2n': val2n, ..., 'kwargnn', valnn})] where 
+     any of the *args and/or **args can be omitted. see also __parse_func_param for limitations.
         if preprocess=[(numpy.power, 2), (numpy.average, {axis=0}), numpy.sqrt], then the data to be stacked is
         numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
     """
@@ -188,7 +191,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
     res = stack(tmp, axesdata=axesdata)
     if save:
         if not isinstance(save, str):
-            save = dir_or_filelist + res.name + '.h5'
+            save = dir_or_filelist if isinstance(dir_or_filelist, str) else './' + res.name + '.h5'
         osh5io.write_h5(res, save)
     return res
 
@@ -221,7 +224,7 @@ def __parse_func_param(item):
 # #----------------------------------- FFT Wrappers ----------------------------------------
 # sfunc: for shifting; ffunc: for calculating frequency; ftfunc: for fft the data; uafunc: for updating axes
 #
-def __idle(a, *args, **kwargs):
+def __idle(a, *_args, **_kwargs):
     return a
 
 
@@ -255,7 +258,7 @@ def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
 
 
 @__try_update_axes
-def _update_ifft_axes(axes, idx,  shape, sfunc, ffunc):
+def _update_ifft_axes(axes, idx,  shape, _sfunc, ffunc):
     key, en = ['LONG_NAME'], [2]
     warned = False
     for i in idx:
@@ -360,17 +363,17 @@ def __restore_space_shape(xdfunc):
 
 
 @__restore_space_shape
-def __rss_1d(a, s, axes):
+def __rss_1d(a, _s, axes):
     return a.data_attrs['oshape'][-1] if axes is None else a.data_attrs['oshape'][axes]
 
 
 @__restore_space_shape
-def __rss_2d(a, s, axes):
+def __rss_2d(a, _s, axes):
     return a.data_attrs['oshape'][-2:] if axes is None else tuple([a.data_attrs['oshape'][i] for i in axes])
 
 
 @__restore_space_shape
-def __rss_nd(a, s, axes):
+def __rss_nd(a, _s, axes):
     return a.data_attrs['oshape'] if axes is None else tuple([a.data_attrs['oshape'][i] for i in axes])
 
 
