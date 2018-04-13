@@ -13,16 +13,48 @@ from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
 print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/ipython notebook")
 
 
-def osimshow_w(data, *args, newfig=True, **kwargs):
+def osimshow_w(data, *args, newfig=True, show=True, **kwargs):
+    """
+    2D plot with widgets
+    :param data: 2D H5Data
+    :param args: arguments passed to 2d plotting widgets. reserved for future use
+    :param newfig: whether to create a new figure
+    :param show: whether to show the widgets
+    :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
+    :return: if show == True return None otherwise return a list of widgets
+    """
     if newfig:
         plt.figure()
-    return Generic2DPlotCtrl(data, *args, **kwargs)
+    wl = Generic2DPlotCtrl(data, *args, **kwargs).widgets_list
+    if show:
+        display(*wl)
+    else:
+        return wl
 
 
-def slicer_w(data, *args, newfig=True, **kwargs):
+def slicer_w(data, *args, newfig=True, show=True, slider_only=False, **kwargs):
+    """
+    A slider for 3D data
+    :param data: 3D H5Data
+    :param args: arguments passed to plotting widgets. reserved for future use
+    :param newfig: whether to create a new figure
+    :param show: whether to show the widgets
+    :param slider_only: if True only show the slider otherwise show also other plot control (aka 'the tab')
+    :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
+    :return: whatever widgets that are not shown
+    """
     if newfig:
         plt.figure()
-    return Slicer(data, *args, **kwargs)
+    wl = Slicer(data, *args, **kwargs).widgets_list
+    tab, slider = wl[0], widgets.HBox(wl[1:])
+    if show:
+        if slider_only:
+            display(slider)
+            return tab
+        else:
+            display(tab, slider)
+    else:
+        return wl
 
 
 class Generic2DPlotCtrl(object):
@@ -132,14 +164,14 @@ class Generic2DPlotCtrl(object):
         self.tab = widgets.Tab()
         self.tab.children = [tab0, tab1, tab2, tab3]
         [self.tab.set_title(i, tt) for i, tt in enumerate(self.tab_contents)]
-        display(self.tab)
+        # display(self.tab)
 
         # link and activate the widgets
         self.if_reset_title.observe(self.__update_title, 'value')
         self.if_reset_xlabel.observe(self.__update_xlabel, 'value')
         self.if_reset_ylabel.observe(self.__update_ylabel, 'value')
         self.if_reset_cbar.observe(self.__update_cbar, 'value')
-        self.norm_btn_wgt.on_click(self.set_norm)
+        self.norm_btn_wgt.on_click(self.update_norm)
         self.if_vmin_auto.observe(self.__update_vmin, 'value')
         self.if_vmax_auto.observe(self.__update_vmax, 'value')
         self.norm_selector.observe(self.__update_norm_wgt, 'value')
@@ -158,10 +190,21 @@ class Generic2DPlotCtrl(object):
 
         # plotting and then setting normalization colors
         self.im = self.plot_data()
-        # self.__set_norm()
+        # self.set_norm()
+
+    @property
+    def widgets_list(self):
+        return self.tab,
+
+    @property
+    def widget(self):
+        return self.tab
 
     def update_data(self, data, slcs):
         self._data, self._slcs = data, slcs
+        self.__update_title()
+        self.__update_xlabel()
+        self.__update_ylabel()
 
     def reset_plot_area(self):
         self.y_min_wgt.value, self.y_max_wgt.value, self.y_step_wgt.value = \
@@ -239,12 +282,12 @@ class Generic2DPlotCtrl(object):
         self.refresh_tab_wgt(tmp)
         self.__handle_lognorm()
 
-    def set_norm(self, *args):
+    def update_norm(self, *args):
         # with LogNorm we are actually doing log(data), therefore we have to replot the whole thing to get correct cmap
         self.im.figure.clf()
         self.im = self.plot_data()
         # update norm
-        self.__set_norm(*args)
+        self.set_norm(*args)
 
     def __get_norm(self):
         vmin = None if self.if_vmin_auto.value else self.norm_selector.value[1].children[0].children[0].value
@@ -257,7 +300,7 @@ class Generic2DPlotCtrl(object):
             param['linscale'] = self.linscale.value
         return param
 
-    def __set_norm(self, *_):
+    def set_norm(self, *_):
         param = self.__get_norm()
         self.im.set_norm(self.norm_selector.value[0](**param))
 
@@ -353,9 +396,14 @@ class Slicer(Generic2DPlotCtrl):
 
         super(Slicer, self).__init__(data[self.slcs], slcs=[i for i in self.slcs if not isinstance(i, int)],
                                      **extra_kwargs)
-        display(widgets.HBox([self.axis_pos, self.index_slider, self.axis_selector]))
 
-    #         interact(self.update_slice, index=self.index_slider);
+    @property
+    def widgets_list(self):
+        return self.tab, self.axis_pos, self.index_slider, self.axis_selector
+
+    @property
+    def widget(self):
+        return widgets.HBox([self.axis_pos, self.index_slider, self.axis_selector])
 
     def __update_index_slider(self, _change):
         self.index_slider.value = round((self.axis_pos.value - self.data.axes[self.comp].min)
@@ -375,6 +423,7 @@ class Slicer(Generic2DPlotCtrl):
         self.index_slider.max = self.data.shape[self.comp] - 1
         self.update_data(self.data[self.slcs], slcs=[i for i in self.slcs if not isinstance(i, int)])
         self.reset_plot_area()
+        self.set_norm()
         self.im.figure.clf()
         self.im = self.plot_data()
 
