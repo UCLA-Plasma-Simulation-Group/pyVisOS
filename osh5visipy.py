@@ -1,5 +1,5 @@
 from __future__ import print_function
-from ipywidgets import interact, Layout
+from ipywidgets import interact, Layout, Output
 import ipywidgets as widgets
 from IPython.display import display
 
@@ -8,6 +8,7 @@ import numpy as np
 import osh5vis
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
+import threading
 
 
 print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/ipython notebook")
@@ -46,23 +47,23 @@ def slicer_w(data, *args, newfig=True, show=True, slider_only=False, **kwargs):
     if newfig:
         plt.figure()
     wl = Slicer(data, *args, **kwargs).widgets_list
-    tab, slider = wl[0], widgets.HBox(wl[1:])
+    tab, slider = wl[0], widgets.HBox(wl[1:-2])
     if show:
         if slider_only:
-            display(slider)
+            display(slider, widgets.VBox(wl[-2:]))
             return tab
         else:
-            display(tab, slider)
+            display(tab, slider, widgets.VBox(wl[-2:]))
     else:
         return wl
 
 
 class Generic2DPlotCtrl(object):
-    tab_contents = ['Data', 'Labels', 'Axes', 'Colormaps']
+    tab_contents = ['Data', 'Labels', 'Axes', 'Lineout', 'Colormaps']
     eps = 1e-40
 
     def __init__(self, data, slcs=(slice(None, ), ), title=None, norm=None):
-        self._data, self._slcs = data, slcs
+        self._data, self._slcs, self.im_xlt = data, slcs, None
         # # # -------------------- Tab0 --------------------------
         items_layout = Layout(flex='1 1 auto', width='auto')
         # normalization
@@ -156,13 +157,17 @@ class Generic2DPlotCtrl(object):
         tab2 = widgets.VBox([self.axis_lim_wgt, self.xaxis_lim_wgt, self.yaxis_lim_wgt])
 
         # # # -------------------- Tab3 --------------------------
+        tab3 = self.if_lineout_wgt = widgets.Checkbox(value=False, description='X/Y Lineouts (incomplete feature)',
+                                                      layout=items_layout)
+
+        # # # -------------------- Tab4 --------------------------
         self.cmap_selector = widgets.Dropdown(options=sorted(c for c in plt.cm.datad if not c.endswith("_r")),
                                               value='jet', description='Colormap')
-        tab3 = self.cmap_selector
+        tab4 = self.cmap_selector
 
         # construct the tab
         self.tab = widgets.Tab()
-        self.tab.children = [tab0, tab1, tab2, tab3]
+        self.tab.children = [tab0, tab1, tab2, tab3, tab4]
         [self.tab.set_title(i, tt) for i, tt in enumerate(self.tab_contents)]
         # display(self.tab)
 
@@ -187,18 +192,23 @@ class Generic2DPlotCtrl(object):
         self.x_step_wgt.observe(self.__update_delta_x, 'value')
         self.y_step_wgt.observe(self.__update_delta_y, 'value')
         self.apply_range_btn.on_click(self.update_plot_area)
+        self.if_lineout_wgt.observe(self.toggle_lineout, 'value')
 
         # plotting and then setting normalization colors
-        self.im = self.plot_data()
+        self.out = Output()
+        self.out_main = Output()
+        self.observer_thrd = None
+        with self.out_main:
+            self.im = self.plot_data()
         # self.set_norm()
 
     @property
     def widgets_list(self):
-        return self.tab,
+        return self.tab, self.out_main, self.out
 
     @property
     def widget(self):
-        return self.tab
+        return widgets.VBox([self.tab, self.out_main, self.out])
 
     def update_data(self, data, slcs):
         self._data, self._slcs = data, slcs
@@ -237,7 +247,7 @@ class Generic2DPlotCtrl(object):
         bnd = [(self.y_min_wgt.value, self.y_max_wgt.value, self.y_step_wgt.value),
                (self.x_min_wgt.value, self.x_max_wgt.value, self.x_step_wgt.value)]
         self._slcs = tuple(slice(*self._data.get_index_slice(self._data.axes[i], bd)) for i, bd in enumerate(bnd))
-        self.im.figure.clf()
+        self.im.figure.cla()
         self.im = self.plot_data()
         # dirty hack
         if self.norm_selector.value[0] == LogNorm:
@@ -264,6 +274,28 @@ class Generic2DPlotCtrl(object):
     @staticmethod
     def __idle(data):
         return data
+
+    def __new_lineout_plot(self):
+        with self.out:
+            self.fig, self.outline_ax = plt.subplots(1, 2, figsize=(8, 4))
+            ldata = self._data[self._slcs]
+            osh5vis.osplot1d(ldata[ldata.shape[0] // 2, :], ax=self.outline_ax[0])
+            osh5vis.osplot1d(ldata[:, ldata.shape[0] // 2], ax=self.outline_ax[1], title='')
+            plt.suptitle('X Axis={:.2f}'.format(ldata.axes[0][ldata.shape[0] // 2]) +
+                         ', Y Axis={:.2f}'.format(ldata.axes[1][ldata.shape[1] // 2]))
+            plt.title('Y lineout')
+            plt.show()
+
+    def toggle_lineout(self, change):
+        if change['new']:
+            # start a new thread so the interaction with original figure won't be blocked
+            self.observer_thrd = threading.Thread(target=self.__new_lineout_plot)
+            self.observer_thrd.daemon = True
+            self.observer_thrd.start()
+            # display(self.out)
+        else:
+            self.observer_thrd.join()  # kill the thread
+            Output.clear_output(self.out)
 
     def __handle_lognorm(self):
         if self.norm_selector.value[0] == LogNorm:
@@ -399,11 +431,12 @@ class Slicer(Generic2DPlotCtrl):
 
     @property
     def widgets_list(self):
-        return self.tab, self.axis_pos, self.index_slider, self.axis_selector
+        return self.tab, self.axis_pos, self.index_slider, self.axis_selector, self.out_main, self.out
 
     @property
     def widget(self):
-        return widgets.HBox([self.axis_pos, self.index_slider, self.axis_selector])
+        return widgets.VBox([widgets.HBox([self.axis_pos, self.index_slider, self.axis_selector]),
+                             self.out_main, self.out])
 
     def __update_index_slider(self, _change):
         self.index_slider.value = round((self.axis_pos.value - self.data.axes[self.comp].min)
@@ -418,14 +451,22 @@ class Slicer(Generic2DPlotCtrl):
         return slcs
 
     def switch_slice_direction(self, change):
-        self.slcs, self.comp = self.__get_slice(change['new']), change['new']
+        self.slcs, self.comp, self.x = \
+            self.__get_slice(change['new']), change['new'], self.data.shape[change['new']] // 2
+        self.reset_slider_index()
         self.__update_axis_descr()
-        self.index_slider.max = self.data.shape[self.comp] - 1
         self.update_data(self.data[self.slcs], slcs=[i for i in self.slcs if not isinstance(i, int)])
         self.reset_plot_area()
         self.set_norm()
         self.im.figure.clf()
         self.im = self.plot_data()
+
+    def reset_slider_index(self):
+        # stop the observe while updating values
+        self.index_slider.unobserve(self.update_slice, 'value')
+        self.index_slider.max = self.data.shape[self.comp] - 1
+        self.__update_axis_value()
+        self.index_slider.observe(self.update_slice, 'value')
 
     def __update_axis_value(self, *_):
         self.axis_pos.value = str(self.data.axes[self.comp][self.x])

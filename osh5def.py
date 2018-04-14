@@ -7,9 +7,14 @@
 
 import numpy as np
 import re
-import copy
+import copy as cp
 from fractions import Fraction as frac
 import warnings
+try:
+    import xarray as xr
+    _has_xarray_support = True
+except ImportError:
+    _has_xarray_support = False
 
 
 class DataAxis:
@@ -272,11 +277,11 @@ class H5Data(np.ndarray):
         # if name:
         #     obj.name = name
         if data_attrs:
-            obj.data_attrs = copy.deepcopy(data_attrs)  # there is OSUnits obj inside
+            obj.data_attrs = cp.deepcopy(data_attrs)  # there is OSUnits obj inside
         if run_attrs:
             obj.run_attrs = run_attrs
         if axes:
-            obj.axes = copy.deepcopy(axes)   # the elements are numpy arrays
+            obj.axes = cp.deepcopy(axes)   # the elements are numpy arrays
         return obj
 
     def __array_finalize__(self, obj):
@@ -289,9 +294,9 @@ class H5Data(np.ndarray):
             self.run_attrs = getattr(obj, 'run_attrs', {})
             self.axes = getattr(obj, 'axes', [])
         else:
-            self.data_attrs = copy.deepcopy(getattr(obj, 'data_attrs', {}))
-            self.run_attrs = copy.deepcopy(getattr(obj, 'run_attrs', {}))
-            self.axes = copy.deepcopy(getattr(obj, 'axes', []))
+            self.data_attrs = cp.deepcopy(getattr(obj, 'data_attrs', {}))
+            self.run_attrs = cp.deepcopy(getattr(obj, 'run_attrs', {}))
+            self.axes = cp.deepcopy(getattr(obj, 'axes', []))
 
     @property
     def T(self):
@@ -377,7 +382,7 @@ class H5Data(np.ndarray):
 
     def meta2dict(self):
         """return a deep copy of the meta data as a dictionary"""
-        return copy.deepcopy(self.__dict__)
+        return cp.deepcopy(self.__dict__)
 
     def transpose(self, *axes):
         v = super(H5Data, self).transpose(*axes)
@@ -616,7 +621,7 @@ class H5Data(np.ndarray):
             bound = (bound,)
         index = self.__get_axes_bound(self.axes, bound)
         if new:
-            return copy.deepcopy(self[index])
+            return cp.deepcopy(self[index])
         else:
             return self[index]
 
@@ -660,9 +665,9 @@ class H5Data(np.ndarray):
             for idx in index:
                 if inverse_select:  # record original data for later use
                     if method:
-                        rec.append((idx, copy.deepcopy(method(v[idx], val[i % vallen]))))
+                        rec.append((idx, cp.deepcopy(method(v[idx], val[i % vallen]))))
                     else:
-                        rec.append((idx, copy.deepcopy(v[idx])))
+                        rec.append((idx, cp.deepcopy(v[idx])))
                 else:
                     if method:
                         v[idx] = method(v[idx], val[i % vallen])
@@ -674,3 +679,31 @@ class H5Data(np.ndarray):
             for r in rec:
                 v[r[0]] = r[1]
 
+    if _has_xarray_support:
+        # experimental
+        def to_xarray(self, copy=False):
+            """
+            convert H5Data format to an xarray.DataArray
+            :param copy: if True the array data will be copied instead of being taken a view
+            :return: xarray.DataArray
+            """
+            dim_dict = {}
+            data = cp.deepcopy(self) if copy else self
+
+            # fill out the axes dict form
+            for ax in data.axes:
+                ax_data = {'dims': ax.name, 'data': ax.ax.copy(), 'attrs': {'units': str(ax.units)}}
+                for k, v in ax.attrs.items():
+                    ax_data['attrs'].setdefault(k, v)
+                dim_dict[ax.name] = ax_data
+
+            # self.units will be converted to str by xarray, no special treatment needed
+            data_attrs_dict = {}
+            data_attrs_dict.update(data.run_attrs)
+            data_attrs_dict.update(data.data_attrs)
+
+            dims_name = tuple(k for k, v in dim_dict.items())
+
+            data_dict = {'coords': dim_dict, 'attrs': data_attrs_dict,
+                         'dims': dims_name, 'data': data.view(np.ndarray), 'name': data.name}
+            return xr.DataArray.from_dict(data_dict)
