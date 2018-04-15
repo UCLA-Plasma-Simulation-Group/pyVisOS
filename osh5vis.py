@@ -34,43 +34,52 @@ def osplot(h5data, **kwpassthrough):
     return plot_object
 
 
-def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, title=None, **kwpassthrough):
+def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, title=None, ax=None, **kwpassthrough):
     plot_object = func(h5data.axes[0].ax, h5data.view(np.ndarray), **kwpassthrough)
+    if ax is not None:
+        set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
+            ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
+    else:
+        set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
+            plt.xlim, plt.ylim, plt.xlabel, plt.ylabel, plt.title
     if xlabel is None:
         xlabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS'])
     if ylabel is None:
         ylabel = axis_format(h5data.data_attrs['LONG_NAME'], str(h5data.data_attrs['UNITS']))
     if xlim is not None:
-        plt.xlim(xlim)
+        set_xlim(xlim)
     if ylim is not None:
-        plt.ylim(ylim)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
+        set_ylim(ylim)
+    set_xlabel(xlabel)
+    set_ylabel(ylabel)
     if title is None:
         title = default_title(h5data)
-        
-    plt.title(title)
+    set_title(title)
     return plot_object
 
 
-def osplot1d(h5data, **kwpassthrough):
-    return __osplot1d(plt.plot, h5data, **kwpassthrough)
+def osplot1d(h5data, ax=None, **kwpassthrough):
+    plot = plt.plot if ax is None else ax.plot
+    return __osplot1d(plot, h5data, **kwpassthrough)
 
 
-def ossemilogx(h5data, **kwpassthrough):
-    return __osplot1d(plt.semilogx, h5data, **kwpassthrough)
+def ossemilogx(h5data, ax=None, **kwpassthrough):
+    semilogx = plt.semilogx if ax is None else ax.semilogx
+    return __osplot1d(semilogx, h5data, **kwpassthrough)
 
 
-def ossemilogy(h5data, **kwpassthrough):
-    return __osplot1d(plt.semilogy, h5data, **kwpassthrough)
+def ossemilogy(h5data, ax=None, **kwpassthrough):
+    semilogy = plt.semilogy if ax is None else ax.semilogy
+    return __osplot1d(semilogy, h5data, **kwpassthrough)
 
 
-def osloglog(h5data, **kwpassthrough):
-    return __osplot1d(plt.loglog, h5data, **kwpassthrough)
+def osloglog(h5data, ax=None, **kwpassthrough):
+    loglog = plt.loglog if ax is None else ax.loglog
+    return __osplot1d(loglog, h5data, **kwpassthrough)
 
 
-def __osplot2d(func, h5data, xlabel=None, ylabel=None, title=None, xlim=None, ylim=None, clim=None, colorbar=True,
-               **kwpassthrough):
+def __osplot2d(func, h5data, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
+               colorbar=True, **kwpassthrough):
     extent_stuff = [h5data.axes[1].min, h5data.axes[1].max,
                     h5data.axes[0].min, h5data.axes[0].max]
     plot_object = func(h5data.view(np.ndarray), extent=extent_stuff, aspect='auto', origin='lower', **kwpassthrough)
@@ -91,7 +100,10 @@ def __osplot2d(func, h5data, xlabel=None, ylabel=None, title=None, xlim=None, yl
         plt.clim(clim)
     if colorbar:
         cb = plt.colorbar(plot_object)
-        cb.set_label(h5data.data_attrs['UNITS'].tex())
+        if cblabel is None:
+            cb.set_label(h5data.data_attrs['UNITS'].tex())
+        else:
+            cb.set_label(cblabel)
     return plot_object
 
 

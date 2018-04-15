@@ -33,7 +33,7 @@ def calculate_poyning_flux(b2, b3, e2, e3, save2disk=True):
     s1.data_attrs['LONG_NAME'] = 's_1'
 
     # you can slice the data and the axis will follow automatically
-    nx = s1.axes[1].size()
+    nx = s1.axes[1].size
     s1 = s1[..., nx//20: -nx//20-1]
 
     # integrate over x2 (and x3 if it is a 3D sim.), s1 will be 1D now.

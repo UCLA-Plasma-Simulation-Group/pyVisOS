@@ -4,54 +4,130 @@ import osh5def
 import numpy as np
 import copy
 import re
-from functools import wraps, partial
+from functools import wraps, partial, reduce
 import warnings
 import osh5io
 import glob
 from scipy import signal
 
 
-def metasl(func, mapping=(0, 0)):
+def metasl(func):
     """save meta data before calling the function and restore them to output afterwards
-    The input to output mapping is specified in the keyword "mapping" where (i, o) is the
-    position of i-th input parameters for which meta data will be saved and the o-th output
-    return values that the meta data will be restored to. Multiple save/restore should be
-    written as ((i1,o1), (i2,o2), (i3,o3)) etc. The counting start from 0
+    It has the following limitations:
+        It saves the metadata of the first argument and only supports function that return one quantity
     """
     @wraps(func)
     def sl(*args, **kwargs):
-        # search for all specified input arguments
-        saved, kl = [], []
-        if isinstance(mapping[0], tuple):  # multiple save/load
-            kl = sorted(list(mapping), key=lambda a: a[0])  # sort by input param. pos.
-        else:
-            kl = [mapping]
-        if len(args) < kl[-1][0]:  # TODO(1) they can be in the kwargs
-            raise Exception('Cannot find the ' + str(kl[-1][0]) + '-th argument for meta data saving')
+        saved = None
         # save meta data into a list
-        for tp in kl:
-            if hasattr(args[tp[0]], 'meta2dict'):
-                saved.insert(0, (args[tp[0]].meta2dict(), tp[1]))
-        if not iter(saved):
-            raise ValueError('Illegal mapping parameters')
+        if hasattr(args[0], 'meta2dict'):
+            saved = args[0].meta2dict()
         # execute user function
         out = func(*args, **kwargs)
         # load saved meta data into specified positions
-        ol, tl = [], out if isinstance(out, tuple) else (out, )
         try:
-            for tp in saved:
-                if isinstance(tl[tp[1]], osh5def.H5Data):
-                    ol.append(osh5def.H5Data.__dict__.update(tp[0]))
-                else:
-                    aaa = tl[tp[1]]
-                    ol.append(osh5def.H5Data(aaa, **tp[0]))
-        except IndexError:
-            raise IndexError('Output does not have ' + str(tp[1]) + ' elements')
+            if isinstance(out, osh5def.H5Data):
+                out.__dict__.update(saved)
+            else:
+                out = osh5def.H5Data(out, **saved)
         except:
-            raise TypeError('Output[' + str(tp[1]) + '] is not/cannot convert to H5Data')
-        tmp = tuple(ol) if len(ol) > 1 else ol[0] if ol else out
-        return tmp
+            raise TypeError('Output is not/cannot convert to H5Data')
+        return out
     return sl
+
+
+class __NameNotFound(object):
+    pass
+
+
+def override_num_indexing_kw(kw, name, default_val=__NameNotFound, h5data_pos=0):
+    """
+        inject one more keyword to the wrapped function. If kw == name users are forced to use string indexing
+        the value of kw (usually named 'axis' or 'axes') now would be replace by the value of H5Data.index_of(name). 
+    :param kw: str, name of the keyword to be overridden
+    :param name: str, name of the new keyword accepting string as index
+    :param default_val: default value of parameter 'name'. Using mutable such as string as default value is not adviced
+    :param h5data_pos: position of h5data in the args list
+    :return: the decorator
+    """
+    def _decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            val = kwargs.pop(name, default_val)
+            if val is not __NameNotFound:
+                kwargs[kw] = args[h5data_pos].index_of(val)
+            return f(*args, **kwargs)
+        return wrapper
+    return _decorator
+
+
+def enhence_num_indexing_kw(kw, h5data_pos=0):
+    """
+        kw (usually named 'axis' or 'axes') now should be able to handle both number and string
+        index (but not mixing the two)
+    :param kw: str, name of the keyword to be overridden
+    :param h5data_pos: position of h5data in the args list
+    :return: the decorator
+    """
+    def _decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            val = kwargs.pop(kw, __NameNotFound)
+            if val is not __NameNotFound:
+                if not (isinstance(val, int) or isinstance(val[0], int)):
+                    # print(kwargs[kw])
+                    kwargs[kw] = args[h5data_pos].index_of(val)
+                else:  # put the value back
+                    # kwargs.update({kw: val})
+                    kwargs[kw] = val
+            return f(*args, **kwargs)
+        return wrapper
+    return _decorator
+
+
+def metasl_map(mapping=(0, 0)):  # not well tested
+    def _my_decorator(func):
+        """save meta data before calling the function and restore them to output afterwards
+        The input to output mapping is specified in the keyword "mapping" where (i, o) is the
+        position of i-th input parameters for which meta data will be saved and the o-th output
+        return values that the meta data will be restored to. Multiple save/restore should be
+        written as ((i1,o1), (i2,o2), (i3,o3)) etc. The counting start from 0
+        """
+        @wraps(func)
+        def sl(*args, **kwargs):
+            # search for all specified input arguments
+            saved, kl = [], []
+            if isinstance(mapping[0], tuple):  # multiple save/load
+                kl = sorted(list(mapping), key=lambda a: a[0])  # sort by input param. pos.
+            else:
+                kl = [mapping]
+            if len(args) < kl[-1][0]:  # TODO(1) they can be in the kwargs
+                raise Exception('Cannot find the ' + str(kl[-1][0]) + '-th argument for meta data saving')
+            # save meta data into a list
+            for tp in kl:
+                if hasattr(args[tp[0]], 'meta2dict'):
+                    saved.insert(0, (args[tp[0]].meta2dict(), tp[1]))
+            if not iter(saved):
+                raise ValueError('Illegal mapping parameters')
+            # execute user function
+            out = func(*args, **kwargs)
+            # load saved meta data into specified positions
+            ol, tl = [], out if isinstance(out, tuple) else (out, )
+            try:
+                for tp in saved:
+                    if isinstance(tl[tp[1]], osh5def.H5Data):
+                        ol.append(osh5def.H5Data.__dict__.update(tp[0]))
+                    else:
+                        aaa = tl[tp[1]]
+                        ol.append(osh5def.H5Data(aaa, **tp[0]))
+            except IndexError:
+                raise IndexError('Output does not have ' + str(tp[1]) + ' elements')
+            except:
+                raise TypeError('Output[' + str(tp[1]) + '] is not/cannot convert to H5Data')
+            tmp = tuple(ol) if len(ol) > 1 else ol[0] if ol else out
+            return tmp
+        return sl
+    return _my_decorator
 
 
 def stack(arr, axis=0, axesdata=None):
@@ -77,30 +153,78 @@ def stack(arr, axis=0, axesdata=None):
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
-def combine(dirname, axesdata=None, save=None):
+def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None):
     """
     stack a directory of grid data and optionally save the result to a file
-    :param dirname: name of the directory
+    :param dir_or_filelist: name of the directory
+    :param prefix: string, match file names with specific prefix
+    :param file_slice: a slice that applies to the file name list, useful for skipping every other files or start
+                        in the middle of the list for example
+    :param preprocess: a list of callable (and their args and kwargs if any) that will act on the data before stacking
+                        happens. It has to accept one H5Data objects as argument and return one H5Data objects.
+                        Note that it has to be a list, not tuple or any other type, aka if isinstance(preprocess, list)
+                        returns False then this parameter will be ignored entirely.
     :param axesdata: user difined axes, see stack for more detail
     :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
-    :return: combined grid data, one dimension more than the original
+    :return: combined grid data, one dimension more than the preprocessed original data
+    Usage of preprocess:
+    The functino list should look like:
+    [(func1, arg11, arg21, ..., argn1, {'kwarg11': val11, 'kwarg21': val21, ..., 'kwargn1', valn1}),
+     (func2, arg12, arg22, ..., argn2, {'kwarg12': val12, 'kwarg22': val22, ..., 'kwargn2', valn2}),
+     ...,
+     (func2, arg1n, arg2n, ..., argnn, {'kwarg1n': val1n, 'kwarg2n': val2n, ..., 'kwargnn', valnn})] where 
+     any of the *args and/or **args can be omitted. see also __parse_func_param for limitations.
+        if preprocess=[(numpy.power, 2), (numpy.average, {axis=0}), numpy.sqrt], then the data to be stacked is
+        numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
     """
-    flist = sorted(glob.glob(dirname + '/*.h5'))
-    tmp = []
-    for f in flist:
-        tmp.append(osh5io.read_h5(f))
+    prfx = str(prefix).strip() if prefix else ''
+
+    if isinstance(dir_or_filelist, str):
+        flist = sorted(glob.glob(dir_or_filelist + '/' + prfx + '*.h5'))[file_slice]
+    else:  # dir_or_filelist is a list of file names
+        flist = dir_or_filelist[file_slice]
+    if isinstance(preprocess, list) and preprocess:
+        func_list = [__parse_func_param(item) for item in preprocess]
+        tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(fn)) for fn in flist]
+    else:
+        tmp = [osh5io.read_h5(f) for f in flist]
     res = stack(tmp, axesdata=axesdata)
     if save:
         if not isinstance(save, str):
-            save = dirname + res.name + '.h5'
+            save = dir_or_filelist if isinstance(dir_or_filelist, str) else './' + res.name + '.h5'
         osh5io.write_h5(res, save)
     return res
+
+
+def __parse_func_param(item):
+    """
+    The limitation here is that
+    1) (solvable by user defined functions) it can not handle a function with the following signature:
+        function f has only positional arguments, i.e. f(arg1, arg2, ..., argn), and argn is expecting a dict.
+        User can define a wrapper function to switch the argument positions or add a dummy argument at the end.
+    2) (solvable within our notation) user wants to pass a dict as the last positional argument to the
+        following function: g(arg1, arg2, ..., argn, kwarg1=val1, ..., kwargn=valn) where argn is expecting a
+        dict. The problem can be avoid by adding an empty dict to the end (g, arg1, ..., argn, {}).
+        It may confuse users though.
+    """
+    # we don't return functools.partial here because it will break the ufunc behavior
+    try:
+        iter(item)
+        # assuming if last element is not a dictionary then it is one of the positional arguments
+        if isinstance(item[-1], dict):
+            args, kwargs = item[1:-1], item[-1]
+        else:
+            args, kwargs = item[1:], {}
+    except TypeError:
+        # unary function, nothing to do
+        return item, (), {}
+    return item[0], args, kwargs
 
 
 # #----------------------------------- FFT Wrappers ----------------------------------------
 # sfunc: for shifting; ffunc: for calculating frequency; ftfunc: for fft the data; uafunc: for updating axes
 #
-def __idle(a, *args, **kwargs):
+def __idle(a, *_args, **_kwargs):
     return a
 
 
@@ -127,23 +251,19 @@ def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
         axes[i].attrs.setdefault('shift', axes[i].min)  # save lower bound. value of axes
         axes[i].ax = sfunc(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
         if axes[i].attrs['NAME'] == 't' or axes[i].attrs['LONG_NAME'] == 'time' or axes[i].attrs['UNITS'].is_time():
-            axes[i].attrs['NAME'] = 'w'
             axes[i].attrs['LONG_NAME'] = '\omega'
         else:
-            axes[i].attrs['NAME'] = ''.join(['K(', axes[i].attrs['NAME'], ')'])
             axes[i].attrs['LONG_NAME'] = ''.join(['K(', axes[i].attrs['LONG_NAME'], ')'])
         axes[i].attrs['UNITS'] **= -1
 
 
 @__try_update_axes
-def _update_ifft_axes(axes, idx,  shape, sfunc, ffunc):
-    key, en = ['NAME', 'LONG_NAME'], [2, 2]
+def _update_ifft_axes(axes, idx,  shape, _sfunc, ffunc):
+    key, en = ['LONG_NAME'], [2]
     warned = False
     for i in idx:
         axes[i].ax = ffunc(shape[i], d=axes[i].increment, min=axes[i].attrs.get('shift', 0))
-        if (axes[i].attrs['NAME'] == 'w' or axes[i].attrs['LONG_NAME'] == '\omega' or
-                axes[i].attrs['UNITS'].is_frequency()):
-            axes[i].attrs['NAME'] = 't'
+        if axes[i].attrs['LONG_NAME'] == '\omega' or axes[i].attrs['UNITS'].is_frequency():
             axes[i].attrs['LONG_NAME'] = 'time'
         else:
             for k, e in zip(key, en):
@@ -190,26 +310,32 @@ __shifted_fft = partial(__shifted_ft_gen, sfunc=np.fft.fftshift, ffunc=np.fft.ff
 __shifted_ifft = partial(__shifted_ft_gen, sfunc=np.fft.ifftshift, ffunc=_get_ifft_axis, uafunc=_update_ifft_axes)
 
 
+@enhence_num_indexing_kw('axes')
 def fftn(a, s=None, axes=None, norm=None):
     return __shifted_fft(np.fft.fftn)(a, s=s, axes=axes, norm=norm)
 
 
+@enhence_num_indexing_kw('axes')
 def fft2(a, s=None, axes=(-2, -1), norm=None):
     return __shifted_fft(np.fft.fft2)(a, s=s, axes=axes, norm=norm)
 
 
+@enhence_num_indexing_kw('axis')
 def fft(a, n=None, axis=-1, norm=None):
     return __shifted_fft(np.fft.fft)(a, s=n, axes=axis, norm=norm)
 
 
+@enhence_num_indexing_kw('axes')
 def ifftn(a, s=None, axes=None, norm=None):
     return __shifted_ifft(np.fft.ifftn)(a, s=s, axes=axes, norm=norm)
 
 
+@enhence_num_indexing_kw('axes')
 def ifft2(a, s=None, axes=(-2, -1), norm=None):
     return __shifted_ifft(np.fft.ifft2)(a, s=s, axes=axes, norm=norm)
 
 
+@enhence_num_indexing_kw('axis')
 def ifft(a, n=None, axis=-1, norm=None):
     # if axes is None:
     #     axes = -1
@@ -237,45 +363,51 @@ def __restore_space_shape(xdfunc):
 
 
 @__restore_space_shape
-def __rss_1d(a, s, axes):
+def __rss_1d(a, _s, axes):
     return a.data_attrs['oshape'][-1] if axes is None else a.data_attrs['oshape'][axes]
 
 
 @__restore_space_shape
-def __rss_2d(a, s, axes):
+def __rss_2d(a, _s, axes):
     return a.data_attrs['oshape'][-2:] if axes is None else tuple([a.data_attrs['oshape'][i] for i in axes])
 
 
 @__restore_space_shape
-def __rss_nd(a, s, axes):
+def __rss_nd(a, _s, axes):
     return a.data_attrs['oshape'] if axes is None else tuple([a.data_attrs['oshape'][i] for i in axes])
 
 
+@enhence_num_indexing_kw('axes')
 def rfftn(a, s=None, axes=None, norm=None):
     __save_space_shape(a, s)
     return __shifted_rfft(np.fft.rfftn)(a, s=s, axes=axes, norm=norm)
 
 
+@enhence_num_indexing_kw('axes')
 def rfft2(a, s=None, axes=(-2, -1), norm=None):
     __save_space_shape(a, s)
     return __shifted_rfft(np.fft.rfft2)(a, s=s, axes=axes, norm=norm)
 
 
+@enhence_num_indexing_kw('axis')
 def rfft(a, n=None, axis=-1, norm=None):
     __save_space_shape(a, n)
     return __shifted_rfft(np.fft.rfft)(a, s=n, axes=axis, norm=norm)
 
 
+@enhence_num_indexing_kw('axes')
 def irfftn(a, s=None, axes=None, norm=None):
     s = __rss_nd(a, s, axes)
     return __shifted_irfft(np.fft.irfftn)(a, s=s, axes=axes, norm=norm)
 
 
+@enhence_num_indexing_kw('axes')
 def irfft2(a, s=None, axes=(-2, -1), norm=None):
     s = __rss_2d(a, s, axes)
     return __shifted_irfft(np.fft.irfft2)(a, s=s, axes=axes, norm=norm)
 
 
+@enhence_num_indexing_kw('axis')
 def irfft(a, n=None, axis=-1, norm=None):
     n = __rss_1d(a, n, axis)
     return __shifted_irfft(np.fft.irfft)(a, s=n, axes=axis, norm=norm)
@@ -286,6 +418,7 @@ __shifted_hfft = partial(__shifted_ft_gen, sfunc=np.fft.fftshift, ffunc=np.fft.f
 __shifted_ihfft = partial(__shifted_ft_gen, sfunc=__idle, ffunc=_get_ihfft_axis, uafunc=_update_ifft_axes)
 
 
+@enhence_num_indexing_kw('axis')
 def hfft(a, n=None, axis=-1, norm=None):
     if n is None:
         n = a.shape[-1] if axis is None else a.shape[axis]
@@ -293,17 +426,20 @@ def hfft(a, n=None, axis=-1, norm=None):
     return __shifted_hfft(np.fft.hfft)(a, s=nn, axes=axis, norm=norm)
 
 
+@enhence_num_indexing_kw('axis')
 def ihfft(a, n=None, axis=-1, norm=None):
     return __shifted_ihfft(np.fft.ihfft)(a, s=n, axes=axis, norm=norm)
 # ----------------------------------- FFT Wrappers ----------------------------------------
 
 
 # ---------------------------------- SciPy Wrappers ---------------------------------------
+@enhence_num_indexing_kw('axis')
 @metasl
 def hilbert(x, N=None, axis=-1):
     return signal.hilbert(x, N=N, axis=axis)
 
 
+@enhence_num_indexing_kw('axis')
 @metasl
 def hilbert2(x, N=None):
     return signal.hilbert2(x, N=N)
