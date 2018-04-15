@@ -259,7 +259,6 @@ class _LocIndexer(object):
                     # It is something we don't recognize, now hopefully idx know how to convert to int
                     converted.append(int(idx))
                     dn += 1
-            print('Indexer sees:', converted)
         return self.__data[tuple(converted)]
 
 
@@ -565,6 +564,7 @@ class H5Data(np.ndarray):
                         None if idx.start is None else ax.size - idx.start,
                         idx.step]) for ax, idx in zip(axes, index)]
 
+<<<<<<< HEAD
     def index_of(self, axis_name):
         """return the index of the axis given its name. raise ValueError if not found"""
         axn = [ax.name for ax in self.axes]
@@ -606,6 +606,49 @@ class H5Data(np.ndarray):
             return res.copy() if res.base is self else res
         return res
 
+||||||| merged common ancestors
+=======
+    def index_of(self, axis_name):
+        """return the index of the axis given its name. raise ValueError if not found"""
+        axn = [ax.name for ax in self.axes]
+        try:
+            if isinstance(axis_name, str):
+                return axn.index(axis_name)
+            else:
+                return tuple(axn.index(a) for a in axis_name)
+        except ValueError:
+            raise ValueError('one or more of axis names not found in axis list ' + str(axn))
+
+    def sel(self, new=False, **bound):
+        """
+            indexing H5Data object by axis name
+        :param bound: keyword dict specifying the axis name and range
+        :param new: if True return a copy of the object
+        :return: a copy or a view of the H5Data object depending on what bound looks like
+        Examples:
+            # use a dictionary
+            a.sel({'x1': slice(0.4, 0.7, 0.02), 'p1': 0.5}) will return an H5Data oject whose x1 axis range
+                is (0.4, 0.7) with 0.02 spacing and p1 axis equal to 0.5. aka the return will be one dimension
+                less than a
+            # use keyword format to do the same thing
+            a.sel(x1=slice(0.4, 0.7, 0.02), p1=0.5)
+            # use index other than silce or int will return a numpy ndarray (same as the numpy array advanced
+            # indexing rule). The following return a numpy ndarray
+            a.sel(x1=[0.2,0.5,0.8])
+        """
+        # early termination
+        if not bound:
+            return self
+
+        ind = [slice(None,)] * self.ndim
+        for axn, bnd in bound.items():
+            ind[self.index_of(axn)] = bnd
+        res = self.loc[tuple(ind)]
+        if new:
+            return res.copy() if res.base is self else res
+        return res
+
+>>>>>>> master
     def subrange(self, bound=None, new=False):
         """
         use .axes[:] data to index the array
