@@ -259,7 +259,6 @@ class _LocIndexer(object):
                     # It is something we don't recognize, now hopefully idx know how to convert to int
                     converted.append(int(idx))
                     dn += 1
-            print('Indexer sees:', converted)
         return self.__data[tuple(converted)]
 
 
@@ -600,7 +599,6 @@ class H5Data(np.ndarray):
         ind = [slice(None,)] * self.ndim
         for axn, bnd in bound.items():
             ind[self.index_of(axn)] = bnd
-        print('.sel sees', ind)
         res = self.loc[tuple(ind)]
         if new:
             return res.copy() if res.base is self else res
