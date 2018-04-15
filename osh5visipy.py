@@ -247,7 +247,7 @@ class Generic2DPlotCtrl(object):
         bnd = [(self.y_min_wgt.value, self.y_max_wgt.value, self.y_step_wgt.value),
                (self.x_min_wgt.value, self.x_max_wgt.value, self.x_step_wgt.value)]
         self._slcs = tuple(slice(*self._data.get_index_slice(self._data.axes[i], bd)) for i, bd in enumerate(bnd))
-        self.im.figure.cla()
+        self.im.figure.clf()
         self.im = self.plot_data()
         # dirty hack
         if self.norm_selector.value[0] == LogNorm:
