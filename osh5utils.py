@@ -241,7 +241,7 @@ def __try_update_axes(updfunc):
         except TypeError:
             shape = (shape,)
         # The data size can change due to the s (or n) keyword. We have to force axes update somehow.
-        updfunc(a.axes, idx, shape, sfunc=sfunc, ffunc=ffunc)
+        updfunc(a.axes, idx, shape, sfunc, ffunc=ffunc)
     return update_axes
 
 
