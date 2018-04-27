@@ -14,18 +14,15 @@ import threading
 print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/ipython notebook")
 
 
-def osimshow_w(data, *args, newfig=True, show=True, **kwargs):
+def osimshow_w(data, *args, show=True, **kwargs):
     """
     2D plot with widgets
     :param data: 2D H5Data
     :param args: arguments passed to 2d plotting widgets. reserved for future use
-    :param newfig: whether to create a new figure
     :param show: whether to show the widgets
     :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
     :return: if show == True return None otherwise return a list of widgets
     """
-    if newfig:
-        plt.figure()
     wl = Generic2DPlotCtrl(data, *args, **kwargs).widgets_list
     if show:
         display(*wl)
@@ -33,19 +30,16 @@ def osimshow_w(data, *args, newfig=True, show=True, **kwargs):
         return wl
 
 
-def slicer_w(data, *args, newfig=True, show=True, slider_only=False, **kwargs):
+def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     """
     A slider for 3D data
     :param data: 3D H5Data
     :param args: arguments passed to plotting widgets. reserved for future use
-    :param newfig: whether to create a new figure
     :param show: whether to show the widgets
     :param slider_only: if True only show the slider otherwise show also other plot control (aka 'the tab')
     :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
     :return: whatever widgets that are not shown
     """
-    if newfig:
-        plt.figure()
     wl = Slicer(data, *args, **kwargs).widgets_list
     tab, slider = wl[0], widgets.HBox(wl[1:-2])
     if show:
@@ -62,7 +56,8 @@ class Generic2DPlotCtrl(object):
     tab_contents = ['Data', 'Labels', 'Axes', 'Lineout', 'Colormaps']
     eps = 1e-40
 
-    def __init__(self, data, slcs=(slice(None, ), ), title=None, norm=None):
+    def __init__(self, data, slcs=(slice(None, ), ), title=None, norm=None, fig_handle=None):
+
         self._data, self._slcs, self.im_xlt = data, slcs, None
         # # # -------------------- Tab0 --------------------------
         items_layout = Layout(flex='1 1 auto', width='auto')
@@ -197,10 +192,18 @@ class Generic2DPlotCtrl(object):
         # plotting and then setting normalization colors
         self.out = Output()
         self.out_main = Output()
-        self.observer_thrd = None
+        self.observer_thrd, self.cb = None, None
+        self.fig = plt.figure() if fig_handle is None else fig_handle
+        self.ax = self.fig.add_subplot(111)
         with self.out_main:
-            self.im = self.plot_data()
+            self.im, self.cb = self.plot_data()
+            display(self.fig)
+        # self.fig.show()
         # self.set_norm()
+
+    @property
+    def self(self):
+        return self
 
     @property
     def widgets_list(self):
@@ -226,16 +229,16 @@ class Generic2DPlotCtrl(object):
         """if the size of the data is the same we can just redraw part of figure"""
         self._data = data
         self.im.set_data(self.__pp(data[self._slcs]))
-        self.im.figure.canvas.draw()
+        self.ax.figure.canvas.draw()
 
     def update_title(self, change):
-        self.im.axes.set_title(change['new'])
+        self.ax.axes.set_title(change['new'])
 
     def update_xlabel(self, change):
-        self.im.axes.xaxis.set_label_text(change['new'])
+        self.ax.axes.xaxis.set_label_text(change['new'])
 
     def update_ylabel(self, change):
-        self.im.axes.yaxis.set_label_text(change['new'])
+        self.ax.axes.yaxis.set_label_text(change['new'])
 
     def update_cbar(self, change):
         self.im.colorbar.set_label(change['new'])
@@ -247,11 +250,14 @@ class Generic2DPlotCtrl(object):
         bnd = [(self.y_min_wgt.value, self.y_max_wgt.value, self.y_step_wgt.value),
                (self.x_min_wgt.value, self.x_max_wgt.value, self.x_step_wgt.value)]
         self._slcs = tuple(slice(*self._data.get_index_slice(self._data.axes[i], bd)) for i, bd in enumerate(bnd))
-        self.im.figure.clf()
-        self.im = self.plot_data()
+        self.ax.figure.clf()
+        self.plot_data(im=self.im)
+        # self.ax.figure.show()
         # dirty hack
         if self.norm_selector.value[0] == LogNorm:
-            self.im.set_norm(LogNorm())
+            self.cb.set_norm(LogNorm())
+        # self.fig.show()
+        # display(self.fig)
 
     def refresh_tab_wgt(self, update_list):
         """
@@ -263,10 +269,13 @@ class Generic2DPlotCtrl(object):
         self.tab.children = tuple(newtab)
 
     def plot_data(self, **passthrough):
+        # ax = None if not hasattr(self, 'im') else self.im
+        # self.out_main.clear_output(wait=True)
+        print(id(self.ax), id(self.cb))
         return osh5vis.osimshow(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
                                 norm=self.norm_selector.value[0](**self.__get_norm()), title=self.title.value,
                                 xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
-                                **passthrough)
+                                ax=self.ax, cb=self.cb, **passthrough)
 
     def __get_tab0(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt])
@@ -316,10 +325,13 @@ class Generic2DPlotCtrl(object):
 
     def update_norm(self, *args):
         # with LogNorm we are actually doing log(data), therefore we have to replot the whole thing to get correct cmap
-        self.im.figure.clf()
-        self.im = self.plot_data()
+        self.ax.figure.clf()
+        self.plot_data()
         # update norm
         self.set_norm(*args)
+        # self.ax.figure.show()
+        # self.fig.show()
+        # display(self.fig)
 
     def __get_norm(self):
         vmin = None if self.if_vmin_auto.value else self.norm_selector.value[1].children[0].children[0].value
@@ -334,7 +346,9 @@ class Generic2DPlotCtrl(object):
 
     def set_norm(self, *_):
         param = self.__get_norm()
-        self.im.set_norm(self.norm_selector.value[0](**param))
+        self.cb.set_norm(self.norm_selector.value[0](**param))
+        # self.fig.show()
+        # display(self.fig)
 
     def __assgin_valid_vmin(self, v=None):
         # if it is log scale
@@ -458,8 +472,10 @@ class Slicer(Generic2DPlotCtrl):
         self.update_data(self.data[self.slcs], slcs=[i for i in self.slcs if not isinstance(i, int)])
         self.reset_plot_area()
         self.set_norm()
-        self.im.figure.clf()
-        self.im = self.plot_data()
+        self.ax.figure.clf()
+        self.im, self.cb = self.plot_data()
+        # self.fig.show()
+        # display(self.fig)
 
     def reset_slider_index(self):
         # stop the observe while updating values

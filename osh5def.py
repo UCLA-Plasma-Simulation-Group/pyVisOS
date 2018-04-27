@@ -575,6 +575,10 @@ class H5Data(np.ndarray):
         except ValueError:
             raise ValueError('one or more of axis names not found in axis list ' + str(axn))
 
+    def has_axis(self, axis_name):
+        """check if H5Data has axis with name axis_name"""
+        return axis_name in [ax.name for ax in self.axes]
+
     def sel(self, new=False, **bound):
         """
             indexing H5Data object by axis name
