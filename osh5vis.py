@@ -9,8 +9,15 @@ except ImportError:
 
 
 def default_title(h5data):
-    return ''.join([tex(h5data.data_attrs['LONG_NAME']), ', $t = ', "{:.2f}".format(h5data.run_attrs['TIME'][0]),
-                    '$  [$', h5data.run_attrs['TIME UNITS'], '$]'])
+    if h5data.has_axis('t'):
+        return tex(h5data.data_attrs['LONG_NAME'])
+    else:
+        try:
+            return ''.join([tex(h5data.data_attrs['LONG_NAME']), ', $t = ',
+                            "{:.2f}".format(h5data.run_attrs['TIME'][0]),
+                            '$  [$', h5data.run_attrs['TIME UNITS'], '$]'])
+        except KeyError:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
+            return tex(h5data.data_attrs['LONG_NAME'])
 
 
 def tex(s):
@@ -79,44 +86,75 @@ def osloglog(h5data, ax=None, **kwpassthrough):
 
 
 def __osplot2d(func, h5data, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
-               colorbar=True, **kwpassthrough):
-    extent_stuff = [h5data.axes[1].min, h5data.axes[1].max,
-                    h5data.axes[0].min, h5data.axes[0].max]
+               colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, fig=None,
+               **kwpassthrough):
+    if convert_xaxis:
+        axis = h5data.axes[1].to_phys_unit()
+        extx = axis[0].min(), axis[0].max()
+        xunit = axis[1]
+    else:
+        extx = h5data.axes[1].min, h5data.axes[1].max
+        xunit = h5data.axes[1].attrs['UNITS']
+
+    if convert_yaxis:
+        axis = h5data.axes[0].to_phys_unit()
+        exty = axis[0].min(), axis[0].max()
+        yunit = axis[1]
+    else:
+        exty = h5data.axes[0].min, h5data.axes[0].max
+        yunit = h5data.axes[0].attrs['UNITS']
+
+    extent_stuff = [extx[0], extx[1], exty[0], exty[1]]
     plot_object = func(h5data.view(np.ndarray), extent=extent_stuff, aspect='auto', origin='lower', **kwpassthrough)
+    if ax is None:
+        set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
+        plt.xlim, plt.ylim, plt.xlabel, plt.ylabel, plt.title
+    else:
+        set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
+        ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
+    set_clim = plt.clim if im is None else im.set_clim
+
     if xlim is not None:
-        plt.xlim(xlim)
+        set_xlim(xlim)
     if ylim is not None:
-        plt.ylim(ylim)
+        set_ylim(ylim)
     if xlabel is None:
-        xlabel = axis_format(h5data.axes[1].attrs['LONG_NAME'], h5data.axes[1].attrs['UNITS'])
+        xlabel = axis_format(h5data.axes[1].attrs['LONG_NAME'], xunit)
     if ylabel is None:
-        ylabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS'])
+        ylabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], yunit)
     if title is None:
         title = default_title(h5data)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
+    set_xlabel(xlabel)
+    set_ylabel(ylabel)
+    set_title(title)
+
     if clim is not None:
-        plt.clim(clim)
+        set_clim(clim)
+
     if colorbar:
-        cb = plt.colorbar(plot_object)
+        if not cb:
+            cb = plt.colorbar(plot_object) if fig is None else fig.colorbar(plot_object)
         if cblabel is None:
             cb.set_label(h5data.data_attrs['UNITS'].tex())
         else:
             cb.set_label(cblabel)
-    return plot_object
+        return plot_object, cb
+    return plot_object, None
 
 
-def osimshow(h5data, **kwpassthrough):
-    return __osplot2d(plt.imshow, h5data, **kwpassthrough)
+def osimshow(h5data, ax=None, cb=None, **kwpassthrough):
+    imshow = ax.imshow if ax is not None else plt.imshow
+    return __osplot2d(imshow, h5data, cb=cb, **kwpassthrough)
 
 
-def oscontour(h5data, **kwpassthrough):
-    return __osplot2d(plt.contour, h5data, **kwpassthrough)
+def oscontour(h5data, ax=None, cb=None, **kwpassthrough):
+    contour = ax.contour if ax is not None else plt.contour
+    return __osplot2d(contour, h5data, cb=cb, **kwpassthrough)
 
 
-def oscontourf(h5data, **kwpassthrough):
-    return __osplot2d(plt.contourf, h5data, **kwpassthrough)
+def oscontourf(h5data, ax=None, cb=None, **kwpassthrough):
+    contourf = ax.contourf if ax is not None else plt.contourf
+    return __osplot2d(contourf, h5data, cb=cb, **kwpassthrough)
 
 
 def new_fig(h5data, figsize=None, dpi=None, facecolor=None, edgecolor=None, linewidth=0.0, frameon=None,

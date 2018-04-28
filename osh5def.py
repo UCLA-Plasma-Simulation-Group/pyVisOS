@@ -231,7 +231,7 @@ class _LocIndexer(object):
     def iterable2int_list(self, i, iterable):
         return H5Data.get_index_list(self.__data.axes[i], iterable)
 
-    def __getitem__(self, index):
+    def __convert_index(self, index):
         try:
             iter(index)
             idxl = index
@@ -259,7 +259,13 @@ class _LocIndexer(object):
                     # It is something we don't recognize, now hopefully idx know how to convert to int
                     converted.append(int(idx))
                     dn += 1
-        return self.__data[tuple(converted)]
+        return converted
+
+    def __getitem__(self, index):
+        return self.__data[tuple(self.__convert_index(index))]
+
+    def __setitem__(self, index, value):
+        self.__data.values[tuple(self.__convert_index(index))] = value
 
 
 # Important: the first occurrence of serial numbers between '-' and '.' must be the time stamp information
@@ -321,6 +327,15 @@ class H5Data(np.ndarray):
     def units(self):
         return self.data_attrs.get('UNITS', OSUnits('a.u.'))
 
+    @property
+    def values(self):
+        return self.view(np.ndarray)
+
+    @values.setter
+    def values(self, numpy_ndarray):
+        v = self.view(np.ndarray)
+        v[()] = numpy_ndarray[()]
+
     # need the following two function for mpi4py high level function to work correctly
     def __setstate__(self, state, *args):
         self.__dict__ = state[-1]
@@ -360,23 +375,26 @@ class H5Data(np.ndarray):
             idxl = index
         except TypeError:
             idxl = [index]
-        converted, nn, dn = [], ndim - len(idxl) + idxl.count(None) + 1, 0
-        for idx in idxl:
-            if isinstance(idx, int):  # i is a trivial dimension now
-                try:
-                    del v.axes[dn]
-                except AttributeError:
-                    break
-            elif isinstance(idx, slice):  # also slice the axis
-                v.axes[dn].ax = v.axes[dn].ax[idx]
-                dn += 1
-            elif idx is Ellipsis:  # let's fast forward to the next explicitly referred axis
-                dn += nn
-            elif idx is None:  # in numpy None means newAxis
-                v.axes.insert(dn, DataAxis(0., 1., 1))
-                dn += 1
-            else:  # type not supported
-                return v.view(np.ndarray)
+        try:
+            converted, nn, dn = [], ndim - len(idxl) + idxl.count(None) + 1, 0
+            for idx in idxl:
+                if isinstance(idx, int):  # i is a trivial dimension now
+                    try:
+                        del v.axes[dn]
+                    except AttributeError:
+                        break
+                elif isinstance(idx, slice):  # also slice the axis
+                    v.axes[dn].ax = v.axes[dn].ax[idx]
+                    dn += 1
+                elif idx is Ellipsis:  # let's fast forward to the next explicitly referred axis
+                    dn += nn
+                elif idx is None:  # in numpy None means newAxis
+                    v.axes.insert(dn, DataAxis(0., 1., 1))
+                    dn += 1
+                else:  # type not supported
+                    return v.view(np.ndarray)
+        except:
+            return v.view(np.ndarray)
         return v
 
     def meta2dict(self):
@@ -574,6 +592,10 @@ class H5Data(np.ndarray):
                 return tuple(axn.index(a) for a in axis_name)
         except ValueError:
             raise ValueError('one or more of axis names not found in axis list ' + str(axn))
+
+    def has_axis(self, axis_name):
+        """check if H5Data has axis with name axis_name"""
+        return axis_name in [ax.name for ax in self.axes]
 
     def sel(self, new=False, **bound):
         """

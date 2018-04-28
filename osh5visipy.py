@@ -14,18 +14,15 @@ import threading
 print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/ipython notebook")
 
 
-def osimshow_w(data, *args, newfig=True, show=True, **kwargs):
+def osimshow_w(data, *args, show=True, **kwargs):
     """
     2D plot with widgets
     :param data: 2D H5Data
     :param args: arguments passed to 2d plotting widgets. reserved for future use
-    :param newfig: whether to create a new figure
     :param show: whether to show the widgets
     :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
     :return: if show == True return None otherwise return a list of widgets
     """
-    if newfig:
-        plt.figure()
     wl = Generic2DPlotCtrl(data, *args, **kwargs).widgets_list
     if show:
         display(*wl)
@@ -33,19 +30,16 @@ def osimshow_w(data, *args, newfig=True, show=True, **kwargs):
         return wl
 
 
-def slicer_w(data, *args, newfig=True, show=True, slider_only=False, **kwargs):
+def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     """
     A slider for 3D data
     :param data: 3D H5Data
     :param args: arguments passed to plotting widgets. reserved for future use
-    :param newfig: whether to create a new figure
     :param show: whether to show the widgets
     :param slider_only: if True only show the slider otherwise show also other plot control (aka 'the tab')
     :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
     :return: whatever widgets that are not shown
     """
-    if newfig:
-        plt.figure()
     wl = Slicer(data, *args, **kwargs).widgets_list
     tab, slider = wl[0], widgets.HBox(wl[1:-2])
     if show:
@@ -58,11 +52,18 @@ def slicer_w(data, *args, newfig=True, show=True, slider_only=False, **kwargs):
         return wl
 
 
+def animation_w(data, *args, **kwargs):
+    wl = Animation(data, *args, **kwargs).widgets_list
+    display(widgets.VBox([wl[0], widgets.HBox(wl[1:4]), widgets.HBox(wl[4:-2]), widgets.VBox(wl[-2:])]))
+
+
 class Generic2DPlotCtrl(object):
     tab_contents = ['Data', 'Labels', 'Axes', 'Lineout', 'Colormaps']
     eps = 1e-40
+    colormaps_available = sorted(c for c in plt.colormaps() if not c.endswith("_r"))
 
-    def __init__(self, data, slcs=(slice(None, ), ), title=None, norm=None):
+    def __init__(self, data, slcs=(slice(None, ), ), title=None, norm=None, fig_handle=None, **kwargs):
+
         self._data, self._slcs, self.im_xlt = data, slcs, None
         # # # -------------------- Tab0 --------------------------
         items_layout = Layout(flex='1 1 auto', width='auto')
@@ -70,19 +71,19 @@ class Generic2DPlotCtrl(object):
         # general parameters: vmin, vmax, clip
         self.if_vmin_auto = widgets.Checkbox(value=True, description='Auto', layout=items_layout)
         self.if_vmax_auto = widgets.Checkbox(value=True, description='Auto', layout=items_layout)
-        self.vmin_wgt = widgets.FloatText(value=np.min(data), description='vmin', continuous_update=False,
+        self.vmin_wgt = widgets.FloatText(value=np.min(data), description='vmin:', continuous_update=False,
                                           disabled=self.if_vmin_auto.value, layout=items_layout)
-        self.vlogmin_wgt = widgets.FloatText(value=self.eps, description='vmin', continuous_update=False,
+        self.vlogmin_wgt = widgets.FloatText(value=self.eps, description='vmin:', continuous_update=False,
                                              disabled=self.if_vmin_auto.value, layout=items_layout)
-        self.vmax_wgt = widgets.FloatText(value=np.max(data), description='vmax', continuous_update=False,
+        self.vmax_wgt = widgets.FloatText(value=np.max(data), description='vmax:', continuous_update=False,
                                           disabled=self.if_vmin_auto.value, layout=items_layout)
         self.if_clip_cm = widgets.Checkbox(value=True, description='Clip', layout=items_layout)
         # PowerNorm specific
-        self.gamma = widgets.FloatText(value=1, description='gamma', continuous_update=False, layout=items_layout)
+        self.gamma = widgets.FloatText(value=1, description='gamma:', continuous_update=False, layout=items_layout)
         # SymLogNorm specific
-        self.linthresh = widgets.FloatText(value=self.eps, description='linthresh', continuous_update=False,
+        self.linthresh = widgets.FloatText(value=self.eps, description='linthresh:', continuous_update=False,
                                            layout=items_layout)
-        self.linscale = widgets.FloatText(value=1.0, description='linscale', continuous_update=False,
+        self.linscale = widgets.FloatText(value=1.0, description='linscale:', continuous_update=False,
                                           layout=items_layout)
 
         # build the widgets tuple
@@ -100,7 +101,7 @@ class Generic2DPlotCtrl(object):
         # find out default value for norm_selector
         norm_avail = {'Log': ln_wgt, 'Normalize': n_wgt, 'Power': pn_wgt, 'SymLog': sln_wgt}
         self.norm_selector = widgets.Dropdown(options=norm_avail,
-                                              value=norm_avail.get(norm, n_wgt), description='Normalization')
+                                              value=norm_avail.get(norm, n_wgt), description='Normalization:')
         # additional care for LorNorm()
         self.__handle_lognorm()
         # re-plot button
@@ -139,20 +140,20 @@ class Generic2DPlotCtrl(object):
         self.apply_range_btn = widgets.Button(description='Apply', disabled=False, tooltip='set range', icon='refresh')
         self.axis_lim_wgt = widgets.HBox([self.setting_instructions, self.apply_range_btn])
         # x axis
-        self.x_min_wgt = widgets.FloatText(value=self._data.axes[1].min, description='xmin', continuous_update=False,
+        self.x_min_wgt = widgets.FloatText(value=self._data.axes[1].min, description='xmin:', continuous_update=False,
                                            layout=items_layout)
-        self.x_max_wgt = widgets.FloatText(value=self._data.axes[1].max, description='xmax', continuous_update=False,
+        self.x_max_wgt = widgets.FloatText(value=self._data.axes[1].max, description='xmax:', continuous_update=False,
                                            layout=items_layout)
         self.x_step_wgt = widgets.FloatText(value=self._data.axes[1].increment, continuous_update=False,
-                                            description='$\Delta x$', layout=items_layout)
+                                            description='$\Delta x$:', layout=items_layout)
         self.xaxis_lim_wgt = widgets.HBox([self.x_min_wgt, self.x_max_wgt, self.x_step_wgt])
         # y axis
-        self.y_min_wgt = widgets.FloatText(value=self._data.axes[0].min, description='ymin', continuous_update=False,
+        self.y_min_wgt = widgets.FloatText(value=self._data.axes[0].min, description='ymin:', continuous_update=False,
                                            layout=items_layout)
-        self.y_max_wgt = widgets.FloatText(value=self._data.axes[0].max, description='ymax', continuous_update=False,
+        self.y_max_wgt = widgets.FloatText(value=self._data.axes[0].max, description='ymax:', continuous_update=False,
                                            layout=items_layout)
         self.y_step_wgt = widgets.FloatText(value=self._data.axes[0].increment, continuous_update=False,
-                                            description='$\Delta y$', layout=items_layout)
+                                            description='$\Delta y$:', layout=items_layout)
         self.yaxis_lim_wgt = widgets.HBox([self.y_min_wgt, self.y_max_wgt, self.y_step_wgt])
         tab2 = widgets.VBox([self.axis_lim_wgt, self.xaxis_lim_wgt, self.yaxis_lim_wgt])
 
@@ -161,9 +162,11 @@ class Generic2DPlotCtrl(object):
                                                       layout=items_layout)
 
         # # # -------------------- Tab4 --------------------------
-        self.cmap_selector = widgets.Dropdown(options=sorted(c for c in plt.cm.datad if not c.endswith("_r")),
-                                              value='jet', description='Colormap')
-        tab4 = self.cmap_selector
+        user_cmap = kwargs.pop('cmap', 'jet')
+        self.cmap_selector = widgets.Dropdown(options=self.colormaps_available, value=user_cmap,
+                                              description='Colormap:')
+        self.cmap_reverse = widgets.Checkbox(value=False, description='Reverse', layout=items_layout)
+        tab4 = widgets.HBox([self.cmap_selector, self.cmap_reverse])
 
         # construct the tab
         self.tab = widgets.Tab()
@@ -181,6 +184,7 @@ class Generic2DPlotCtrl(object):
         self.if_vmax_auto.observe(self.__update_vmax, 'value')
         self.norm_selector.observe(self.__update_norm_wgt, 'value')
         self.cmap_selector.observe(self.update_cmap, 'value')
+        self.cmap_reverse.observe(self.update_cmap, 'value')
         self.title.observe(self.update_title, 'value')
         self.xlabel.observe(self.update_xlabel, 'value')
         self.ylabel.observe(self.update_ylabel, 'value')
@@ -197,10 +201,16 @@ class Generic2DPlotCtrl(object):
         # plotting and then setting normalization colors
         self.out = Output()
         self.out_main = Output()
-        self.observer_thrd = None
+        self.observer_thrd, self.cb = None, None
+        self.fig = plt.figure() if fig_handle is None else fig_handle
+        self.ax = self.fig.add_subplot(111)
         with self.out_main:
-            self.im = self.plot_data()
-        # self.set_norm()
+            self.im, self.cb = self.plot_data()
+            display(self.fig)
+
+    @property
+    def self(self):
+        return self
 
     @property
     def widgets_list(self):
@@ -226,32 +236,32 @@ class Generic2DPlotCtrl(object):
         """if the size of the data is the same we can just redraw part of figure"""
         self._data = data
         self.im.set_data(self.__pp(data[self._slcs]))
-        self.im.figure.canvas.draw()
+        self.fig.canvas.draw()
 
     def update_title(self, change):
-        self.im.axes.set_title(change['new'])
+        self.ax.axes.set_title(change['new'])
 
     def update_xlabel(self, change):
-        self.im.axes.xaxis.set_label_text(change['new'])
+        self.ax.axes.xaxis.set_label_text(change['new'])
 
     def update_ylabel(self, change):
-        self.im.axes.yaxis.set_label_text(change['new'])
+        self.ax.axes.yaxis.set_label_text(change['new'])
 
     def update_cbar(self, change):
         self.im.colorbar.set_label(change['new'])
 
-    def update_cmap(self, change):
-        self.im.set_cmap(change['new'])
+    def update_cmap(self, _change):
+        self.im.set_cmap(self.cmap_selector.value if not self.cmap_reverse.value else self.cmap_selector.value + '_r')
 
     def update_plot_area(self, *_):
         bnd = [(self.y_min_wgt.value, self.y_max_wgt.value, self.y_step_wgt.value),
                (self.x_min_wgt.value, self.x_max_wgt.value, self.x_step_wgt.value)]
         self._slcs = tuple(slice(*self._data.get_index_slice(self._data.axes[i], bd)) for i, bd in enumerate(bnd))
-        self.im.figure.clf()
-        self.im = self.plot_data()
+        self.cb.remove()
+        self.im, self.cb = self.plot_data(im=self.im)
         # dirty hack
         if self.norm_selector.value[0] == LogNorm:
-            self.im.set_norm(LogNorm())
+            self.cb.set_norm(LogNorm())
 
     def refresh_tab_wgt(self, update_list):
         """
@@ -266,7 +276,7 @@ class Generic2DPlotCtrl(object):
         return osh5vis.osimshow(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
                                 norm=self.norm_selector.value[0](**self.__get_norm()), title=self.title.value,
                                 xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
-                                **passthrough)
+                                ax=self.ax, fig=self.fig, **passthrough)
 
     def __get_tab0(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt])
@@ -315,10 +325,10 @@ class Generic2DPlotCtrl(object):
         self.__handle_lognorm()
 
     def update_norm(self, *args):
-        # with LogNorm we are actually doing log(data), therefore we have to replot the whole thing to get correct cmap
-        self.im.figure.clf()
-        self.im = self.plot_data()
-        # update norm
+        self.cb.remove()
+        self.im.remove()
+        self.im, self.cb = self.plot_data(im=self.im)
+        #  update norm
         self.set_norm(*args)
 
     def __get_norm(self):
@@ -334,7 +344,7 @@ class Generic2DPlotCtrl(object):
 
     def set_norm(self, *_):
         param = self.__get_norm()
-        self.im.set_norm(self.norm_selector.value[0](**param))
+        self.cb.set_norm(self.norm_selector.value[0](**param))
 
     def __assgin_valid_vmin(self, v=None):
         # if it is log scale
@@ -418,10 +428,10 @@ class Slicer(Generic2DPlotCtrl):
         self.slcs = self.__get_slice(d)
         self.axis_pos = widgets.FloatText(value=data.axes[self.comp][self.x],
                                           description=self.__axis_descr_format(), continuous_update=False)
-        self.index_slider = widgets.IntSlider(min=0, max=self.data.shape[self.comp] - 1, step=1, description='index',
+        self.index_slider = widgets.IntSlider(min=0, max=self.data.shape[self.comp] - 1, step=1, description='index:',
                                               value=self.data.shape[self.comp] // 2, continuous_update=False)
 
-        self.axis_selector = widgets.Dropdown(options=list(range(data.ndim)), value=self.comp, description='axis:');
+        self.axis_selector = widgets.Dropdown(options=list(range(data.ndim)), value=self.comp, description='axis:')
         self.axis_selector.observe(self.switch_slice_direction, 'value')
         self.index_slider.observe(self.update_slice, 'value')
         self.axis_pos.observe(self.__update_index_slider, 'value')
@@ -458,8 +468,10 @@ class Slicer(Generic2DPlotCtrl):
         self.update_data(self.data[self.slcs], slcs=[i for i in self.slcs if not isinstance(i, int)])
         self.reset_plot_area()
         self.set_norm()
-        self.im.figure.clf()
-        self.im = self.plot_data()
+        # self.ax.cla()
+        self.cb.remove()
+        self.im.remove()
+        self.im, self.cb = self.plot_data(im=self.im)
 
     def reset_slider_index(self):
         # stop the observe while updating values
@@ -479,3 +491,32 @@ class Slicer(Generic2DPlotCtrl):
         self.__update_axis_value()
         self.slcs[self.comp] = self.x
         self.redraw(self.data[self.slcs])
+
+
+class Animation(Slicer):
+    def __init__(self, data, interval=10, step=1, **kwargs):
+        super(Animation, self).__init__(data, **kwargs)
+        self.play = widgets.Play(interval=interval, value=self.x, min=0, max=len(self.data.axes[self.comp]),
+                                 step=step, description="Press play", disabled=False)
+        self.interval_wgt = widgets.IntText(value=interval, description='Interval:', disabled=False)
+        self.step_wgt = widgets.IntText(value=step, description='Step:', disabled=False)
+
+        # link everything together
+        widgets.jslink((self.play, 'value'), (self.index_slider, 'value'))
+        self.interval_wgt.observe(self.update_interval, 'value')
+        self.step_wgt.observe(self.update_step, 'value')
+
+    @property
+    def widgets_list(self):
+        return (self.tab, self.axis_pos, self.index_slider, self.axis_selector,
+                self.play, self.interval_wgt, self.step_wgt, self.out_main, self.out)
+
+    def switch_slice_direction(self, change):
+        super(Animation, self).switch_slice_direction(change)
+        self.play.max = len(self.data.axes[self.comp])
+
+    def update_interval(self, change):
+        self.play.interval = change['new']
+
+    def update_step(self, change):
+        self.play.step = change['new']
