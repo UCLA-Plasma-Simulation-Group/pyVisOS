@@ -86,7 +86,8 @@ def osloglog(h5data, ax=None, **kwpassthrough):
 
 
 def __osplot2d(func, h5data, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
-               colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, **kwpassthrough):
+               colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, fig=None,
+               **kwpassthrough):
     if convert_xaxis:
         axis = h5data.axes[1].to_phys_unit()
         extx = axis[0].min(), axis[0].max()
@@ -132,7 +133,7 @@ def __osplot2d(func, h5data, xlabel=None, ylabel=None, cblabel=None, title=None,
 
     if colorbar:
         if not cb:
-            cb = plt.colorbar(plot_object)
+            cb = plt.colorbar(plot_object) if fig is None else fig.colorbar(plot_object)
         if cblabel is None:
             cb.set_label(h5data.data_attrs['UNITS'].tex())
         else:
