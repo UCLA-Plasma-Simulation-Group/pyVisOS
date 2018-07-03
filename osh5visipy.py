@@ -43,7 +43,7 @@ def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     :return: whatever widgets that are not shown
     """
     if isinstance(data, str):
-        wl = DirSlicer(data, **kwargs).widgets_list
+        wl = DirSlicer(data, *args, **kwargs).widgets_list
         tab, slider = wl[0], widgets.HBox(wl[1:-2])
     else:
         wl = Slicer(data, *args, **kwargs).widgets_list
@@ -289,7 +289,7 @@ class Generic2DPlotCtrl(object):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt])
 
     @staticmethod
-    def __idle(data):
+    def _idle(data):
         return data
 
     def __new_lineout_plot(self):
@@ -322,7 +322,7 @@ class Generic2DPlotCtrl(object):
         else:
             self.vmax_wgt.value = np.max(self._data)
             self.__assgin_valid_vmin()
-            self.__pp = self.__idle
+            self.__pp = self._idle
 
     def __update_norm_wgt(self, _change):
         """update tab1 (second tab) only and prepare _log_data if necessary"""
@@ -501,10 +501,10 @@ class Slicer(Generic2DPlotCtrl):
 
 
 class DirSlicer(Generic2DPlotCtrl):
-    def __init__(self, dirname, **extra_kwargs):
-        self.dir, self.flist = dirname, sorted(glob.glob(dirname + '/*.h5'))
+    def __init__(self, dirname, processing=Generic2DPlotCtrl._idle, **extra_kwargs):
+        self.dir, self.flist, self.processing = dirname, sorted(glob.glob(dirname + '/*.h5')), processing
         try:
-            self.data = osh5io.read_h5(self.flist[0])
+            self.data = processing(osh5io.read_h5(self.flist[0]))
         except IndexError:
             raise IOError('No .h5 file found in ' + dirname)
 
@@ -528,7 +528,7 @@ class DirSlicer(Generic2DPlotCtrl):
         return widgets.VBox([widgets.HBox[self.file_slider, self.time_label], self.out_main, self.out])
 
     def update_slice(self, change):
-        self.data = osh5io.read_h5(change['new'])
+        self.data = self.processing(osh5io.read_h5(change['new']))
         self.time_label.value = osh5vis.time_format(self.data.run_attrs['TIME'][0], self.data.run_attrs['TIME UNITS'])
         self.redraw(self.data)
 
