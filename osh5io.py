@@ -106,7 +106,7 @@ def read_h5(filename, path=None, axis_name=None):
         data_attrs['NAME'] = name
 
         # data_bundle.data = the_data_hdf_object[()]
-        data_bundle.append(H5Data(the_data_hdf_object[()], timestamp=timestamp,
+        data_bundle.append(H5Data(the_data_hdf_object, timestamp=timestamp,
                                   data_attrs=data_attrs, run_attrs=run_attrs, axes=axes))
     data_file.close()
     if len(data_bundle) == 1:

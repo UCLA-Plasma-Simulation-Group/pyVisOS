@@ -6,6 +6,8 @@ from IPython.display import display
 import numpy as np
 
 import osh5vis
+import osh5io
+import glob
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
 import threading
@@ -33,15 +35,19 @@ def osimshow_w(data, *args, show=True, **kwargs):
 def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     """
     A slider for 3D data
-    :param data: 3D H5Data
+    :param data: 3D H5Data or directory name (a string)
     :param args: arguments passed to plotting widgets. reserved for future use
     :param show: whether to show the widgets
     :param slider_only: if True only show the slider otherwise show also other plot control (aka 'the tab')
     :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
     :return: whatever widgets that are not shown
     """
-    wl = Slicer(data, *args, **kwargs).widgets_list
-    tab, slider = wl[0], widgets.HBox(wl[1:-2])
+    if isinstance(data, str):
+        wl = DirSlicer(data, **kwargs).widgets_list
+        tab, slider = wl[0], widgets.HBox(wl[1:-2])
+    else:
+        wl = Slicer(data, *args, **kwargs).widgets_list
+        tab, slider = wl[0], widgets.HBox(wl[1:-2])
     if show:
         if slider_only:
             display(slider, widgets.VBox(wl[-2:]))
@@ -62,9 +68,10 @@ class Generic2DPlotCtrl(object):
     eps = 1e-40
     colormaps_available = sorted(c for c in plt.colormaps() if not c.endswith("_r"))
 
-    def __init__(self, data, slcs=(slice(None, ), ), title=None, norm=None, fig_handle=None, **kwargs):
+    def __init__(self, data, slcs=(slice(None, ), ), title=None, norm=None, fig_handle=None,
+                 time_in_title=True, **kwargs):
 
-        self._data, self._slcs, self.im_xlt = data, slcs, None
+        self._data, self._slcs, self.im_xlt, self.time_in_title = data, slcs, None, time_in_title
         # # # -------------------- Tab0 --------------------------
         items_layout = Layout(flex='1 1 auto', width='auto')
         # normalization
@@ -111,7 +118,7 @@ class Generic2DPlotCtrl(object):
         # # # -------------------- Tab1 --------------------------
         # title
         if not title:
-            title = osh5vis.default_title(data)
+            title = osh5vis.default_title(data, show_time=self.time_in_title)
         self.if_reset_title = widgets.Checkbox(value=True, description='Auto')
         self.title = widgets.Text(value=title, placeholder='data', continuous_update=False,
                                   description='Title:', disabled=self.if_reset_title.value)
@@ -287,7 +294,7 @@ class Generic2DPlotCtrl(object):
 
     def __new_lineout_plot(self):
         with self.out:
-            self.fig, self.outline_ax = plt.subplots(1, 2, figsize=(8, 4))
+            self.fig, self.outline_ax = plt.subplots(1, 2, figsize=(3, 2))
             ldata = self._data[self._slcs]
             osh5vis.osplot1d(ldata[ldata.shape[0] // 2, :], ax=self.outline_ax[0])
             osh5vis.osplot1d(ldata[:, ldata.shape[0] // 2], ax=self.outline_ax[1], title='')
@@ -371,7 +378,7 @@ class Generic2DPlotCtrl(object):
 
     def __update_title(self, *_):
         if self.if_reset_title.value:
-            self.title.value = osh5vis.default_title(self._data)
+            self.title.value = osh5vis.default_title(self._data, show_time=self.time_in_title)
             self.title.disabled = True
         else:
             self.title.disabled = False
@@ -437,7 +444,7 @@ class Slicer(Generic2DPlotCtrl):
         self.axis_pos.observe(self.__update_index_slider, 'value')
 
         super(Slicer, self).__init__(data[self.slcs], slcs=[i for i in self.slcs if not isinstance(i, int)],
-                                     **extra_kwargs)
+                                     time_in_title=not data.has_axis('t'), **extra_kwargs)
 
     @property
     def widgets_list(self):
@@ -491,6 +498,39 @@ class Slicer(Generic2DPlotCtrl):
         self.__update_axis_value()
         self.slcs[self.comp] = self.x
         self.redraw(self.data[self.slcs])
+
+
+class DirSlicer(Generic2DPlotCtrl):
+    def __init__(self, dirname, **extra_kwargs):
+        self.dir, self.flist = dirname, sorted(glob.glob(dirname + '/*.h5'))
+        try:
+            self.data = osh5io.read_h5(self.flist[0])
+        except IndexError:
+            raise IOError('No .h5 file found in ' + dirname)
+
+        items_layout = Layout(flex='1 1 auto', width='auto')
+        self.file_slider = widgets.SelectionSlider(options=self.flist, description='filename:', value=self.flist[0],
+                                                   continuous_update=False, layout=items_layout)
+        self.time_label = widgets.Label(value=osh5vis.time_format(self.data.run_attrs['TIME'][0],
+                                                                  self.data.run_attrs['TIME UNITS']),
+                                        layout=items_layout)
+        self.file_slider.observe(self.update_slice, 'value')
+
+        super(DirSlicer, self).__init__(self.data, time_in_title=False, **extra_kwargs)
+
+
+    @property
+    def widgets_list(self):
+        return self.tab, self.file_slider, self.time_label, self.out_main, self.out
+
+    @property
+    def widget(self):
+        return widgets.VBox([widgets.HBox[self.file_slider, self.time_label], self.out_main, self.out])
+
+    def update_slice(self, change):
+        self.data = osh5io.read_h5(change['new'])
+        self.time_label.value = osh5vis.time_format(self.data.run_attrs['TIME'][0], self.data.run_attrs['TIME UNITS'])
+        self.redraw(self.data)
 
 
 class Animation(Slicer):

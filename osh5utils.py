@@ -245,16 +245,22 @@ def __try_update_axes(updfunc):
     return update_axes
 
 
+def __update_axes_label(axes, i):
+    if axes[i].attrs['NAME'] == 't' or axes[i].attrs['LONG_NAME'] == 'time' or axes[i].attrs['UNITS'].is_time():
+        axes[i].attrs['LONG_NAME'] = '\omega'
+    else:
+        axes[i].attrs['LONG_NAME'] = 'K(' + axes[i].attrs['LONG_NAME'] + ')'
+    try:
+        axes[i].attrs['UNITS'] **= -1
+    except TypeError:
+        pass
+
+
 @__try_update_axes
 def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
     for i in idx:
         axes[i].attrs.setdefault('shift', axes[i].min)  # save lower bound. value of axes
         axes[i].ax = sfunc(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
-        if axes[i].attrs['NAME'] == 't' or axes[i].attrs['LONG_NAME'] == 'time' or axes[i].attrs['UNITS'].is_time():
-            axes[i].attrs['LONG_NAME'] = '\omega'
-        else:
-            axes[i].attrs['LONG_NAME'] = ''.join(['K(', axes[i].attrs['LONG_NAME'], ')'])
-        axes[i].attrs['UNITS'] **= -1
 
 
 @__try_update_axes
@@ -275,7 +281,10 @@ def _update_ifft_axes(axes, idx,  shape, _sfunc, ffunc):
                         warnings.warn('Maybe doing IFFT on non-FFT data. '
                                       'Make sure to use our FFT routine for forward FFT', RuntimeWarning)
                         warned = True
-        axes[i].attrs['UNITS'] **= -1
+        try:
+            axes[i].attrs['UNITS'] **= -1
+        except TypeError:
+            pass
 
 
 def _get_ihfft_axis(n, d=1.0, min=0.0):
@@ -553,6 +562,23 @@ def rebin(a, fac):
         return eval(''.join(evList))
 
     return __rebin(a, fac)
+
+
+@enhence_num_indexing_kw('axis')
+def spectrogram(h5data, axis=-1, **kwargs):
+    """
+    A wrapper function of scipy.signal.spectrogram
+    :param h5data:
+    :param kwargs:
+    :param axis:
+    :return: h5data with one more dimension appended
+    """
+    meta = h5data.meta2dict()
+    k, x, Sxx = signal.spectrogram(h5data.values, fs=1/h5data.axes[axis].increment, axis=axis, **kwargs)
+    meta['axes'][axis].ax = x - x[0] + h5data.axes[axis].min
+    meta['axes'].insert(axis, osh5def.DataAxis(attrs=copy.deepcopy(meta['axes'][axis].attrs), data=2*np.pi*k))
+    __update_axes_label(meta['axes'], axis)
+    return osh5def.H5Data(Sxx, **meta)
 
 
 if __name__ == '__main__':
