@@ -8,19 +8,19 @@ import numpy as np
 #     print('Fail to import GUI routines. Check your PyQT installation')
 
 def time_format(time=0.0, unit=None):
-    try:
-        tmp = '$t = ' + "{:.2f}".format(time)
-        if unit:
-            tmp += '$ [$' + str(unit) + '$]'
-    except KeyError:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
-        tmp = ''
+    tmp = '$t = ' + "{:.2f}".format(time)
+    if unit:
+        tmp += '$ [$' + str(unit) + '$]'
     return tmp
 
 
 def default_title(h5data, show_time=True):
     tmp = tex(h5data.data_attrs['LONG_NAME'])
     if show_time and not h5data.has_axis('t'):
-        tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'])
+        try:
+            tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'])
+        except KeyError:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
+            pass
     return tmp
 
 
