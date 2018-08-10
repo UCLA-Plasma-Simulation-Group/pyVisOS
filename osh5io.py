@@ -231,7 +231,7 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
 
 
 def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrite=True, axis_name=None,
-    time_to_si=1.0,length_to_si=1.0, data_to_si = 1.0 ):
+    time_to_si=1.0, length_to_si=1.0, data_to_si=1.0 ):
     """
     Usage:
         write_h5_openpmd(diag_data, '/path/to/filename.h5')    # writes out Visxd compatible HDF5 data.
@@ -342,7 +342,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
     local_gridspacing = np.arange(number_axis_objects_we_need, dtype = np.float32)
 
     if(number_axis_objects_we_need == 1):
-        local_axislabels=['x1']
+        local_axislabels=[b'x1']
         deltax[0] = deltax[0]/data_object.shape[0]
         local_gridspacing=np.float32(deltax)
 
@@ -351,7 +351,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[0]= np.float32(0.0)
  
     elif (number_axis_objects_we_need == 2):
-        local_axislabels=['x1', 'x2']
+        local_axislabels=[b'x1', b'x2']
         deltax[0] = deltax[0]/data_object.shape[0]
         deltax[1] = deltax[1]/data_object.shape[1]
         temp=deltax[0]
@@ -366,7 +366,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[1]= np.float32(0.0)
 
     else:
-        local_axislabels=['x1','x2','x3']
+        local_axislabels=[b'x1',b'x2',b'x3']
         deltax[0] = deltax[0]/data_object.shape[0]
         deltax[1] = deltax[1]/data_object.shape[1]
         deltax[2] = deltax[2]/data_object.shape[2]
