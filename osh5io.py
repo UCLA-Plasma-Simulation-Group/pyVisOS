@@ -230,9 +230,8 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
     h5file.close()
 
 
-
 def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrite=True, axis_name=None,
-    time_to_si=1.0,length_to_si=1.0):
+    time_to_si=1.0,length_to_si=1.0, data_to_si = 1.0 ):
     """
     Usage:
         write_h5_openpmd(diag_data, '/path/to/filename.h5')    # writes out Visxd compatible HDF5 data.
@@ -305,26 +304,31 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
     h5file.attrs['XMAX'] = [0.0]
     h5file.attrs['openPMD'] = '1.0.0'
     h5file.attrs['openPMDextension'] = 0
-    h5file.attrs['iterationEncoding'] = 'fileBased'
+    h5file.attrs['iterationEncoding'] = 'fileBased' 
     h5file.attrs['basePath']='/data/%T'
     h5file.attrs['meshesPath']='mesh/'
-    h5file.attrs['particlesPath']= 'particles/'
+    h5file.attrs['particlesPath']= 'particles/' 
     # now make defaults/copy over the attributes in the root of the hdf5
 
     baseid = h5file.create_group("data")
     iterid = baseid.create_group(str(data.run_attrs['ITER'][0]))
+
 
     meshid = iterid.create_group("mesh")
     datasetid = meshid.create_dataset(data_attrs['NAME'], data_object.shape, data=data_object.view(np.ndarray) )
 
    # h5dataset = datasetid.create_dataset(current_name_attr, data_object.shape, data=data_object.view(np.ndarray))
 
+
  #   for key, value in data_object.run_attrs.items():
  #       h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
 
+
+
     iterid.attrs['dt'] = data.run_attrs['DT'][0]
-    iterid.attrs['time'] = data.run_attrs['TIME'][0]
+    iterid.attrs['time'] = data.run_attrs['TIME'][0] 
     iterid.attrs['timeUnitSI'] = time_to_si
+
 
     number_axis_objects_we_need = len(data_object.axes)
 
@@ -379,15 +383,18 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[1]= np.float32(0.0)
         local_offset[2]= np.float32(0.0)
 
+
+     
     datasetid.attrs['dataOrder'] = 'F'
     datasetid.attrs['geometry'] = 'cartesian'
     datasetid.attrs['geometryParameters'] =  'cartesian'
     datasetid.attrs['axisLabels'] = local_axislabels
     datasetid.attrs['gridUnitSI'] = np.float64(length_to_si)
-    datasetid.attrs['unitSI'] = np.float64(1.0)
+    datasetid.attrs['unitSI'] = np.float64(data_to_si)
     datasetid.attrs['position'] = local_position
     datasetid.attrs['gridSpacing'] = local_gridspacing
     datasetid.attrs['gridGlobalOffset'] = local_globaloffset
+
 
     # # now go through and set/create our axes HDF entries.
     # if not axis_name:
