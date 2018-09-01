@@ -19,7 +19,7 @@ def default_title(h5data, show_time=True):
     if show_time and not h5data.has_axis('t'):
         try:
             tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'])
-        except KeyError:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
+        except:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
             pass
     return tmp
 
