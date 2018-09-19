@@ -358,7 +358,12 @@ class H5Data(np.ndarray):
         return self.__reduce__()
 
     def __str__(self):
-        return ''.join([self.name, '-', self.timestamp, ' of shape ', str(self.shape)])
+        if not self.shape:
+            return str(self.values)
+        else:
+            return ''.join([self.name, '-', self.timestamp, ', shape: ', str(self.shape), ', time:',
+                            str(self.run_attrs['TIME']), str(self.run_attrs['TIME UNITS']), '\naxis:\n  ',
+                            '\n  '.join([str(ax) for ax in self.axes]) if len(self.axes) else 'None'])
 
     def __repr__(self):
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),

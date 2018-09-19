@@ -147,9 +147,10 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
     return plot_object, None
 
 
-def osimshow(h5data, *args, ax=None, cb=None, **kwpassthrough):
+def osimshow(h5data, *args, ax=None, cb=None, aspect=None, **kwpassthrough):
     imshow = ax.imshow if ax is not None else plt.imshow
-    return __osplot2d(imshow, h5data, *args, cb=cb, aspect='auto', origin='lower', **kwpassthrough)
+    asp = 'auto' if aspect is None else aspect
+    return __osplot2d(imshow, h5data, *args, cb=cb, aspect=asp, origin='lower', **kwpassthrough)
 
 
 def oscontour(h5data, *args, ax=None, cb=None, **kwpassthrough):

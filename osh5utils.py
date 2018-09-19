@@ -452,8 +452,36 @@ def hilbert(x, N=None, axis=-1):
 @metasl
 def hilbert2(x, N=None):
     return signal.hilbert2(x, N=N)
+
 # ---------------------------------- SciPy Wrappers ---------------------------------------
 
+
+# ---------------------------------- NumPy Wrappers ---------------------------------------
+@metasl
+def angle(x, deg=0):
+    return np.angle(x, deg=deg)
+
+
+@enhence_num_indexing_kw('axis')
+@metasl
+def unwrap(x, discont=3.141592653589793, axis=-1):
+    return np.unwrap(x, discont=discont, axis=axis)
+
+
+@enhence_num_indexing_kw('axis')
+def diff(x, n=1, axis=-1):
+    dx_2 = 0.5 * x.axes[axis].increment
+    
+    @metasl
+    def __diff(x, n=1, axis=-1):
+        return np.diff(x, n=n, axis=axis)
+
+    r = __diff(x, n=n, axis=axis)
+    r.axes[axis] = osh5def.DataAxis(axis_min=x.axes[axis].min+n*dx_2, axis_max=x.axes[axis].max-n*dx_2, 
+                                    axis_npoints=x.axes[axis].size-n, attrs=copy.deepcopy(x.axes[axis].attrs))
+    return r
+
+# ---------------------------------- NumPy Wrappers ---------------------------------------
 
 def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't')):
     """decompose a vector field into transverse and longitudinal direction
