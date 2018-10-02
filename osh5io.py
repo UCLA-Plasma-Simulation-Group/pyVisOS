@@ -87,9 +87,12 @@ def read_h5(filename, path=None, axis_name=None):
 
         # now read in attributes of the ROOT of the hdf5..
         #   there's lots of good info there. strip out the array if value is a string
-        for key, value in data_file.attrs.items():
-            run_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
 
+        for key, value in data_file.attrs.items():
+            try:
+                run_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
+            except IndexError:
+                run_attrs[key] = value.decode('utf-8') if isinstance(value, bytes) else value
         # attach attributes assigned to the data array to
         #    the H5Data.data_attrs object, remove trivial dimension before assignment
         for key, value in the_data_hdf_object.attrs.items():
@@ -225,6 +228,199 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
             else:
                 axis_data.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
     h5file.close()
+
+
+def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrite=True, axis_name=None,
+    time_to_si=1.0, length_to_si=1.0, data_to_si=1.0 ):
+    """
+    Usage:
+        write_h5_openpmd(diag_data, '/path/to/filename.h5')    # writes out Visxd compatible HDF5 data.
+
+    Since h5 format does not support python strings, we will convert all string data (units, names etc)
+    to bytes strings before writing.
+
+    see also read_h5() function in this file
+
+    """
+    if isinstance(data, H5Data):
+        data_object = data
+    elif isinstance(data, np.ndarray):
+        data_object = H5Data(data)
+    else:
+        try:  # maybe it's something we can wrap in a numpy array
+            data_object = H5Data(np.array(data))
+        except:
+            raise Exception(
+                "Invalid data type.. we need a 'hdf5_data', numpy array, or something that can go in a numy array")
+
+    # now let's make the H5Data() compatible with VisXd and such...
+    # take care of the NAME attribute.
+    if dataset_name is not None:
+        current_name_attr = dataset_name
+    elif data_object.name:
+        current_name_attr = data_object.name
+    else:
+        current_name_attr = "Data"
+
+    fname = path if path else ''
+    if filename is not None:
+        fname += filename
+    elif data_object.timestamp is not None:
+        fname += current_name_attr + '-' + data_object.timestamp + '.h5'
+    else:
+        raise Exception("You did not specify a filename!!!")
+    if os.path.isfile(fname):
+        if overwrite:
+            os.remove(fname)
+        else:
+            c = 1
+            while os.path.isfile(fname[:-3]+'.copy'+str(c)+'.h5'):
+                c += 1
+            fname = fname[:-3]+'.copy'+str(c)+'.h5'
+    h5file = h5py.File(fname)
+
+    # now put the data in a group called this...
+ #   h5dataset = h5file.create_dataset(current_name_attr, data_object.shape, data=data_object.view(np.ndarray))
+    # these are required.. so make defaults ones...
+ #   h5dataset.attrs['UNITS'], h5dataset.attrs['LONG_NAME'] = np.array([b'']), np.array([b''])
+    # convert osunit class back to ascii
+    data_attrs = data_object.data_attrs.copy()
+    try:
+        data_attrs['UNITS'] = np.array([str(data_object.data_attrs['UNITS']).encode('utf-8')])
+    except:
+        data_attrs['UNITS'] = np.array([b'a.u.'])
+    # copy over any values we have in the 'H5Data' object;
+#    for key, value in data_attrs.items():
+#        h5dataset.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
+    # these are required so we make defaults..
+    h5file.attrs['DT'] = [1.0]
+    h5file.attrs['ITER'] = [0]
+    h5file.attrs['MOVE C'] = [0]
+    h5file.attrs['PERIODIC'] = [0]
+    h5file.attrs['TIME'] = [0.0]
+    h5file.attrs['TIME UNITS'] = [b'']
+    h5file.attrs['TYPE'] = [b'grid']
+    h5file.attrs['XMIN'] = [0.0]
+    h5file.attrs['XMAX'] = [0.0]
+    h5file.attrs['openPMD'] = '1.0.0'
+    h5file.attrs['openPMDextension'] = 0
+    h5file.attrs['iterationEncoding'] = 'fileBased' 
+    h5file.attrs['basePath']='/data/%T'
+    h5file.attrs['meshesPath']='mesh/'
+    h5file.attrs['particlesPath']= 'particles/' 
+    # now make defaults/copy over the attributes in the root of the hdf5
+
+    baseid = h5file.create_group("data")
+    iterid = baseid.create_group(str(data.run_attrs['ITER'][0]))
+
+
+    meshid = iterid.create_group("mesh")
+    datasetid = meshid.create_dataset(data_attrs['NAME'], data_object.shape, data=data_object.view(np.ndarray) )
+
+   # h5dataset = datasetid.create_dataset(current_name_attr, data_object.shape, data=data_object.view(np.ndarray))
+
+
+ #   for key, value in data_object.run_attrs.items():
+ #       h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
+
+
+
+    iterid.attrs['dt'] = data.run_attrs['DT'][0]
+    iterid.attrs['time'] = data.run_attrs['TIME'][0] 
+    iterid.attrs['timeUnitSI'] = time_to_si
+
+
+    number_axis_objects_we_need = len(data_object.axes)
+
+    deltax= data.run_attrs['XMAX'] - data.run_attrs['XMIN']
+    local_offset = np.arange(number_axis_objects_we_need, dtype = np.float32)
+    local_globaloffset = np.arange(number_axis_objects_we_need, dtype = np.float64)
+    local_position = np.arange(number_axis_objects_we_need, dtype = np.float32)
+    local_position[0] = 0.0
+    local_position[1] = 0.0
+
+    local_gridspacing = np.arange(number_axis_objects_we_need, dtype = np.float32)
+
+    if(number_axis_objects_we_need == 1):
+        local_axislabels=[b'x1']
+        deltax[0] = deltax[0]/data_object.shape[0]
+        local_gridspacing=np.float32(deltax)
+
+        local_globaloffset[0] = np.float32(0.0)
+
+        local_offset[0]= np.float32(0.0)
+ 
+    elif (number_axis_objects_we_need == 2):
+        local_axislabels=[b'x1', b'x2']
+        deltax[0] = deltax[0]/data_object.shape[0]
+        deltax[1] = deltax[1]/data_object.shape[1]
+        temp=deltax[0]
+        deltax[0]=deltax[1]
+        deltax[1]=temp
+        local_gridspacing=np.float32(deltax)
+
+        local_globaloffset[0] = np.float32(0.0)
+        local_globaloffset[1] = np.float32(0.0)
+
+        local_offset[0]= np.float32(0.0)
+        local_offset[1]= np.float32(0.0)
+
+    else:
+        local_axislabels=[b'x1',b'x2',b'x3']
+        deltax[0] = deltax[0]/data_object.shape[0]
+        deltax[1] = deltax[1]/data_object.shape[1]
+        deltax[2] = deltax[2]/data_object.shape[2]
+        temp=deltax[0]
+        deltax[0]=deltax[2]
+        deltax[2]=temp
+        local_gridspacing=np.float32(deltax)
+
+        local_globaloffset[0] = np.float32(0.0)
+        local_globaloffset[1] = np.float32(0.0)
+        local_globaloffset[2] = np.float32(0.0)
+
+        local_offset[0]= np.float32(0.0)
+        local_offset[1]= np.float32(0.0)
+        local_offset[2]= np.float32(0.0)
+
+
+     
+    datasetid.attrs['dataOrder'] = 'F'
+    datasetid.attrs['geometry'] = 'cartesian'
+    datasetid.attrs['geometryParameters'] =  'cartesian'
+    datasetid.attrs['axisLabels'] = local_axislabels
+    datasetid.attrs['gridUnitSI'] = np.float64(length_to_si)
+    datasetid.attrs['unitSI'] = np.float64(data_to_si)
+    datasetid.attrs['position'] = local_position
+    datasetid.attrs['gridSpacing'] = local_gridspacing
+    datasetid.attrs['gridGlobalOffset'] = local_globaloffset
+
+
+    # # now go through and set/create our axes HDF entries.
+    # if not axis_name:
+    #     axis_name = "AXIS/AXIS"
+    # for i in range(0, number_axis_objects_we_need):
+    #     _axis_name = axis_name + str(number_axis_objects_we_need - i)
+    #     if _axis_name not in h5file:
+    #         axis_data = h5file.create_dataset(_axis_name, (2,), 'float64')
+    #     else:
+    #         axis_data = h5file[_axis_name]
+
+    #     # set the extent to the data we have...
+    #     axis_data[0] = data_object.axes[i].min
+    #     axis_data[1] = data_object.axes[i].max
+
+    #     # fill in any values we have stored in the Axis object
+    #     for key, value in data_object.axes[i].attrs.items():
+    #         if key == 'UNITS':
+    #             try:
+    #                 axis_data.attrs['UNITS'] = np.array([str(data_object.axes[i].attrs['UNITS']).encode('utf-8')])
+    #             except:
+    #                 axis_data.attrs['UNITS'] = np.array([b'a.u.'])
+    #         else:
+    #             axis_data.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
+    h5file.close()
+
 
 
 if __name__ == '__main__':

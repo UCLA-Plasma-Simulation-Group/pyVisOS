@@ -259,28 +259,30 @@ def __update_axes_label(axes, i):
 @__try_update_axes
 def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
     for i in idx:
+        __update_axes_label(axes, i)
         axes[i].attrs.setdefault('shift', axes[i].min)  # save lower bound. value of axes
         axes[i].ax = sfunc(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
 
 
 @__try_update_axes
 def _update_ifft_axes(axes, idx,  shape, _sfunc, ffunc):
-    key, en = ['LONG_NAME'], [2]
+    k, e = 'LONG_NAME', 2
     warned = False
     for i in idx:
-        axes[i].ax = ffunc(shape[i], d=axes[i].increment, min=axes[i].attrs.get('shift', 0))
+        try:
+            xmin = axes[i].attrs['shift']
+        except KeyError:
+            xmin = 0
+            if not warned:
+                warnings.warn('Maybe doing IFFT on non-FFT data. '
+                              'Make sure to use our FFT routine for forward FFT',
+                              RuntimeWarning)
+                warned = True
+        axes[i].ax = ffunc(shape[i], d=axes[i].increment, min=xmin)
         if axes[i].attrs['LONG_NAME'] == '\omega' or axes[i].attrs['UNITS'].is_frequency():
             axes[i].attrs['LONG_NAME'] = 'time'
         else:
-            for k, e in zip(key, en):
-                # the last character should be ')' if our fft routine was used
-                if ')' == axes[i].attrs[k][-1]:
-                    axes[i].attrs[k] = axes[i].attrs[k][e:-1]
-                else:
-                    if not warned:
-                        warnings.warn('Maybe doing IFFT on non-FFT data. '
-                                      'Make sure to use our FFT routine for forward FFT', RuntimeWarning)
-                        warned = True
+            axes[i].attrs[k] = axes[i].attrs[k][e:-1]
         try:
             axes[i].attrs['UNITS'] **= -1
         except TypeError:
