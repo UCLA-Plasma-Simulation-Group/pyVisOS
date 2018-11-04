@@ -8,6 +8,7 @@ import numpy as np
 import osh5vis
 import osh5io
 import glob
+import os
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
 import threading
@@ -501,12 +502,13 @@ class Slicer(Generic2DPlotCtrl):
 
 
 class DirSlicer(Generic2DPlotCtrl):
-    def __init__(self, dirname, processing=Generic2DPlotCtrl._idle, **extra_kwargs):
-        self.dir, self.flist, self.processing = dirname, sorted(glob.glob(dirname + '/*.h5')), processing
+    def __init__(self, filefilter, processing=Generic2DPlotCtrl._idle, **extra_kwargs):
+        fp = filefilter + '/*.h5' if os.path.isdir(filefilter) else filefilter
+        self.filter, self.flist, self.processing = fp, sorted(glob.glob(fp)), processing
         try:
             self.data = processing(osh5io.read_h5(self.flist[0]))
         except IndexError:
-            raise IOError('No .h5 file found in ' + dirname)
+            raise IOError('No file found matching ' + fp)
 
         items_layout = Layout(flex='1 1 auto', width='auto')
         self.file_slider = widgets.SelectionSlider(options=self.flist, description='filename:', value=self.flist[0],
