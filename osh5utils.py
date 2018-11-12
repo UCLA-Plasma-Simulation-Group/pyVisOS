@@ -241,41 +241,52 @@ def __try_update_axes(updfunc):
         except TypeError:
             shape = (shape,)
         # The data size can change due to the s (or n) keyword. We have to force axes update somehow.
-        updfunc(a.axes, idx, shape, sfunc=sfunc, ffunc=ffunc)
+        updfunc(a.axes, idx, shape, sfunc, ffunc=ffunc)
     return update_axes
+
+
+def __update_axes_label(axes, i):
+    if axes[i].attrs['NAME'] == 't' or axes[i].attrs['LONG_NAME'] == 'time' or axes[i].attrs['UNITS'].is_time():
+        axes[i].attrs['LONG_NAME'] = '\omega'
+    else:
+        axes[i].attrs['LONG_NAME'] = 'K(' + axes[i].attrs['LONG_NAME'] + ')'
+    try:
+        axes[i].attrs['UNITS'] **= -1
+    except TypeError:
+        pass
 
 
 @__try_update_axes
 def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
     for i in idx:
+        __update_axes_label(axes, i)
         axes[i].attrs.setdefault('shift', axes[i].min)  # save lower bound. value of axes
         axes[i].ax = sfunc(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
-        if axes[i].attrs['NAME'] == 't' or axes[i].attrs['LONG_NAME'] == 'time' or axes[i].attrs['UNITS'].is_time():
-            axes[i].attrs['LONG_NAME'] = '\omega'
-        else:
-            axes[i].attrs['LONG_NAME'] = ''.join(['K(', axes[i].attrs['LONG_NAME'], ')'])
-        axes[i].attrs['UNITS'] **= -1
 
 
 @__try_update_axes
 def _update_ifft_axes(axes, idx,  shape, _sfunc, ffunc):
-    key, en = ['LONG_NAME'], [2]
+    k, e = 'LONG_NAME', 2
     warned = False
     for i in idx:
-        axes[i].ax = ffunc(shape[i], d=axes[i].increment, min=axes[i].attrs.get('shift', 0))
+        try:
+            xmin = axes[i].attrs['shift']
+        except KeyError:
+            xmin = 0
+            if not warned:
+                warnings.warn('Maybe doing IFFT on non-FFT data. '
+                              'Make sure to use our FFT routine for forward FFT',
+                              RuntimeWarning)
+                warned = True
+        axes[i].ax = ffunc(shape[i], d=axes[i].increment, min=xmin)
         if axes[i].attrs['LONG_NAME'] == '\omega' or axes[i].attrs['UNITS'].is_frequency():
             axes[i].attrs['LONG_NAME'] = 'time'
         else:
-            for k, e in zip(key, en):
-                # the last character should be ')' if our fft routine was used
-                if ')' == axes[i].attrs[k][-1]:
-                    axes[i].attrs[k] = axes[i].attrs[k][e:-1]
-                else:
-                    if not warned:
-                        warnings.warn('Maybe doing IFFT on non-FFT data. '
-                                      'Make sure to use our FFT routine for forward FFT', RuntimeWarning)
-                        warned = True
-        axes[i].attrs['UNITS'] **= -1
+            axes[i].attrs[k] = axes[i].attrs[k][e:-1]
+        try:
+            axes[i].attrs['UNITS'] **= -1
+        except TypeError:
+            pass
 
 
 def _get_ihfft_axis(n, d=1.0, min=0.0):
@@ -443,8 +454,36 @@ def hilbert(x, N=None, axis=-1):
 @metasl
 def hilbert2(x, N=None):
     return signal.hilbert2(x, N=N)
+
 # ---------------------------------- SciPy Wrappers ---------------------------------------
 
+
+# ---------------------------------- NumPy Wrappers ---------------------------------------
+@metasl
+def angle(x, deg=0):
+    return np.angle(x, deg=deg)
+
+
+@enhence_num_indexing_kw('axis')
+@metasl
+def unwrap(x, discont=3.141592653589793, axis=-1):
+    return np.unwrap(x, discont=discont, axis=axis)
+
+
+@enhence_num_indexing_kw('axis')
+def diff(x, n=1, axis=-1):
+    dx_2 = 0.5 * x.axes[axis].increment
+    
+    @metasl
+    def __diff(x, n=1, axis=-1):
+        return np.diff(x, n=n, axis=axis)
+
+    r = __diff(x, n=n, axis=axis)
+    r.axes[axis] = osh5def.DataAxis(axis_min=x.axes[axis].min+n*dx_2, axis_max=x.axes[axis].max-n*dx_2, 
+                                    axis_npoints=x.axes[axis].size-n, attrs=copy.deepcopy(x.axes[axis].attrs))
+    return r
+
+# ---------------------------------- NumPy Wrappers ---------------------------------------
 
 def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't')):
     """decompose a vector field into transverse and longitudinal direction
@@ -553,6 +592,23 @@ def rebin(a, fac):
         return eval(''.join(evList))
 
     return __rebin(a, fac)
+
+
+@enhence_num_indexing_kw('axis')
+def spectrogram(h5data, axis=-1, **kwargs):
+    """
+    A wrapper function of scipy.signal.spectrogram
+    :param h5data:
+    :param kwargs:
+    :param axis:
+    :return: h5data with one more dimension appended
+    """
+    meta = h5data.meta2dict()
+    k, x, Sxx = signal.spectrogram(h5data.values, fs=1/h5data.axes[axis].increment, axis=axis, **kwargs)
+    meta['axes'][axis].ax = x - x[0] + h5data.axes[axis].min
+    meta['axes'].insert(axis, osh5def.DataAxis(attrs=copy.deepcopy(meta['axes'][axis].attrs), data=2*np.pi*k))
+    __update_axes_label(meta['axes'], axis)
+    return osh5def.H5Data(Sxx, **meta)
 
 
 if __name__ == '__main__':

@@ -18,11 +18,13 @@ except ImportError:
 
 
 class DataAxis:
-    def __init__(self, axis_min, axis_max, axis_npoints, attrs=None):
-        # attrs should be a dictionary
-        if axis_min > axis_max:
-            raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
-        self.ax = np.arange(axis_min, axis_max, (axis_max - axis_min) / axis_npoints)
+    def __init__(self, axis_min=0., axis_max=1., axis_npoints=1, attrs=None, data=None):
+        if data is None:
+            if axis_min > axis_max:
+                raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
+            self.ax = np.arange(axis_min, axis_max, (axis_max - axis_min) / axis_npoints)
+        else:
+            self.ax = data
         # now make attributes for axis that are required..
         if attrs is None:
             self.attrs = {'UNITS': OSUnits('a.u.'), 'LONG_NAME': "", 'NAME': ""}
@@ -136,29 +138,32 @@ class OSUnits:
         """
         :param s: string notation of the units. there should be whitespace around quantities and '/' dividing quantities
         """
-        self.power = np.array([frac(0), frac(0), frac(0), frac(0), frac(0)])
-        # if isinstance(s, bytes):
-        #     s = s.decode("utf-8")
-        if 'a.u.' != s:
-            sl = s.split()
-            nominator = True
-            while sl:
-                ss = sl.pop(0)
-                if ss == '/':
-                    nominator = False
-                    continue
-                for p, n in enumerate(OSUnits.name):
-                    if n == ss[0:len(n)]:
-                        res = OSUnits.xtrnum.findall(ss)  # extract numbers
-                        if res:
-                            self.power[p] = frac(res[0]) if nominator else -frac(res[0])
-                        else:
-                            self.power[p] = frac(1, 1) if nominator else frac(-1, 1)
-                        break
-                    elif ss in ['1', '2', '\pi', '2\pi']:
-                        break
-                else:
-                    raise KeyError('Unknown unit: ' + re.findall(r'\w+', ss)[0])
+        if isinstance(s, OSUnits):
+            self.power = cp.deepcopy(s.power)
+        else:
+            self.power = np.array([frac(0), frac(0), frac(0), frac(0), frac(0)])
+            # if isinstance(s, bytes):
+            #     s = s.decode("utf-8")
+            if 'a.u.' != s:
+                sl = s.split()
+                nominator = True
+                while sl:
+                    ss = sl.pop(0)
+                    if ss == '/':
+                        nominator = False
+                        continue
+                    for p, n in enumerate(OSUnits.name):
+                        if n == ss[0:len(n)]:
+                            res = OSUnits.xtrnum.findall(ss)  # extract numbers
+                            if res:
+                                self.power[p] = frac(res[0]) if nominator else -frac(res[0])
+                            else:
+                                self.power[p] = frac(1, 1) if nominator else frac(-1, 1)
+                            break
+                        elif ss in ['1', '2', '\pi', '2\pi']:
+                            break
+                    else:
+                        raise KeyError('Unknown unit: ' + re.findall(r'\w+', ss)[0])
 
     def tex(self):
         return '$' + self.__str__() + '$'
@@ -204,7 +209,7 @@ class OSUnits:
         return (self.power == other.power).all()
 
     def __str__(self):
-        disp = ''.join(['' if p == 0 else n + " " if p == 1 else ''.join([n, '^{', str(p), '} '])
+        disp = ''.join(['' if p == 0 else n + " " if p == 1 else n + '^{' + str(p) + '} '
                         for n, p in zip(OSUnits.name, self.power)])
         if not disp:
             return 'a.u.'
@@ -353,7 +358,12 @@ class H5Data(np.ndarray):
         return self.__reduce__()
 
     def __str__(self):
-        return ''.join([self.name, '-', self.timestamp, ' of shape ', str(self.shape)])
+        if not self.shape:
+            return str(self.values)
+        else:
+            return ''.join([self.name, '-', self.timestamp, ', shape: ', str(self.shape), ', time:',
+                            str(self.run_attrs['TIME']), str(self.run_attrs['TIME UNITS']), '\naxis:\n  ',
+                            '\n  '.join([str(ax) for ax in self.axes]) if len(self.axes) else 'None'])
 
     def __repr__(self):
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),

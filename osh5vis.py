@@ -1,27 +1,36 @@
 # import osh5def
 import matplotlib.pyplot as plt
 import numpy as np
-try:
-    import osh5gui
-    gui_fname = osh5gui.gui_fname
-except ImportError:
-    print('Fail to import GUI routines. Check your PyQT installation')
+# try:
+#     import osh5gui
+#     gui_fname = osh5gui.gui_fname
+# except ImportError:
+#     print('Fail to import GUI routines. Check your PyQT installation')
 
-
-def default_title(h5data):
-    if h5data.has_axis('t'):
-        return tex(h5data.data_attrs['LONG_NAME'])
+def time_format(time=0.0, unit=None, convert_tunit=False, wavelength=0.351, **kwargs):
+    if convert_tunit:
+        t = wavelength * 5.31e-4 * time 
+        unit = ' ps'
     else:
+        t = time
+    tmp = '$t = ' + "{:.2f}".format(t)
+    if unit:
+        tmp += '$ [$' + str(unit) + '$]'
+    return tmp
+
+
+def default_title(h5data, show_time=True, **kwargs):
+    tmp = tex(h5data.data_attrs['LONG_NAME'])
+    if show_time and not h5data.has_axis('t'):
         try:
-            return ''.join([tex(h5data.data_attrs['LONG_NAME']), ', $t = ',
-                            "{:.2f}".format(h5data.run_attrs['TIME'][0]),
-                            '$  [$', h5data.run_attrs['TIME UNITS'], '$]'])
-        except KeyError:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
-            return tex(h5data.data_attrs['LONG_NAME'])
+            tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'], **kwargs)
+        except:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
+            pass
+    return tmp
 
 
 def tex(s):
-    return ''.join(['$', s, '$']) if s else ''
+    return '$' + s + '$' if s else ''
 
 
 def axis_format(name=None, unit=None):
@@ -31,18 +40,19 @@ def axis_format(name=None, unit=None):
     return s
 
 
-def osplot(h5data, **kwpassthrough):
+def osplot(h5data, *args, **kwpassthrough):
     if h5data.ndim == 1:
-        plot_object = osplot1d(h5data, **kwpassthrough)
+        plot_object = osplot1d(h5data, *args, **kwpassthrough)
     elif h5data.ndim == 2:
-        plot_object = osimshow(h5data, **kwpassthrough)
+        plot_object = osimshow(h5data, *args, **kwpassthrough)
     else:
         plot_object = None
     return plot_object
 
 
-def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, title=None, ax=None, **kwpassthrough):
-    plot_object = func(h5data.axes[0].ax, h5data.view(np.ndarray), **kwpassthrough)
+def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, title=None, ax=None,
+               convert_tunit=False, wavelength=0.351, *args, **kwpassthrough):
+    plot_object = func(h5data.axes[0].ax, h5data.view(np.ndarray), *args, **kwpassthrough)
     if ax is not None:
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
             ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
@@ -60,34 +70,34 @@ def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, tit
     set_xlabel(xlabel)
     set_ylabel(ylabel)
     if title is None:
-        title = default_title(h5data)
+        title = default_title(h5data, convert_tunit=convert_tunit, wavelength=wavelength)
     set_title(title)
     return plot_object
 
 
-def osplot1d(h5data, ax=None, **kwpassthrough):
+def osplot1d(h5data, *args, ax=None, **kwpassthrough):
     plot = plt.plot if ax is None else ax.plot
-    return __osplot1d(plot, h5data, **kwpassthrough)
+    return __osplot1d(plot, h5data, *args, **kwpassthrough)
 
 
-def ossemilogx(h5data, ax=None, **kwpassthrough):
+def ossemilogx(h5data, *args, ax=None, **kwpassthrough):
     semilogx = plt.semilogx if ax is None else ax.semilogx
-    return __osplot1d(semilogx, h5data, **kwpassthrough)
+    return __osplot1d(semilogx, h5data, *args, **kwpassthrough)
 
 
-def ossemilogy(h5data, ax=None, **kwpassthrough):
+def ossemilogy(h5data, *args, ax=None, **kwpassthrough):
     semilogy = plt.semilogy if ax is None else ax.semilogy
-    return __osplot1d(semilogy, h5data, **kwpassthrough)
+    return __osplot1d(semilogy, h5data, *args, **kwpassthrough)
 
 
-def osloglog(h5data, ax=None, **kwpassthrough):
+def osloglog(h5data, *args, ax=None, **kwpassthrough):
     loglog = plt.loglog if ax is None else ax.loglog
-    return __osplot1d(loglog, h5data, **kwpassthrough)
+    return __osplot1d(loglog, h5data, *args, **kwpassthrough)
 
 
-def __osplot2d(func, h5data, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
+def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
                colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, fig=None,
-               **kwpassthrough):
+               convert_tunit=False, wavelength=0.351, **kwpassthrough):
     if convert_xaxis:
         axis = h5data.axes[1].to_phys_unit()
         extx = axis[0].min(), axis[0].max()
@@ -105,14 +115,13 @@ def __osplot2d(func, h5data, xlabel=None, ylabel=None, cblabel=None, title=None,
         yunit = h5data.axes[0].attrs['UNITS']
 
     extent_stuff = [extx[0], extx[1], exty[0], exty[1]]
-    plot_object = func(h5data.view(np.ndarray), extent=extent_stuff, aspect='auto', origin='lower', **kwpassthrough)
+    plot_object = func(h5data.view(np.ndarray), *args, extent=extent_stuff, **kwpassthrough)
     if ax is None:
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
-        plt.xlim, plt.ylim, plt.xlabel, plt.ylabel, plt.title
+            plt.xlim, plt.ylim, plt.xlabel, plt.ylabel, plt.title
     else:
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
-        ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
-    set_clim = plt.clim if im is None else im.set_clim
+            ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
 
     if xlim is not None:
         set_xlim(xlim)
@@ -123,13 +132,13 @@ def __osplot2d(func, h5data, xlabel=None, ylabel=None, cblabel=None, title=None,
     if ylabel is None:
         ylabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], yunit)
     if title is None:
-        title = default_title(h5data)
+        title = default_title(h5data, convert_tunit=convert_tunit, wavelength=wavelength)
     set_xlabel(xlabel)
     set_ylabel(ylabel)
     set_title(title)
 
     if clim is not None:
-        set_clim(clim)
+        plot_object.set_clim(clim)
 
     if colorbar:
         if not cb:
@@ -142,25 +151,26 @@ def __osplot2d(func, h5data, xlabel=None, ylabel=None, cblabel=None, title=None,
     return plot_object, None
 
 
-def osimshow(h5data, ax=None, cb=None, **kwpassthrough):
+def osimshow(h5data, *args, ax=None, cb=None, aspect=None, **kwpassthrough):
     imshow = ax.imshow if ax is not None else plt.imshow
-    return __osplot2d(imshow, h5data, cb=cb, **kwpassthrough)
+    asp = 'auto' if aspect is None else aspect
+    return __osplot2d(imshow, h5data, *args, cb=cb, aspect=asp, origin='lower', **kwpassthrough)
 
 
-def oscontour(h5data, ax=None, cb=None, **kwpassthrough):
+def oscontour(h5data, *args, ax=None, cb=None, **kwpassthrough):
     contour = ax.contour if ax is not None else plt.contour
-    return __osplot2d(contour, h5data, cb=cb, **kwpassthrough)
+    return __osplot2d(contour, h5data, *args, cb=cb, **kwpassthrough)
 
 
-def oscontourf(h5data, ax=None, cb=None, **kwpassthrough):
+def oscontourf(h5data, *args, ax=None, cb=None, **kwpassthrough):
     contourf = ax.contourf if ax is not None else plt.contourf
-    return __osplot2d(contourf, h5data, cb=cb, **kwpassthrough)
+    return __osplot2d(contourf, h5data, *args, cb=cb, **kwpassthrough)
 
 
-def new_fig(h5data, figsize=None, dpi=None, facecolor=None, edgecolor=None, linewidth=0.0, frameon=None,
+def new_fig(h5data, *args, figsize=None, dpi=None, facecolor=None, edgecolor=None, linewidth=0.0, frameon=None,
             tight_layout=None, **kwpassthrough):
     plt.figure(figsize=figsize, dpi=dpi, facecolor=facecolor, edgecolor=edgecolor, linewidth=linewidth, frameon=frameon,
                tight_layout=tight_layout)
-    osplot(h5data, **kwpassthrough)
+    osplot(h5data, *args, **kwpassthrough)
     plt.show()
 
