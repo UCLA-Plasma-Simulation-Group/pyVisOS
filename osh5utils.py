@@ -11,11 +11,14 @@ import glob
 from scipy import signal
 
 
-def metasl(func):
+def metasl(func=None, unit=None):
     """save meta data before calling the function and restore them to output afterwards
     It has the following limitations:
         It saves the metadata of the first argument and only supports function that return one quantity
     """
+    if func is None:
+        return partial(metasl, unit=unit)
+
     @wraps(func)
     def sl(*args, **kwargs):
         saved = None
@@ -32,6 +35,9 @@ def metasl(func):
                 out = osh5def.H5Data(out, **saved)
         except:
             raise TypeError('Output is not/cannot convert to H5Data')
+        # Update unit if necessary
+        if unit is not None:
+            out.data_attrs['UNITS'] = osh5def.OSUnits(unit)
         return out
     return sl
 
@@ -459,7 +465,7 @@ def hilbert2(x, N=None):
 
 
 # ---------------------------------- NumPy Wrappers ---------------------------------------
-@metasl
+@metasl(unit='a.u.')
 def angle(x, deg=0):
     return np.angle(x, deg=deg)
 
