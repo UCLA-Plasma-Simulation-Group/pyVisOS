@@ -613,7 +613,7 @@ def spectrogram(h5data, axis=-1, **kwargs):
     k, x, Sxx = signal.spectrogram(h5data.values, fs=1/h5data.axes[axis].increment, axis=axis, **kwargs)
     meta['axes'][axis].ax = x - x[0] + h5data.axes[axis].min
     meta['axes'].insert(axis, osh5def.DataAxis(attrs=copy.deepcopy(meta['axes'][axis].attrs), data=2*np.pi*k))
-    __update_axes_label(meta['axes'], axis)
+    __update_axes_label(meta['axes'], axis - 1 if axis < 0 else axis)
     return osh5def.H5Data(Sxx, **meta)
 
 

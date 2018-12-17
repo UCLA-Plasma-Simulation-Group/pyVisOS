@@ -128,6 +128,7 @@ class DataAxis:
             return self.ax * wavelength / (2 * np.pi), '\mu m'
         if self.attrs['UNITS'].is_density():
             return self.ax * density, 'cm^{-3}'
+        return self.ax, self.units
 
 
 class OSUnits:
@@ -467,10 +468,10 @@ class H5Data(np.ndarray):
                                               axis=axis, dtype=dtype, out=out, ddof=0, keepdims=keepdims)
 
     def argmax(self, axis=None, out=None):
-        return self.__ufunc_with_axis_handled(super(H5Data, self).argmax, axis=axis, out=out)
+        return super(H5Data, self).argmax(axis=axis, out=out)
 
     def argmin(self, axis=None, out=None):
-        return self.__ufunc_with_axis_handled(super(H5Data, self).argmin, axis=axis, out=out)
+        return super(H5Data, self).argmin(axis=axis, out=out)
 
     def ptp(self, axis=None, out=None):
         return self.__ufunc_with_axis_handled(super(H5Data, self).ptp, axis=axis, out=out)
