@@ -137,7 +137,7 @@ def metasl_map(mapping=(0, 0)):  # not well tested
 
 
 def stack(arr, axis=0, axesdata=None):
-    """Similar to numpy.stack. Arr is the array of H5Data to be stacked. By default the newly created dimension
+    """Similar to numpy.stack. Arr is the list of H5Data to be stacked. By default the newly created dimension
     will be labeled as time axis. Other meta data will be copied from the last element of arr
     """
     try:
@@ -266,7 +266,7 @@ def __update_axes_label(axes, i):
 def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
     for i in idx:
         __update_axes_label(axes, i)
-        axes[i].attrs.setdefault('shift', axes[i].min)  # save lower bound. value of axes
+        axes[i].attrs['shift'] = axes[i].min  # save lower bound. value of axes
         axes[i].ax = sfunc(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
 
 
@@ -461,6 +461,22 @@ def hilbert(x, N=None, axis=-1):
 def hilbert2(x, N=None):
     return signal.hilbert2(x, N=N)
 
+
+@enhence_num_indexing_kw('axis')
+def spectrogram(h5data, axis=-1, **kwargs):
+    """
+    A wrapper function of scipy.signal.spectrogram
+    :param h5data:
+    :param kwargs:
+    :param axis:
+    :return: h5data with one more dimension appended
+    """
+    meta = h5data.meta2dict()
+    k, x, Sxx = signal.spectrogram(h5data.values, fs=1/h5data.axes[axis].increment, axis=axis, **kwargs)
+    meta['axes'][axis].ax = x - x[0] + h5data.axes[axis].min
+    meta['axes'].insert(axis, osh5def.DataAxis(attrs=copy.deepcopy(meta['axes'][axis].attrs), data=2*np.pi*k))
+    __update_axes_label(meta['axes'], axis - 1 if axis < 0 else axis)
+    return osh5def.H5Data(Sxx, **meta)
 # ---------------------------------- SciPy Wrappers ---------------------------------------
 
 
@@ -494,7 +510,7 @@ def diff(x, n=1, axis=-1):
 def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't')):
     """decompose a vector field into transverse and longitudinal direction
     fldarr: list of field components in the order of x, y, z
-    ffted: have the input field been
+    ffted: If the input fields have been Fourier transformed
     finalize: what function to call after all transforms,
         for example finalize=abs will be converted the fields to amplitude
     idim: inverse fourier transform in idim direction(s)
@@ -600,21 +616,72 @@ def rebin(a, fac):
     return __rebin(a, fac)
 
 
-@enhence_num_indexing_kw('axis')
-def spectrogram(h5data, axis=-1, **kwargs):
+def log_Gabor_Filter_2d(w, w0, s0):
+    return np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) )
+
+
+def monogenic_signal(data, *args, filter_func=log_Gabor_Filter_2d, ffted=True, ifft=True):
     """
-    A wrapper function of scipy.signal.spectrogram
-    :param h5data:
-    :param kwargs:
-    :param axis:
-    :return: h5data with one more dimension appended
+    Get the monogenic signal of 2D data. This implementation is better suited for intrisically 1D signals. 
+    read the following articles for more details:
+    [1] M. Felsberg and G. Sommer, IEEE Trans. Signal Process. 49, 3136 (2001).
+    [2] C. P. Bridge, ArXiv:1703.09199 (2017).
+    :param data: 2D H5Data
+    :param *args: arguments which will be passthrough to the Filter function
+    :param filter_func: filter function
+    :param ffted: Set to True if the ft_data is the Fourier transform, default is False
+    :param ifft: if True then inverse Fourier transform back to real space, default is True
+    :return: mongenic signal as a tuple (f, f_R), where f is the filtered orginal signal and f_R is the
+             Riesz transform of the filtered signal
     """
-    meta = h5data.meta2dict()
-    k, x, Sxx = signal.spectrogram(h5data.values, fs=1/h5data.axes[axis].increment, axis=axis, **kwargs)
-    meta['axes'][axis].ax = x - x[0] + h5data.axes[axis].min
-    meta['axes'].insert(axis, osh5def.DataAxis(attrs=copy.deepcopy(meta['axes'][axis].attrs), data=2*np.pi*k))
-    __update_axes_label(meta['axes'], axis - 1 if axis < 0 else axis)
-    return osh5def.H5Data(Sxx, **meta)
+    ft_data = fft2(data) if not ffted else data
+    w = np.meshgrid(*reversed([x.ax for x in ft_data.axes]), sparse=True)
+    wamp = np.sqrt(np.sum(wi**2 for wi in w))
+    origin = np.where(wamp==0)
+    wamp[origin] = 1.
+    flt = filter_func(wamp, *args)
+    flt[origin] = 0.
+    goc = ft_data * (w[0] * flt * 1j - w[1] * flt) / wamp
+    ge = flt * ft_data
+    if ifft:
+        goc = ifft2(goc)
+        ge = ifft2(ge)
+    return np.real(ge), goc
+
+
+def monogenic_local_phase(monogenic_signal, **kwargs):
+    """
+    get the local phase of a 2D monogenic signal
+    :param monogenic_signal: the output of the monogenic_signal function
+    :param unwrap: if True then unwrap the output angle, default is False
+    :param kwargs: keyword arguments that will be passthrough to the unwrap function
+    :return: local phase in h5Data format
+    """
+    theta = np.arctan2( np.abs(monogenic_signal[1])*np.sign(np.real(monogenic_signal[1])), monogenic_signal[0])
+    unwrap_output = kwargs.pop('unwrap', False)
+    if unwrap_output:
+        return unwrap(theta, **kwargs)
+    theta.data_attrs['UNITS'] = osh5def.OSUnits('a.u.')
+    return theta
+
+
+def monogenic_local_orientation(monogenic_signal):
+    """
+    get the local orientation of a 2D monogenic signal
+    :param monogenic_signal: the output (or the second elements of the output) of the monogenic_signal function
+    """
+    if isinstance(monogenic_signal, (list, tuple)):
+        return np.arctan(np.imag(monogenic_signal[1])/np.real(monogenic_signal[1]))
+    else:
+        return np.arctan(np.imag(monogenic_signal)/np.real(monogenic_signal))
+
+
+def monogenic_local_amplitude(monogenic_signal):
+    """
+    get the local orientation of a 2D monogenic signal
+    :param monogenic_signal: the output of the monogenic_signal function
+    """
+    return np.sqrt(monogenic_signal[0]**2 + np.abs(monogenic_signal[1])**2)
 
 
 if __name__ == '__main__':
