@@ -254,8 +254,10 @@ def __try_update_axes(updfunc):
 def __update_axes_label(axes, i):
     if axes[i].attrs['NAME'] == 't' or axes[i].attrs['LONG_NAME'] == 'time' or axes[i].attrs['UNITS'].is_time():
         axes[i].attrs['LONG_NAME'] = '\omega'
+        axes[i].attrs['NAME'] == 'w'
     else:
         axes[i].attrs['LONG_NAME'] = 'K(' + axes[i].attrs['LONG_NAME'] + ')'
+        axes[i].attrs['NAME'] = 'k' + axes[i].attrs['NAME']
     try:
         axes[i].attrs['UNITS'] **= -1
     except TypeError:
@@ -272,7 +274,6 @@ def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
 
 @__try_update_axes
 def _update_ifft_axes(axes, idx,  shape, _sfunc, ffunc):
-    k, e = 'LONG_NAME', 2
     warned = False
     for i in idx:
         try:
@@ -287,8 +288,10 @@ def _update_ifft_axes(axes, idx,  shape, _sfunc, ffunc):
         axes[i].ax = ffunc(shape[i], d=axes[i].increment, min=xmin)
         if axes[i].attrs['LONG_NAME'] == '\omega' or axes[i].attrs['UNITS'].is_frequency():
             axes[i].attrs['LONG_NAME'] = 'time'
+            axes[i].attrs['NAME'] = 't'
         else:
-            axes[i].attrs[k] = axes[i].attrs[k][e:-1]
+            axes[i].attrs['LONG_NAME'] = axes[i].attrs['LONG_NAME'][2:-1]
+            axes[i].attrs['NAME'] = axes[i].attrs['NAME'][1:]
         try:
             axes[i].attrs['UNITS'] **= -1
         except TypeError:
