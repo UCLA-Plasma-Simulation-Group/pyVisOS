@@ -36,7 +36,7 @@ class DataAxis:
             self.attrs.update(attrs)
 
     def __str__(self):
-        return ''.join([str(self.attrs['NAME']), ': [', str(self.ax[0]), ', ', str(self.ax[-1]), '] ',
+        return ''.join([str(self.attrs['NAME']), ': [', str(self.ax[0]), ', ', str(self.max), '] ',
                         str(self.attrs['UNITS'])])
 
     def __repr__(self):
@@ -274,8 +274,8 @@ class _LocIndexer(object):
         self.__data.values[tuple(self.__convert_index(index))] = value
 
 
-# Important: the first occurrence of serial numbers between '-' and '.' must be the time stamp information
-fn_rule = re.compile(r'-(\d+)\.')
+# Important: the first occurrence of serial numbers before '.' must be the time stamp information
+fn_rule = re.compile(r'.(\d+)\.')
 
 
 class H5Data(np.ndarray):
@@ -363,7 +363,7 @@ class H5Data(np.ndarray):
             return str(self.values)
         else:
             return ''.join([self.name, '-', self.timestamp, ', shape: ', str(self.shape), ', time:',
-                            str(self.run_attrs['TIME']), str(self.run_attrs['TIME UNITS']), '\naxis:\n  ',
+                            str(self.run_attrs['TIME']), ' [', str(self.run_attrs['TIME UNITS']), ']\naxis:\n  ',
                             '\n  '.join([str(ax) for ax in self.axes]) if len(self.axes) else 'None'])
 
     def __repr__(self):

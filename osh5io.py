@@ -18,7 +18,7 @@ import numpy as np
 from osh5def import H5Data, fn_rule, DataAxis, OSUnits
 
 
-def read_h5(filename, path=None, axis_name=None):
+def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
     """
     HDF reader for Osiris/Visxd compatible HDF files... This will slurp in the data
     and the attributes that describe the data (e.g. title, units, scale).
@@ -54,8 +54,6 @@ def read_h5(filename, path=None, axis_name=None):
     except IndexError:
         timestamp = '000000'
 
-    if not axis_name:
-        axis_name = "AXIS/AXIS"
     axis_number = 1
     while True:
         try:
@@ -116,6 +114,73 @@ def read_h5(filename, path=None, axis_name=None):
         return data_bundle[0]
     else:
         return data_bundle
+
+
+def read_h5_openpmd(filename, path=None):
+    """
+    HDF reader for OpenPMD compatible HDF files... This will slurp in the data
+    and the attributes that describe the data (e.g. title, units, scale).
+
+    Usage:
+            diag_data = read_hdf_openpmd('EandB000006.h5')      # diag_data is a subclass of numpy.ndarray with extra attributes
+
+            print(diag_data)                          # print the meta data
+            print(diag_data.view(numpy.ndarray))      # print the raw data
+            print(diag_data.shape)                    # prints the dimension of the raw data
+            print(diag_data.run_attrs['TIME'])        # prints the simulation time associated with the hdf5 file
+            diag_data.data_attrs['UNITS']             # print units of the dataset points
+            list(diag_data.data_attrs)                # lists all attributes related to the data array
+            list(diag_data.run_attrs)                 # lists all attributes related to the run
+            print(diag_data.axes[0].attrs['UNITS'])   # prints units of X-axis
+            list(diag_data.axes[0].attrs)             # lists all variables of the X-axis
+
+            diag_data[slice(3)]
+                print(rw.view(np.ndarray))
+
+    We will convert all byte strings stored in the h5 file to strings which are easier to deal with when writing codes
+    see also write_h5() function in this file
+
+    """
+    fname = filename if not path else path + '/' + filename
+    with h5py.File(fname, 'r') as data_file:
+
+        try:
+            timestamp = fn_rule.findall(os.path.basename(filename))[0]
+        except IndexError:
+            timestamp = '00000000'
+
+        basePath = data_file.attrs['basePath'].decode('utf-8').replace('%T', timestamp)
+        meshPath = basePath + data_file.attrs['meshesPath'].decode('utf-8')
+
+        run_attrs = {k.upper(): v for k, v in data_file[basePath].attrs.items()}
+        run_attrs.setdefault('TIME UNITS', r'1 / \omega_p')
+
+        # read field data
+        lname_dict, fldl = {'E1': 'E_x', 'E2':'E_y', 'E3':'E_z',
+                      'B1': 'B_x', 'B2': 'B_y', 'B3': 'B_z'}, []
+        # k is the field label and v is the field dataset
+        for k, v in data_file[meshPath].items():
+            # openPMD doesn't enforce attrs that are required in OSIRIS dataset
+            data_attrs, dflt_ax_unit = \
+                {'UNITS': OSUnits(r'm_e c \omega_p e^{-1} '),
+                 'LONG_NAME': lname_dict[k], 'NAME': k}, r'c \omega_p^{-1}'
+            data_attrs.update({ia: va for ia, va in v.attrs.items()})
+
+            ax_label, ax_min, ax_max = \
+                data_attrs.pop('axisLabels'), data_attrs.pop('gridGlobalOffset'), data_attrs.pop('gridSpacing')
+
+            # prepare the axes data
+            axes = []
+            for aln, an, amax, amin, anp in zip(ax_label,ax_label,
+                                                ax_max, ax_min, v.shape):
+                ax_attrs = {'LONG_NAME': aln.decode('utf-8'),
+                            'NAME': an.decode('utf-8'), 'UNITS': dflt_ax_unit}
+                data_axis = DataAxis(amin, amax, anp, attrs=ax_attrs)
+                axes.append(data_axis)
+
+            fldl.append(H5Data(v[()], timestamp=timestamp, data_attrs=data_attrs,
+                               run_attrs=run_attrs, axes=axes))
+    return fldl[0] if len(fldl) == 1 else fldl
 
 
 def scan_hdf5_file_for_main_data_array(h5file):
