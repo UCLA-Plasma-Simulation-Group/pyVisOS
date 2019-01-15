@@ -7,18 +7,23 @@ import numpy as np
 # except ImportError:
 #     print('Fail to import GUI routines. Check your PyQT installation')
 
-def time_format(time=0.0, unit=None):
-    tmp = '$t = ' + "{:.2f}".format(time)
+def time_format(time=0.0, unit=None, convert_tunit=False, wavelength=0.351, **kwargs):
+    if convert_tunit:
+        t = wavelength * 5.31e-4 * time 
+        unit = ' ps'
+    else:
+        t = time
+    tmp = '$t = ' + "{:.2f}".format(t)
     if unit:
         tmp += '$ [$' + str(unit) + '$]'
     return tmp
 
 
-def default_title(h5data, show_time=True):
+def default_title(h5data, show_time=True, **kwargs):
     tmp = tex(h5data.data_attrs['LONG_NAME'])
     if show_time and not h5data.has_axis('t'):
         try:
-            tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'])
+            tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'], **kwargs)
         except:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
             pass
     return tmp
@@ -46,8 +51,12 @@ def osplot(h5data, *args, **kwpassthrough):
 
 
 def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, title=None, ax=None,
-               *args, **kwpassthrough):
-    plot_object = func(h5data.axes[0].ax, h5data.view(np.ndarray), *args, **kwpassthrough)
+               convert_tunit=False, convert_xaxis=False, wavelength=0.351, *args, **kwpassthrough):
+    if convert_xaxis:
+        xaxis, xunit = h5data.axes[0].to_phys_unit()
+    else:
+        xaxis, xunit = h5data.axes[0], h5data.axes[0].attrs['UNITS']
+    plot_object = func(xaxis, h5data.view(np.ndarray), *args, **kwpassthrough)
     if ax is not None:
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
             ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
@@ -55,7 +64,7 @@ def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, tit
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
             plt.xlim, plt.ylim, plt.xlabel, plt.ylabel, plt.title
     if xlabel is None:
-        xlabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], h5data.axes[0].attrs['UNITS'])
+        xlabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], xunit)
     if ylabel is None:
         ylabel = axis_format(h5data.data_attrs['LONG_NAME'], str(h5data.data_attrs['UNITS']))
     if xlim is not None:
@@ -65,7 +74,7 @@ def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, tit
     set_xlabel(xlabel)
     set_ylabel(ylabel)
     if title is None:
-        title = default_title(h5data)
+        title = default_title(h5data, convert_tunit=convert_tunit, wavelength=wavelength)
     set_title(title)
     return plot_object
 
@@ -92,7 +101,7 @@ def osloglog(h5data, *args, ax=None, **kwpassthrough):
 
 def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
                colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, fig=None,
-               **kwpassthrough):
+               convert_tunit=False, wavelength=0.351, **kwpassthrough):
     if convert_xaxis:
         axis = h5data.axes[1].to_phys_unit()
         extx = axis[0].min(), axis[0].max()
@@ -117,7 +126,6 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
     else:
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
             ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
-    set_clim = plt.clim if im is None else im.set_clim
 
     if xlim is not None:
         set_xlim(xlim)
@@ -128,13 +136,13 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
     if ylabel is None:
         ylabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], yunit)
     if title is None:
-        title = default_title(h5data)
+        title = default_title(h5data, convert_tunit=convert_tunit, wavelength=wavelength)
     set_xlabel(xlabel)
     set_ylabel(ylabel)
     set_title(title)
 
     if clim is not None:
-        set_clim(clim)
+        plot_object.set_clim(clim)
 
     if colorbar:
         if not cb:
