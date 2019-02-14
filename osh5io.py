@@ -156,18 +156,22 @@ def read_h5_openpmd(filename, path=None):
         run_attrs.setdefault('TIME UNITS', r'1 / \omega_p')
 
         # read field data
-        lname_dict, fldl = {'E1': 'E_x', 'E2':'E_y', 'E3':'E_z',
-                      'B1': 'B_x', 'B2': 'B_y', 'B3': 'B_z'}, []
+        lname_dict, fldl = {'E1': 'E_x', 'E2': 'E_y', 'E3': 'E_z',
+                            'B1': 'B_x', 'B2': 'B_y', 'B3': 'B_z',
+                            'jx': 'J_x', 'jy': 'J_y', 'jz': 'J_z', 'rho': r'\roh'}, {}
         # k is the field label and v is the field dataset
         for k, v in data_file[meshPath].items():
             # openPMD doesn't enforce attrs that are required in OSIRIS dataset
             data_attrs, dflt_ax_unit = \
                 {'UNITS': OSUnits(r'm_e c \omega_p e^{-1} '),
-                 'LONG_NAME': lname_dict[k], 'NAME': k}, r'c \omega_p^{-1}'
+                 'LONG_NAME': lname_dict.get(k, k), 'NAME': k}, r'c \omega_p^{-1}'
             data_attrs.update({ia: va for ia, va in v.attrs.items()})
 
-            ax_label, ax_min, ax_max = \
-                data_attrs.pop('axisLabels'), data_attrs.pop('gridGlobalOffset'), data_attrs.pop('gridSpacing')
+            ax_label, ax_off, g_spacing, ax_pos, unitsi = \
+                data_attrs.pop('axisLabels'), data_attrs.pop('gridGlobalOffset'), \
+                data_attrs.pop('gridSpacing'), data_attrs.pop('position'), data_attrs.pop('unitSI')
+            ax_min = (ax_off + ax_pos * g_spacing) * unitsi
+            ax_max = ax_min + v.shape * g_spacing * unitsi
 
             # prepare the axes data
             axes = []
@@ -178,9 +182,9 @@ def read_h5_openpmd(filename, path=None):
                 data_axis = DataAxis(amin, amax, anp, attrs=ax_attrs)
                 axes.append(data_axis)
 
-            fldl.append(H5Data(v[()], timestamp=timestamp, data_attrs=data_attrs,
-                               run_attrs=run_attrs, axes=axes))
-    return fldl[0] if len(fldl) == 1 else fldl
+            fldl[k] = H5Data(v[()], timestamp=timestamp, data_attrs=data_attrs,
+                             run_attrs=run_attrs, axes=axes)
+    return fldl
 
 
 def scan_hdf5_file_for_main_data_array(h5file):
