@@ -180,7 +180,7 @@ def read_h5_openpmd(filename, path=None):
                 ax_attrs = {'LONG_NAME': aln.decode('utf-8'),
                             'NAME': an.decode('utf-8'), 'UNITS': dflt_ax_unit}
                 data_axis = DataAxis(amin, amax, anp, attrs=ax_attrs)
-                axes.append(data_axis)
+                axes.insert(0, data_axis)
 
             fldl[k] = H5Data(v[()], timestamp=timestamp, data_attrs=data_attrs,
                              run_attrs=run_attrs, axes=axes)
