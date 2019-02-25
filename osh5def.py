@@ -104,7 +104,7 @@ class DataAxis:
         except IndexError:
             return 0
 
-    def to_phys_unit(self, wavelength=None, density=None):
+    def to_phys_unit(self, wavelength=None, density=None, **unused):
         """
         convert this axis to physical units. note that this function won't change the actual axis.
         the copy of the axis data is returned

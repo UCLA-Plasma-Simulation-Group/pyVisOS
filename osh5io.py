@@ -152,7 +152,13 @@ def read_h5_openpmd(filename, path=None):
         basePath = data_file.attrs['basePath'].decode('utf-8').replace('%T', timestamp)
         meshPath = basePath + data_file.attrs['meshesPath'].decode('utf-8')
 
-        run_attrs = {k.upper(): v for k, v in data_file[basePath].attrs.items()}
+        try:
+            run_attrs = {k.upper(): v for k, v in data_file[basePath].attrs.items()}
+        except KeyError:
+            basePath = data_file.attrs['basePath'].decode('utf-8').replace('%T', str(int(timestamp)))
+            meshPath = basePath + data_file.attrs['meshesPath'].decode('utf-8')
+            run_attrs = {k.upper(): v for k, v in
+                         data_file[basePath].attrs.items()}
         run_attrs.setdefault('TIME UNITS', r'1 / \omega_p')
 
         # read field data
@@ -160,31 +166,51 @@ def read_h5_openpmd(filename, path=None):
                             'B1': 'B_x', 'B2': 'B_y', 'B3': 'B_z',
                             'jx': 'J_x', 'jy': 'J_y', 'jz': 'J_z', 'rho': r'\roh'}, {}
         # k is the field label and v is the field dataset
-        for k, v in data_file[meshPath].items():
+
+        for key, val in data_file[meshPath].items():
             # openPMD doesn't enforce attrs that are required in OSIRIS dataset
             data_attrs, dflt_ax_unit = \
                 {'UNITS': OSUnits(r'm_e c \omega_p e^{-1} '),
-                 'LONG_NAME': lname_dict.get(k, k), 'NAME': k}, r'c \omega_p^{-1}'
-            data_attrs.update({ia: va for ia, va in v.attrs.items()})
-
-            ax_label, ax_off, g_spacing, ax_pos, unitsi = \
-                data_attrs.pop('axisLabels'), data_attrs.pop('gridGlobalOffset'), \
-                data_attrs.pop('gridSpacing'), data_attrs.pop('position'), data_attrs.pop('unitSI')
-            ax_min = (ax_off + ax_pos * g_spacing) * unitsi
-            ax_max = ax_min + v.shape * g_spacing * unitsi
-
-            # prepare the axes data
-            axes = []
-            for aln, an, amax, amin, anp in zip(ax_label,ax_label,
-                                                ax_max, ax_min, v.shape):
-                ax_attrs = {'LONG_NAME': aln.decode('utf-8'),
-                            'NAME': an.decode('utf-8'), 'UNITS': dflt_ax_unit}
-                data_axis = DataAxis(amin, amax, anp, attrs=ax_attrs)
-                axes.append(data_axis)
-
-            fldl[k] = H5Data(v[()], timestamp=timestamp, data_attrs=data_attrs,
-                             run_attrs=run_attrs, axes=axes)
+                 'LONG_NAME': lname_dict.get(key, key),
+                 'NAME': key}, r'c \omega_p^{-1}'
+            data_attrs.update({ia: va for ia, va in val.attrs.items()})
+            if isinstance(val, h5py.Dataset):
+                k, v = key, val
+                fldl[k] = __read_dataset_and_convert_to_h5data(k, v, data_attrs, dflt_ax_unit,
+                                                               timestamp, run_attrs)
+            else:
+                n, ln = data_attrs['NAME'], data_attrs['LONG_NAME']
+                for k, v in val.items():
+                    dattrs = data_attrs.copy()
+                    dattrs.update({ia: va for ia, va in v.attrs.items()})
+                    dattrs['NAME'] = n + k
+                    dattrs['LONG_NAME'] = ln + '_' + k
+                    k = dattrs['NAME']
+                    fldl[k] = __read_dataset_and_convert_to_h5data(k, v, dattrs, dflt_ax_unit,
+                                                                timestamp, run_attrs)
     return fldl
+
+
+def __read_dataset_and_convert_to_h5data(k, v, data_attrs, dflt_ax_unit,
+                                         timestamp, run_attrs):
+    ax_label, ax_off, g_spacing, ax_pos, unitsi = \
+        data_attrs.pop('axisLabels'), data_attrs.pop('gridGlobalOffset', 0), \
+        data_attrs.pop('gridSpacing'), data_attrs.pop('position',
+                                                      0), data_attrs.pop(
+            'unitSI', 1.)
+    ax_min = (ax_off + ax_pos * g_spacing) * unitsi
+    ax_max = ax_min + v.shape * g_spacing * unitsi
+
+    # prepare the axes data
+    axes = []
+    for aln, an, amax, amin, anp in zip(ax_label, ax_label,
+                                        ax_max, ax_min, v.shape):
+        ax_attrs = {'LONG_NAME': aln.decode('utf-8'),
+                    'NAME': an.decode('utf-8'), 'UNITS': dflt_ax_unit}
+        data_axis = DataAxis(amin, amax, anp, attrs=ax_attrs)
+        axes.append(data_axis)
+    return H5Data(v[()], timestamp=timestamp, data_attrs=data_attrs,
+                  run_attrs=run_attrs, axes=axes)
 
 
 def scan_hdf5_file_for_main_data_array(h5file):

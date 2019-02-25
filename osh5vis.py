@@ -1,5 +1,6 @@
 # import osh5def
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 import numpy as np
 # try:
 #     import osh5gui
@@ -19,8 +20,8 @@ def time_format(time=0.0, unit=None, convert_tunit=False, wavelength=0.351, **kw
     return tmp
 
 
-def default_title(h5data, show_time=True, **kwargs):
-    tmp = tex(h5data.data_attrs['LONG_NAME'])
+def default_title(h5data, show_time=True, title=None, **kwargs):
+    tmp = tex(h5data.data_attrs['LONG_NAME']) if title is None else tex(title)
     if show_time and not h5data.has_axis('t'):
         try:
             tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'], **kwargs)
@@ -103,23 +104,53 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
                colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, fig=None,
                convert_tunit=False, wavelength=0.351, **kwpassthrough):
     if convert_xaxis:
-        axis = h5data.axes[1].to_phys_unit()
+        axis = h5data.axes[1].to_phys_unit(wavelength=wavelength)
         extx = axis[0].min(), axis[0].max()
         xunit = axis[1]
     else:
-        extx = h5data.axes[1].min, h5data.axes[1].max
+        extx = h5data.axes[1].ax.min(), h5data.axes[1].ax.max()
         xunit = h5data.axes[1].attrs['UNITS']
 
     if convert_yaxis:
-        axis = h5data.axes[0].to_phys_unit()
+        axis = h5data.axes[0].to_phys_unit(wavelength=wavelength)
         exty = axis[0].min(), axis[0].max()
         yunit = axis[1]
     else:
-        exty = h5data.axes[0].min, h5data.axes[0].max
+        exty = h5data.axes[0].ax.min(), h5data.axes[0].ax.max()
         yunit = h5data.axes[0].attrs['UNITS']
+    # not a very good idea, we should have a better way to do this
+    if len(args) > 0 and type(h5data) == type(args[0]):  # it is a vector field we are plotting
+        fld2, if_vector_field = args[0], True
+        co = kwpassthrough.pop('color', np.sqrt(h5data.values**2 + fld2.values**2) if colorbar else None)
+#         vmin = kwpassthrough.pop('vmin', np.min(co))
+#         vmax = kwpassthrough.pop('vmax', np.max(co))
+        plot_object = func(h5data.axes[1].ax, h5data.axes[0].ax, h5data.values, 
+                           fld2.values, *args[1:], color=co, **kwpassthrough)
+    else:
+        extent_stuff, if_vector_field = [extx[0], extx[1], exty[0], exty[1]], False
+        plot_object = func(h5data.view(np.ndarray), *args, extent=extent_stuff, **kwpassthrough)
 
-    extent_stuff = [extx[0], extx[1], exty[0], exty[1]]
-    plot_object = func(h5data.view(np.ndarray), *args, extent=extent_stuff, **kwpassthrough)
+    __set_axes_labels_and_title_2d(h5data, xunit, yunit, ax=ax, xlabel=xlabel, ylabel=ylabel,
+                                   convert_tunit=convert_tunit, title=title,
+                                   xlim=xlim, ylim=ylim, wavelength=wavelength)
+    if clim is not None:
+        plot_object.set_clim(clim)
+
+    if colorbar:
+        if not cb:
+            cb = plt.colorbar(plot_object) if fig is None else fig.colorbar(plot_object)
+        if cblabel is None:
+            cb.set_label(h5data.data_attrs['UNITS'].tex())
+        else:
+            cb.set_label(cblabel)
+        return plot_object, cb
+    return plot_object, None
+
+
+def __set_axes_labels_and_title_2d(h5data, xunit, yunit, ax=None, convert_tunit=False,
+                                   xlabel=None, ylabel=None, title=None,
+                                   xlim=None, ylim=None, wavelength=0.351,
+                                   **__unused):
     if ax is None:
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
             plt.xlim, plt.ylim, plt.xlabel, plt.ylabel, plt.title
@@ -141,24 +172,27 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
     set_ylabel(ylabel)
     set_title(title)
 
-    if clim is not None:
-        plot_object.set_clim(clim)
 
-    if colorbar:
-        if not cb:
-            cb = plt.colorbar(plot_object) if fig is None else fig.colorbar(plot_object)
-        if cblabel is None:
-            cb.set_label(h5data.data_attrs['UNITS'].tex())
-        else:
-            cb.set_label(cblabel)
-        return plot_object, cb
-    return plot_object, None
+def osstreamplot(field1, field2, *args, ax=None, **kwpassthrough):
+    streamplot = ax.streamplot if ax is not None else plt.streamplot
+    colorbar = 'cmap' in kwpassthrough or 'color' in kwpassthrough
+    return __osplot2d(streamplot, field1, field2, *args, ax=ax, colorbar=colorbar, **kwpassthrough)
 
 
-def osimshow(h5data, *args, ax=None, cb=None, aspect=None, **kwpassthrough):
+def osimshow(h5data, *args, ax=None, cb=None, aspect='auto', origin='lower', **kwpassthrough):
     imshow = ax.imshow if ax is not None else plt.imshow
-    asp = 'auto' if aspect is None else aspect
-    return __osplot2d(imshow, h5data, *args, cb=cb, aspect=asp, origin='lower', **kwpassthrough)
+    return __osplot2d(imshow, h5data, *args, cb=cb, aspect=aspect, origin=origin, **kwpassthrough)
+
+
+def osspy(h5data, *args, ax=None, aspect='auto', origin='lower', xlabel=None,
+          ylabel=None, title=None, xlim=None, ylim=None, convert_tunit=False,
+          wavelength=0.351, **kwpassthrough):
+    spy = ax.spy if ax is not None else plt.spy
+    plot_object = spy(h5data.view(np.ndarray), *args, aspect=aspect, origin=origin, **kwpassthrough)
+    __set_axes_labels_and_title_2d(h5data, '', '', ax=ax, xlabel=xlabel,
+                                   ylabel=ylabel, convert_tunit=convert_tunit, title=title,
+                                   xlim=xlim, ylim=ylim, wavelength=wavelength)
+    return plot_object
 
 
 def oscontour(h5data, *args, ax=None, cb=None, **kwpassthrough):

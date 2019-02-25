@@ -265,15 +265,23 @@ def __update_axes_label(axes, i):
 
 
 @__try_update_axes
-def _update_fft_axes(axes, idx, shape, sfunc, ffunc):
-    for i in idx:
+def _update_fft_axes(axes, idx, shape, omitlast, ffunc):
+    for i in idx[:-1]:
         __update_axes_label(axes, i)
         axes[i].attrs['shift'] = axes[i].min  # save lower bound. value of axes
-        axes[i].ax = sfunc(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
+        axes[i].ax = np.fft.fftshift(np.fft.fftfreq(shape[i], d=axes[i].increment)) * 2 * np.pi
+    # the last dimension needs special care for rfft
+    i = idx[-1]
+    __update_axes_label(axes, i)
+    axes[i].attrs['shift'] = axes[i].min  # save lower bound. value of axes
+    if omitlast:
+        axes[i].ax = ffunc(shape[i], d=axes[i].increment) * 2 * np.pi
+    else:
+        axes[i].ax = np.fft.fftshift(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
 
 
 @__try_update_axes
-def _update_ifft_axes(axes, idx,  shape, _sfunc, ffunc):
+def _update_ifft_axes(axes, idx, shape, _unused, ffunc):
     warned = False
     for i in idx:
         try:
@@ -308,26 +316,30 @@ def _get_ifft_axis(n, d=1.0, min=0.0):
     return np.arange(min, length + min, length / n)
 
 
-def __ft_interface(ftfunc, sfunc):
+def __ft_interface(ftfunc, forward, omitlast):
     @metasl
     def ft_interface(a, s, axes, norm):
         # call fft and shift the result
-        return sfunc(ftfunc(sfunc(a, axes), s, axes, norm), axes)
+        shftax = axes[:-1] if omitlast else axes
+        if forward:
+            return np.fft.fftshift(ftfunc(a, s, axes, norm), shftax)
+        else:
+            return ftfunc(np.fft.ifftshift(a, shftax), s, axes, norm)
     return ft_interface
 
 
-def __shifted_ft_gen(ftfunc, sfunc, ffunc, uafunc):
+def __shifted_ft_gen(ftfunc, forward, omitlast, ffunc, uafunc):
     def shifted_fft(a, s=None, axes=None, norm=None):
         shape = s if s is not None else a.shape
-        o = __ft_interface(ftfunc, sfunc=sfunc)(a, s=s, axes=axes, norm=norm)
-        uafunc(o, axes, shape, sfunc=sfunc, ffunc=ffunc)
+        o = __ft_interface(ftfunc, forward=forward, omitlast=omitlast)(a, s=s, axes=axes, norm=norm)
+        uafunc(o, axes, shape, omitlast, ffunc=ffunc)
         return o
     return shifted_fft
 
 
 # # ========  Normal FFT  ==========
-__shifted_fft = partial(__shifted_ft_gen, sfunc=np.fft.fftshift, ffunc=np.fft.fftfreq, uafunc=_update_fft_axes)
-__shifted_ifft = partial(__shifted_ft_gen, sfunc=np.fft.ifftshift, ffunc=_get_ifft_axis, uafunc=_update_ifft_axes)
+__shifted_fft = partial(__shifted_ft_gen, forward=True, omitlast=False, ffunc=np.fft.fftfreq, uafunc=_update_fft_axes)
+__shifted_ifft = partial(__shifted_ft_gen, forward=False, omitlast=False, ffunc=_get_ifft_axis, uafunc=_update_ifft_axes)
 
 
 @enhence_num_indexing_kw('axes')
@@ -363,8 +375,8 @@ def ifft(a, n=None, axis=-1, norm=None):
 
 
 # # ========  real FFT  ==========
-__shifted_rfft = partial(__shifted_ft_gen, sfunc=__idle, ffunc=np.fft.rfftfreq, uafunc=_update_fft_axes)
-__shifted_irfft = partial(__shifted_ft_gen, sfunc=__idle, ffunc=_get_ifft_axis, uafunc=_update_ifft_axes)
+__shifted_rfft = partial(__shifted_ft_gen, forward=True, omitlast=True, ffunc=np.fft.rfftfreq, uafunc=_update_fft_axes)
+__shifted_irfft = partial(__shifted_ft_gen, forward=False, omitlast=True, ffunc=_get_ifft_axis, uafunc=_update_ifft_axes)
 
 
 def __save_space_shape(a, s):
@@ -434,8 +446,8 @@ def irfft(a, n=None, axis=-1, norm=None):
 
 
 # # ========  Hermitian FFT  ==========
-__shifted_hfft = partial(__shifted_ft_gen, sfunc=np.fft.fftshift, ffunc=np.fft.fftfreq, uafunc=_update_fft_axes)
-__shifted_ihfft = partial(__shifted_ft_gen, sfunc=__idle, ffunc=_get_ihfft_axis, uafunc=_update_ifft_axes)
+__shifted_hfft = partial(__shifted_ft_gen, forward=True, omitlast=False, ffunc=np.fft.fftfreq, uafunc=_update_fft_axes)
+__shifted_ihfft = partial(__shifted_ft_gen, forward=False, omitlast=False, ffunc=_get_ihfft_axis, uafunc=_update_ifft_axes)
 
 
 @enhence_num_indexing_kw('axis')
@@ -510,7 +522,7 @@ def diff(x, n=1, axis=-1):
 
 # ---------------------------------- NumPy Wrappers ---------------------------------------
 
-def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't')):
+def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False):
     """decompose a vector field into transverse and longitudinal direction
     fldarr: list of field components in the order of x, y, z
     ffted: If the input fields have been Fourier transformed
@@ -532,10 +544,12 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
         return copy.deepcopy(fldarr)
     if not finalize:
         finalize = __idle
+    if np.issubdtype(fldarr[0].dtype, np.floating):
+        ftf, iftf = fftn, ifftn if norft else rfftn, irfftn
 
     def wrap_up(data):
         if idim:
-            return ifftn(data, axes=idim)
+            return iftf(data, axes=idim)
         else:
             return data
 
@@ -550,11 +564,11 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     if ffted:
         fftfld = [copy.deepcopy(fi) for fi in fldarr]
     else:
-        fftfld = [fftn(fi) for fi in fldarr]
+        fftfld = [ftf(fi) for fi in fldarr]
     kv = np.meshgrid(*reversed([x.ax for x in fftfld[0].axes]), sparse=True)
-    k2 = np.sum(ki**2 for ki in kv)  # |k|^2
+    k2 = sum(ki**2 for ki in kv)  # |k|^2
     k2[k2 == 0.0] = float('inf')
-    kdotfld = np.divide(np.sum(np.multiply(ki, fi) for ki, fi in zip(kv, fftfld)), k2)
+    kdotfld = np.divide(sum(np.multiply(ki, fi) for ki, fi in zip(kv, fftfld)), k2)
     fL, fT, ft, fl = 0, 0, [], []
     for i, fi in enumerate(fftfld):
         tmp = kdotfld * kv[i]
@@ -681,10 +695,18 @@ def monogenic_local_orientation(monogenic_signal):
 
 def monogenic_local_amplitude(monogenic_signal):
     """
-    get the local orientation of a 2D monogenic signal
+    get the local amplitude of a 2D monogenic signal
     :param monogenic_signal: the output of the monogenic_signal function
     """
     return np.sqrt(monogenic_signal[0]**2 + np.abs(monogenic_signal[1])**2)
+
+
+def monogenic_filtered_signal(monogenic_signal):
+    """
+    get a filtered version of the original signal
+    :param monogenic_signal: the output of the monogenic_signal function
+    """
+    return monogenic_signal[0]
 
 
 if __name__ == '__main__':
