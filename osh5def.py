@@ -290,7 +290,7 @@ class H5Data(np.ndarray):
         if data_attrs:
             obj.data_attrs = cp.deepcopy(data_attrs)  # there is OSUnits obj inside
         if run_attrs:
-            obj.run_attrs = run_attrs
+            obj.run_attrs = cp.deepcopy(run_attrs)
         if axes:
             obj.axes = cp.deepcopy(axes)   # the elements are numpy arrays
         return obj
@@ -300,14 +300,17 @@ class H5Data(np.ndarray):
             return
         self.timestamp = getattr(obj, 'timestamp', '0' * 6)
         # self.name = getattr(obj, 'name', 'data')
-        if self.base is obj:
-            self.data_attrs = getattr(obj, 'data_attrs', {})
-            self.run_attrs = getattr(obj, 'run_attrs', {})
-            self.axes = getattr(obj, 'axes', [])
-        else:
-            self.data_attrs = cp.deepcopy(getattr(obj, 'data_attrs', {}))
-            self.run_attrs = cp.deepcopy(getattr(obj, 'run_attrs', {}))
-            self.axes = cp.deepcopy(getattr(obj, 'axes', []))
+#         if self.base is obj:
+#             self.data_attrs = getattr(obj, 'data_attrs', {})
+#             self.run_attrs = getattr(obj, 'run_attrs', {})
+#             self.axes = getattr(obj, 'axes', [])
+#         else:
+#             self.data_attrs = cp.deepcopy(getattr(obj, 'data_attrs', {}))
+#             self.run_attrs = cp.deepcopy(getattr(obj, 'run_attrs', {}))
+#             self.axes = cp.deepcopy(getattr(obj, 'axes', []))
+        self.data_attrs, self.run_attrs, self.axes = (cp.deepcopy(getattr(obj, 'data_attrs', {})),
+                                                      cp.deepcopy(getattr(obj, 'run_attrs', {})),
+                                                      cp.deepcopy(getattr(obj, 'axes', [])))
 
     @property
     def T(self):
