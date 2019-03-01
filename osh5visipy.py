@@ -1,7 +1,7 @@
 from __future__ import print_function
 from ipywidgets import interact, Layout, Output
 import ipywidgets as widgets
-from IPython.display import display
+from IPython.display import display, FileLink, clear_output
 
 import numpy as np
 
@@ -14,7 +14,8 @@ from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
 import threading
 
 
-print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/ipython notebook")
+print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/ipython notebook;")
+print("use `%matplotlib widget' if you are using newer version of matplotlib+jupyterlab")
 
 
 def osimshow_w(data, *args, show=True, **kwargs):
@@ -65,7 +66,7 @@ def animation_w(data, *args, **kwargs):
 
 
 class Generic2DPlotCtrl(object):
-    tab_contents = ['Data', 'Labels', 'Axes', 'Lineout', 'Colormaps']
+    tab_contents = ['Data', 'Labels', 'Axes', 'Lineout', 'Colormaps', 'Save']
     eps = 1e-40
     colormaps_available = sorted(c for c in plt.colormaps() if not c.endswith("_r"))
 
@@ -176,9 +177,16 @@ class Generic2DPlotCtrl(object):
         self.cmap_reverse = widgets.Checkbox(value=False, description='Reverse', layout=items_layout)
         tab4 = widgets.HBox([self.cmap_selector, self.cmap_reverse])
 
+        # # # -------------------- Tab5 --------------------------
+        self.saveas = widgets.Button(description='Save current plot', tooltip='save current plot', button_style='')
+        self.dlink = Output()
+        self.figname = widgets.Text(value='figure.eps', description='Filename:')
+        self.dpi = widgets.BoundedIntText(value=300, min=4, max=3000, description='DPI:')
+        tab5 = widgets.VBox([widgets.HBox([self.figname, self.dpi], layout=items_layout), 
+                             self.saveas, self.dlink], layout=items_layout)
         # construct the tab
         self.tab = widgets.Tab()
-        self.tab.children = [tab0, tab1, tab2, tab3, tab4]
+        self.tab.children = [tab0, tab1, tab2, tab3, tab4, tab5]
         [self.tab.set_title(i, tt) for i, tt in enumerate(self.tab_contents)]
         # display(self.tab)
 
@@ -205,6 +213,8 @@ class Generic2DPlotCtrl(object):
         self.y_step_wgt.observe(self.__update_delta_y, 'value')
         self.apply_range_btn.on_click(self.update_plot_area)
         self.if_lineout_wgt.observe(self.toggle_lineout, 'value')
+        self.figname.observe(self.__reset_save_button, 'value')
+        self.saveas.on_click(self.__try_savefig)
 
         # plotting and then setting normalization colors
         self.out = Output()
@@ -214,7 +224,8 @@ class Generic2DPlotCtrl(object):
         self.ax = self.fig.add_subplot(111)
         with self.out_main:
             self.im, self.cb = self.plot_data()
-            display(self.fig)
+#             display(self.fig)
+            plt.show()
 
     @property
     def self(self):
@@ -313,7 +324,7 @@ class Generic2DPlotCtrl(object):
             # display(self.out)
         else:
             self.observer_thrd.join()  # kill the thread
-            Output.clear_output(self.out)
+            Output.clear_output(self.out, wait=True)
 
     def __handle_lognorm(self):
         if self.norm_selector.value[0] == LogNorm:
@@ -429,6 +440,44 @@ class Generic2DPlotCtrl(object):
         if not (0 < round(change['new'] / self._data.axes[1].increment) <= self._data[self._slcs].shape[1]):
             self.x_step_wgt.value = self._data.axes[1].increment
 
+    def __reset_save_button(self, *_):
+        self.saveas.description, self.saveas.tooltip, self.saveas.button_style= \
+        'Save current plot', 'save current plot', ''
+
+    def __savefig(self):
+        try:
+            self.fig.savefig(self.figname.value, dpi=self.dpi.value)
+#             self.dlink.clear_output(wait=True)
+            with self.dlink:
+                clear_output(wait=True)
+                print('shift+right_click to downloaod:')
+                display(FileLink(self.figname.value))
+            self.__reset_save_button(0)
+        except PermissionError:
+            self.saveas.description, self.saveas.tooltip, self.saveas.button_style= \
+                    'Permission Denied', 'please try another directory', 'danger'
+
+    def __try_savefig(self, *_):
+        pdir = os.path.abspath(os.path.dirname(self.figname.value))
+        path_exist = os.path.exists(pdir)
+        file_exist = os.path.exists(self.figname.value)
+        if path_exist:
+            if file_exist:
+                if not self.saveas.button_style:
+                    self.saveas.description, self.saveas.tooltip, self.saveas.button_style= \
+                    'Overwirte file', 'overwrite existing file', 'warning'
+                else:
+                    self.__savefig()
+            else:
+                self.__savefig()
+        else:
+            if not self.saveas.button_style:
+                self.saveas.description, self.saveas.tooltip, self.saveas.button_style= \
+                'Create path & save', 'create non-existing path and save', 'warning'
+            else:
+                os.makedirs(pdir)
+                self.__savefig()
+
 
 class Slicer(Generic2DPlotCtrl):
     def __init__(self, data, d=0, **extra_kwargs):
@@ -476,7 +525,7 @@ class Slicer(Generic2DPlotCtrl):
         self.update_data(self.data[self.slcs], slcs=[i for i in self.slcs if not isinstance(i, int)])
         self.reset_plot_area()
         self.set_norm()
-        # self.ax.cla()
+        self.ax.cla()
         self.cb.remove()
         self.im.remove()
         self.im, self.cb = self.plot_data(im=self.im)
