@@ -1,4 +1,5 @@
 from __future__ import print_function
+from functools import partial
 from ipywidgets import interact, Layout, Output
 import ipywidgets as widgets
 from IPython.display import display, FileLink, clear_output
@@ -18,7 +19,7 @@ print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/i
 print("use `%matplotlib widget' if you are using newer version of matplotlib+jupyterlab")
 
 
-def osimshow_w(data, *args, show=True, **kwargs):
+def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, **kwargs):
     """
     2D plot with widgets
     :param data: 2D H5Data
@@ -27,11 +28,16 @@ def osimshow_w(data, *args, show=True, **kwargs):
     :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
     :return: if show == True return None otherwise return a list of widgets
     """
-    wl = Generic2DPlotCtrl(data, *args, **kwargs).widgets_list
+    wl = Generic2DPlotCtrl(data, *args, pltfunc=pltfunc, **kwargs).widgets_list
     if show:
         display(*wl)
     else:
         return wl
+
+
+osimshow_w = partial(os2dplot_w, pltfunc=osh5vis.osimshow)
+oscontour_w = partial(os2dplot_w, pltfunc=osh5vis.oscontour)
+oscontourf_w = partial(os2dplot_w, pltfunc=osh5vis.oscontourf)
 
 
 def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
@@ -66,14 +72,17 @@ def animation_w(data, *args, **kwargs):
 
 
 class Generic2DPlotCtrl(object):
-    tab_contents = ['Data', 'Labels', 'Axes', 'Lineout', 'Colormaps', 'Save']
+    tab_contents = ['Data', 'Labels', 'Axes', 'Lineout', 'Colormaps', 'Save', 'FigSize']
     eps = 1e-40
     colormaps_available = sorted(c for c in plt.colormaps() if not c.endswith("_r"))
 
-    def __init__(self, data, slcs=(slice(None, ), ), title=None, norm=None, fig_handle=None,
-                 time_in_title=True, **kwargs):
+    def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), ), title=None, norm=None, 
+                 fig_handle=None, time_in_title=True, **kwargs):
 
-        self._data, self._slcs, self.im_xlt, self.time_in_title = data, slcs, None, time_in_title
+        self._data, self._slcs, self.im_xlt, self.time_in_title, self.pltfunc = \
+        data, slcs, None, time_in_title, pltfunc
+        user_cmap, show_colorbar = kwargs.pop('cmap', 'jet'), kwargs.pop('colorbar', True)
+        tab = []
         # # # -------------------- Tab0 --------------------------
         items_layout = Layout(flex='1 1 auto', width='auto')
         # normalization
@@ -96,26 +105,27 @@ class Generic2DPlotCtrl(object):
                                           layout=items_layout)
 
         # build the widgets tuple
-        ln_wgt = (LogNorm, widgets.VBox([widgets.HBox([self.vlogmin_wgt, self.if_vmin_auto]),
-                                         widgets.HBox([self.vmax_wgt, self.if_vmax_auto]), self.if_clip_cm]))
-        n_wgt = (Normalize, widgets.VBox([widgets.HBox([self.vmin_wgt, self.if_vmin_auto]),
-                                          widgets.HBox([self.vmax_wgt, self.if_vmax_auto]), self.if_clip_cm]))
-        pn_wgt = (PowerNorm, widgets.VBox([widgets.HBox([self.vmin_wgt, self.if_vmin_auto]),
-                                           widgets.HBox([self.vmax_wgt, self.if_vmax_auto]), self.if_clip_cm,
+        ln_wgt = (LogNorm, widgets.VBox([widgets.HBox([self.vmax_wgt, self.if_vmax_auto]),
+                                         widgets.HBox([self.vlogmin_wgt, self.if_vmin_auto]), self.if_clip_cm]))
+        n_wgt = (Normalize, widgets.VBox([widgets.HBox([self.vmax_wgt, self.if_vmax_auto]),
+                                          widgets.HBox([self.vmin_wgt, self.if_vmin_auto]), self.if_clip_cm]))
+        pn_wgt = (PowerNorm, widgets.VBox([widgets.HBox([self.vmax_wgt, self.if_vmax_auto]),
+                                           widgets.HBox([self.vmin_wgt, self.if_vmin_auto]), self.if_clip_cm,
                                            self.gamma]))
         sln_wgt = (SymLogNorm, widgets.VBox(
-            [widgets.HBox([self.vmin_wgt, self.if_vmin_auto]),
-             widgets.HBox([self.vmax_wgt, self.if_vmax_auto]), self.if_clip_cm, self.linthresh, self.linscale]))
+            [widgets.HBox([self.vmax_wgt, self.if_vmax_auto]),
+             widgets.HBox([self.vmin_wgt, self.if_vmin_auto]), self.if_clip_cm, self.linthresh, self.linscale]))
 
         # find out default value for norm_selector
         norm_avail = {'Log': ln_wgt, 'Normalize': n_wgt, 'Power': pn_wgt, 'SymLog': sln_wgt}
         self.norm_selector = widgets.Dropdown(options=norm_avail,
                                               value=norm_avail.get(norm, n_wgt), description='Normalization:')
+        self.__old_norm = self.norm_selector.value
         # additional care for LorNorm()
         self.__handle_lognorm()
         # re-plot button
-        self.norm_btn_wgt = widgets.Button(description='Apply', disabled=False, tooltip='set colormap', icon='refresh')
-        tab0 = self.__get_tab0()
+        self.norm_btn_wgt = widgets.Button(description='Apply', disabled=False, tooltip='Update normalization', icon='refresh')
+        tab.append(self.__get_tab0())
 
         # # # -------------------- Tab1 --------------------------
         # title
@@ -134,15 +144,10 @@ class Generic2DPlotCtrl(object):
         self.ylabel = widgets.Text(value=osh5vis.axis_format(data.axes[0].long_name, data.axes[0].units),
                                    placeholder='y', continuous_update=False,
                                    description='Y label:', disabled=self.if_reset_ylabel.value)
-        # colorbar
-        self.if_reset_cbar = widgets.Checkbox(value=True, description='Auto')
-        self.cbar = widgets.Text(value=data.units.tex(), placeholder='a.u.', continuous_update=False,
-                                 description='Colorbar:', disabled=self.if_reset_cbar.value)
 
-        tab1 = widgets.VBox([widgets.HBox([self.title, self.if_reset_title]),
-                             widgets.HBox([self.xlabel, self.if_reset_xlabel]),
-                             widgets.HBox([self.ylabel, self.if_reset_ylabel]),
-                             widgets.HBox([self.cbar, self.if_reset_cbar])])
+        tab.append(widgets.VBox([widgets.HBox([self.title, self.if_reset_title]),
+                                 widgets.HBox([self.xlabel, self.if_reset_xlabel]),
+                                 widgets.HBox([self.ylabel, self.if_reset_ylabel])]))
 
         # # # -------------------- Tab2 --------------------------
         self.setting_instructions = widgets.Label(value="Enter invalid value to reset", layout=items_layout)
@@ -164,31 +169,46 @@ class Generic2DPlotCtrl(object):
         self.y_step_wgt = widgets.FloatText(value=self._data.axes[0].increment, continuous_update=False,
                                             description='$\Delta y$:', layout=items_layout)
         self.yaxis_lim_wgt = widgets.HBox([self.y_min_wgt, self.y_max_wgt, self.y_step_wgt])
-        tab2 = widgets.VBox([self.axis_lim_wgt, self.xaxis_lim_wgt, self.yaxis_lim_wgt])
+        tab.append(widgets.VBox([self.axis_lim_wgt, self.xaxis_lim_wgt, self.yaxis_lim_wgt]))
 
         # # # -------------------- Tab3 --------------------------
-        tab3 = self.if_lineout_wgt = widgets.Checkbox(value=False, description='X/Y Lineouts (incomplete feature)',
-                                                      layout=items_layout)
+        self.if_lineout_wgt = widgets.Checkbox(value=False, description='X/Y Lineouts (incomplete feature)',
+                                               layout=items_layout)
+        tab.append(self.if_lineout_wgt)
 
         # # # -------------------- Tab4 --------------------------
-        user_cmap = kwargs.pop('cmap', 'jet')
+        self.colorbar = widgets.Checkbox(value=show_colorbar, description='Show colorbar')
         self.cmap_selector = widgets.Dropdown(options=self.colormaps_available, value=user_cmap,
-                                              description='Colormap:')
-        self.cmap_reverse = widgets.Checkbox(value=False, description='Reverse', layout=items_layout)
-        tab4 = widgets.HBox([self.cmap_selector, self.cmap_reverse])
+                                              description='Colormap:', disabled=not show_colorbar)
+        self.cmap_reverse = widgets.Checkbox(value=False, description='Reverse', disabled=not show_colorbar)
+        # colorbar
+        self.if_reset_cbar = widgets.Checkbox(value=True, description='Auto', disabled=not show_colorbar)
+        self.cbar = widgets.Text(value=data.units.tex(), placeholder='a.u.', continuous_update=False,
+                                 description='Colorbar:', disabled=self.if_reset_cbar.value or not show_colorbar)
+        tab.append(widgets.VBox([self.colorbar,
+                                 widgets.HBox([self.cmap_selector, self.cmap_reverse], layout=items_layout),
+                                 widgets.HBox([self.cbar, self.if_reset_cbar])], layout=items_layout))
 
         # # # -------------------- Tab5 --------------------------
         self.saveas = widgets.Button(description='Save current plot', tooltip='save current plot', button_style='')
         self.dlink = Output()
         self.figname = widgets.Text(value='figure.eps', description='Filename:')
         self.dpi = widgets.BoundedIntText(value=300, min=4, max=3000, description='DPI:')
-        tab5 = widgets.VBox([widgets.HBox([self.figname, self.dpi], layout=items_layout), 
-                             self.saveas, self.dlink], layout=items_layout)
+        tab.append(widgets.VBox([widgets.HBox([self.figname, self.dpi], layout=items_layout),
+                                 self.saveas, self.dlink], layout=items_layout))
+
+        # # # -------------------- Tab6 --------------------------
+        width, height = plt.rcParams.get('figure.figsize')
+        self.figwidth = widgets.BoundedFloatText(value=width, min=0.1, step=0.01, description='Width:')
+        self.figheight = widgets.BoundedFloatText(value=height, min=0.1, step=0.01, description='Height:')
+        self.resize_btn = widgets.Button(description='Adjust figure', tooltip='Update figure', icon='refresh')
+        tab.append(widgets.HBox([self.figwidth, self.figheight, self.resize_btn], layout=items_layout))
+
         # construct the tab
         self.tab = widgets.Tab()
-        self.tab.children = [tab0, tab1, tab2, tab3, tab4, tab5]
+        self.tab.children = tab
         [self.tab.set_title(i, tt) for i, tt in enumerate(self.tab_contents)]
-        # display(self.tab)
+
 
         # link and activate the widgets
         self.if_reset_title.observe(self.__update_title, 'value')
@@ -215,17 +235,18 @@ class Generic2DPlotCtrl(object):
         self.if_lineout_wgt.observe(self.toggle_lineout, 'value')
         self.figname.observe(self.__reset_save_button, 'value')
         self.saveas.on_click(self.__try_savefig)
+        self.colorbar.observe(self.__toggle_colorbar, 'value')
+        self.resize_btn.on_click(self.adjust_figure)
 
         # plotting and then setting normalization colors
         self.out = Output()
         self.out_main = Output()
         self.observer_thrd, self.cb = None, None
-        self.fig = plt.figure() if fig_handle is None else fig_handle
-        self.ax = self.fig.add_subplot(111)
         with self.out_main:
+            self.fig = plt.figure(figsize=[width, height]) if fig_handle is None else fig_handle
+            self.ax = self.fig.add_subplot(111)
             self.im, self.cb = self.plot_data()
-#             display(self.fig)
-            plt.show()
+#             plt.show()
 
     @property
     def self(self):
@@ -233,11 +254,11 @@ class Generic2DPlotCtrl(object):
 
     @property
     def widgets_list(self):
-        return self.tab, self.out_main, self.out
+        return self.tab, self.out_main
 
     @property
     def widget(self):
-        return widgets.VBox([self.tab, self.out_main, self.out])
+        return widgets.VBox([self.tab, self.out_main])
 
     def update_data(self, data, slcs):
         self._data, self._slcs = data, slcs
@@ -252,10 +273,17 @@ class Generic2DPlotCtrl(object):
             self._data.axes[1].min, self._data.axes[1].max, self._data.axes[1].increment
 
     def redraw(self, data):
-        """if the size of the data is the same we can just redraw part of figure"""
-        self._data = data
-        self.im.set_data(self.__pp(data[self._slcs]))
-        self.fig.canvas.draw()
+        if self.pltfunc is osh5vis.osimshow:
+            "if the size of the data is the same we can just redraw part of figure"
+            self._data = data
+            self.im.set_data(self.__pp(data[self._slcs]))
+            self.fig.canvas.draw()
+        else:
+            "for contour/contourf we have to do a full replot"
+            self._data = data
+            for col in self.im.collections:
+                col.remove()
+            self.__fully_replot()
 
     def update_title(self, change):
         self.ax.axes.set_title(change['new'])
@@ -272,15 +300,23 @@ class Generic2DPlotCtrl(object):
     def update_cmap(self, _change):
         self.im.set_cmap(self.cmap_selector.value if not self.cmap_reverse.value else self.cmap_selector.value + '_r')
 
+    def adjust_figure(self, *_):
+        with self.out_main:
+            clear_output(wait=True)
+            self.fig.set_size_inches(self.figwidth.value, self.figheight.value)
+
+    def __fully_replot(self):
+        self.fig.delaxes(self.ax)
+        self.fig.clear()
+        self.ax = self.fig.add_subplot(111)
+        self.im, self.cb = self.plot_data()
+        self.fig.subplots_adjust()
+
     def update_plot_area(self, *_):
         bnd = [(self.y_min_wgt.value, self.y_max_wgt.value, self.y_step_wgt.value),
                (self.x_min_wgt.value, self.x_max_wgt.value, self.x_step_wgt.value)]
         self._slcs = tuple(slice(*self._data.get_index_slice(self._data.axes[i], bd)) for i, bd in enumerate(bnd))
-        self.cb.remove()
-        self.im, self.cb = self.plot_data(im=self.im)
-        # dirty hack
-        if self.norm_selector.value[0] == LogNorm:
-            self.cb.set_norm(LogNorm())
+        self.__fully_replot()
 
     def refresh_tab_wgt(self, update_list):
         """
@@ -292,10 +328,10 @@ class Generic2DPlotCtrl(object):
         self.tab.children = tuple(newtab)
 
     def plot_data(self, **passthrough):
-        return osh5vis.osimshow(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
-                                norm=self.norm_selector.value[0](**self.__get_norm()), title=self.title.value,
-                                xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
-                                ax=self.ax, fig=self.fig, **passthrough)
+        return self.pltfunc(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
+                            norm=self.norm_selector.value[0](**self.__get_norm()), title=self.title.value,
+                            xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
+                            ax=self.ax, fig=self.fig, colorbar=self.colorbar.value, **passthrough)
 
     def __get_tab0(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt])
@@ -322,37 +358,48 @@ class Generic2DPlotCtrl(object):
             self.observer_thrd.daemon = True
             self.observer_thrd.start()
             # display(self.out)
-        else:
-            self.observer_thrd.join()  # kill the thread
-            Output.clear_output(self.out, wait=True)
+#         else:
+#             self.observer_thrd.join()  # kill the thread
+#             Output.clear_output(self.out, wait=True)
 
     def __handle_lognorm(self):
         if self.norm_selector.value[0] == LogNorm:
             self.__pp = np.abs
-            self.vmax_wgt.value = np.max(np.abs(self._data))
-            self.__assgin_valid_vmin()
+#             self.vmax_wgt.value = np.max(np.abs(self._data))
+            vmin, _ = self.__get_vminmax()
+            self.__assgin_valid_vmin(v=vmin)
         else:
-            self.vmax_wgt.value = np.max(self._data)
-            self.__assgin_valid_vmin()
+#             self.vmax_wgt.value = np.max(self._data)
+#             self.__assgin_valid_vmin()
             self.__pp = self._idle
 
-    def __update_norm_wgt(self, _change):
+    def __update_norm_wgt(self, change):
         """update tab1 (second tab) only and prepare _log_data if necessary"""
         tmp = [None] * len(self.tab_contents)
         tmp[0] = self.__get_tab0()
         self.refresh_tab_wgt(tmp)
         self.__handle_lognorm()
+        self.set_norm(change)
+        self.__old_norm = change['old']
+
+    def __get_vminmax(self):
+        return (None if self.if_vmin_auto.value else self.norm_selector.value[1].children[1].children[0].value,
+                None if self.if_vmax_auto.value else self.vmax_wgt.value)
 
     def update_norm(self, *args):
-        self.cb.remove()
-        self.im.remove()
-        self.im, self.cb = self.plot_data(im=self.im)
-        #  update norm
-        self.set_norm(*args)
+        # only changing clim
+        if self.__old_norm == self.norm_selector.value:
+            vmin, vmax = self.__get_vminmax()
+            self.im.set_clim([vmin, vmax])
+        # norm change
+        else:
+            if self.cb:
+                self.cb.remove()
+            self.im.remove()
+            self.im, self.cb = self.plot_data(im=self.im)
 
     def __get_norm(self):
-        vmin = None if self.if_vmin_auto.value else self.norm_selector.value[1].children[0].children[0].value
-        vmax = None if self.if_vmax_auto.value else self.vmax_wgt.value
+        vmin, vmax = self.__get_vminmax()
         param = {'vmin': vmin, 'vmax': vmax, 'clip': self.if_clip_cm.value}
         if self.norm_selector.value[0] == PowerNorm:
             param['gamma'] = self.gamma.value
@@ -362,8 +409,9 @@ class Generic2DPlotCtrl(object):
         return param
 
     def set_norm(self, *_):
-        param = self.__get_norm()
-        self.cb.set_norm(self.norm_selector.value[0](**param))
+        if self.cb:
+            param = self.__get_norm()
+            self.cb.set_norm(self.norm_selector.value[0](**param))
 
     def __assgin_valid_vmin(self, v=None):
         # if it is log scale
@@ -371,6 +419,17 @@ class Generic2DPlotCtrl(object):
             self.vlogmin_wgt.value = self.eps if v is None or v < self.eps else v
         else:
             self.vmin_wgt.value = np.min(self._data) if v is None else v
+
+    def __toggle_colorbar(self, change):
+        if change['new']:
+            self.cbar.disabled, self.if_reset_cbar.disabled, self.cmap_selector.disabled, \
+            self.cmap_reverse.disabled = False, False, False, False
+            self.__update_cbar(change)
+        else:
+            self.cbar.disabled, self.if_reset_cbar.disabled, self.cmap_selector.disabled, \
+            self.cmap_reverse.disabled = True, True, True, True
+            self.cb.remove()
+        self.__fully_replot()
 
     def __update_vmin(self, _change):
         if self.if_vmin_auto.value:
@@ -524,11 +583,16 @@ class Slicer(Generic2DPlotCtrl):
         self.__update_axis_descr()
         self.update_data(self.data[self.slcs], slcs=[i for i in self.slcs if not isinstance(i, int)])
         self.reset_plot_area()
-        self.set_norm()
-        self.ax.cla()
-        self.cb.remove()
-        self.im.remove()
-        self.im, self.cb = self.plot_data(im=self.im)
+        self.set_norm(change)
+        if self.cb:
+            self.cb.remove()
+        # the following is an exact copy of __fully_replot; 
+        # however, calling the function wouldn't work for some reason
+        self.fig.delaxes(self.ax)
+        self.fig.clear()
+        self.ax = self.fig.add_subplot(111)
+        self.im, self.cb = self.plot_data()
+        self.fig.subplots_adjust()
 
     def reset_slider_index(self):
         # stop the observe while updating values
