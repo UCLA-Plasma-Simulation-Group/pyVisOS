@@ -388,16 +388,17 @@ class Generic2DPlotCtrl(object):
             self.axx.set_yscale('linear')
 
     def __destroy_all_xlineout(self):
-        for li in self.xlineout_list_wgt.children:
-            # remove lineout
-            self._xlineouts[li.children[0]].remove()
-            # remove widget
-            li.close()
-        # unregister all widgets
-        self._xlineouts = {}
-        self.xlineout_list_wgt.children = tuple()
-        # remove axes
-        self.axx.remove()
+        if self._xlineouts:
+            for li in self.xlineout_list_wgt.children:
+                # remove lineout
+                self._xlineouts[li.children[0]].remove()
+                # remove widget
+                li.close()
+            # unregister all widgets
+            self._xlineouts = {}
+            self.xlineout_list_wgt.children = tuple()
+            # remove axes
+            self.axx.remove()
 
     def __remove_xlineout(self, btn):
         # unregister widget
@@ -457,16 +458,17 @@ class Generic2DPlotCtrl(object):
             self.axy.set_xscale('linear')
 
     def __destroy_all_ylineout(self):
-        for li in self.ylineout_list_wgt.children:
-            # remove lineout
-            self._ylineouts[li.children[0]].remove()
-            # remove widget
-            li.close()
-        # unregister all widgets
-        self._ylineouts = {}
-        self.ylineout_list_wgt.children = tuple()
-        # remove axes
-        self.axy.remove()
+        if self._ylineouts:
+            for li in self.ylineout_list_wgt.children:
+                # remove lineout
+                self._ylineouts[li.children[0]].remove()
+                # remove widget
+                li.close()
+            # unregister all widgets
+            self._ylineouts = {}
+            self.ylineout_list_wgt.children = tuple()
+            # remove axes
+            self.axy.remove()
 
     def __remove_ylineout(self, btn):
         # unregister widget
@@ -580,16 +582,21 @@ class Generic2DPlotCtrl(object):
         else:
             self.vmin_wgt.value = np.min(self._data) if v is None else v
 
+    def __add_colorbar(self):
+        clb = self.cbar.value
+        self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb)
+
     def __toggle_colorbar(self, change):
         if change['new']:
             self.cbar.disabled, self.if_reset_cbar.disabled, self.cmap_selector.disabled, \
             self.cmap_reverse.disabled = False, False, False, False
             self.__update_cbar(change)
+            self.__add_colorbar()
         else:
             self.cbar.disabled, self.if_reset_cbar.disabled, self.cmap_selector.disabled, \
             self.cmap_reverse.disabled = True, True, True, True
             self.cb.remove()
-        self.__fully_replot()
+#         self.__fully_replot()
 
     def __update_vmin(self, _change):
         if self.if_vmin_auto.value:

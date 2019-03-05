@@ -106,9 +106,15 @@ def osloglog(h5data, *args, ax=None, **kwpassthrough):
     return __osplot1d(loglog, h5data, *args, **kwpassthrough)
 
 
+def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', **kwargs):
+    if not cb:
+        cb = plt.colorbar(im, cax=cax, ax=ax, **kwargs) if fig is None else fig.colorbar(im, cax=cax, ax=ax, **kwargs)
+    cb.set_label(cblabel)
+    return cb
+
 def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
                colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, fig=None,
-               convert_tunit=False, wavelength=0.351, **kwpassthrough):
+               convert_tunit=False, wavelength=0.351, colorbarkwargs_dict=None, **kwpassthrough_plotting):
     if convert_xaxis:
         axis = h5data.axes[1].to_phys_unit(wavelength=wavelength)
         extx = axis[0].min(), axis[0].max()
@@ -131,10 +137,10 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
 #         vmin = kwpassthrough.pop('vmin', np.min(co))
 #         vmax = kwpassthrough.pop('vmax', np.max(co))
         plot_object = func(h5data.axes[1].ax, h5data.axes[0].ax, h5data.values, 
-                           fld2.values, *args[1:], color=co, **kwpassthrough)
+                           fld2.values, *args[1:], color=co, **kwpassthrough_plotting)
     else:
         extent_stuff, if_vector_field = [extx[0], extx[1], exty[0], exty[1]], False
-        plot_object = func(h5data.view(np.ndarray), *args, extent=extent_stuff, **kwpassthrough)
+        plot_object = func(h5data.view(np.ndarray), *args, extent=extent_stuff, **kwpassthrough_plotting)
 
     __set_axes_labels_and_title_2d(h5data, xunit, yunit, ax=ax, xlabel=xlabel, ylabel=ylabel,
                                    convert_tunit=convert_tunit, title=title,
@@ -143,12 +149,10 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
         plot_object.set_clim(clim)
 
     if colorbar:
-        if not cb:
-            cb = plt.colorbar(plot_object) if fig is None else fig.colorbar(plot_object)
-        if cblabel is None:
-            cb.set_label(h5data.data_attrs['UNITS'].tex())
-        else:
-            cb.set_label(cblabel)
+        clb = cblabel if cblabel is None else h5data.data_attrs['UNITS'].tex()
+        if colorbarkwargs_dict is None:
+            colorbarkwargs_dict = {}
+        cb = add_colorbar(plot_object, fig=fig, ax=ax, cb=cb, cblabel=clb, **colorbarkwargs_dict)
         return plot_object, cb
     return plot_object, None
 
