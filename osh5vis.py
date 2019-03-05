@@ -52,24 +52,30 @@ def osplot(h5data, *args, **kwpassthrough):
 
 
 def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, title=None, ax=None,
-               convert_tunit=False, convert_xaxis=False, wavelength=0.351, *args, **kwpassthrough):
+               convert_tunit=False, convert_xaxis=False, wavelength=0.351, transpose=False,
+               *args, **kwpassthrough):
     if convert_xaxis:
         xaxis, xunit = h5data.axes[0].to_phys_unit()
     else:
         xaxis, xunit = h5data.axes[0], h5data.axes[0].attrs['UNITS']
-    plot_object = func(xaxis, h5data.view(np.ndarray), *args, **kwpassthrough)
     if ax is not None:
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
             ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
     else:
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
             plt.xlim, plt.ylim, plt.xlabel, plt.ylabel, plt.title
+    if transpose:
+        set_xlim, set_ylim, set_xlabel, set_ylabel = \
+            set_ylim, set_xlim, set_ylabel, set_xlabel
+        plot_object = func(h5data.view(np.ndarray), xaxis, *args, **kwpassthrough)
+    else:
+        plot_object = func(xaxis, h5data.view(np.ndarray), *args, **kwpassthrough)
     if xlabel is None:
         xlabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], xunit)
     if ylabel is None:
         ylabel = axis_format(h5data.data_attrs['LONG_NAME'], str(h5data.data_attrs['UNITS']))
-    if xlim is not None:
-        set_xlim(xlim)
+    _xlim = xlim or (xaxis[0], xaxis[-1])
+    set_xlim(_xlim)
     if ylim is not None:
         set_ylim(ylim)
     set_xlabel(xlabel)
