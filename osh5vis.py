@@ -108,8 +108,10 @@ def osloglog(h5data, *args, ax=None, **kwpassthrough):
 
 def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', **kwargs):
     if not cb:
-        cb = plt.colorbar(im, cax=cax, ax=ax, **kwargs) if fig is None else fig.colorbar(im, cax=cax, ax=ax, **kwargs)
-    cb.set_label(cblabel)
+        cb = plt.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs) if fig is None \
+             else fig.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs)
+    else:
+        cb.set_label(cblabel)
     return cb
 
 def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
@@ -149,7 +151,7 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
         plot_object.set_clim(clim)
 
     if colorbar:
-        clb = cblabel if cblabel is None else h5data.data_attrs['UNITS'].tex()
+        clb = cblabel if cblabel is not None else h5data.data_attrs['UNITS'].tex()
         if colorbarkwargs_dict is None:
             colorbarkwargs_dict = {}
         cb = add_colorbar(plot_object, fig=fig, ax=ax, cb=cb, cblabel=clb, **colorbarkwargs_dict)

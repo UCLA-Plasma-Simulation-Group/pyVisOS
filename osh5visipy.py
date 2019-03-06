@@ -77,7 +77,7 @@ class Generic2DPlotCtrl(object):
     colormaps_available = sorted(c for c in plt.colormaps() if not c.endswith("_r"))
 
     def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), ), title=None, norm=None,
-                 fig_handle=None, time_in_title=True, **kwargs):
+                 fig_handle=None, time_in_title=True, ax=None, **kwargs):
 
         self._data, self._slcs, self.im_xlt, self.time_in_title, self.pltfunc = \
         data, slcs, None, time_in_title, pltfunc
@@ -271,9 +271,8 @@ class Generic2DPlotCtrl(object):
         self.out_main = Output()
         self.observer_thrd, self.cb = None, None
         with self.out_main:
-            self.fig = plt.figure(figsize=[width, height],
-                                  constrained_layout=True) if fig_handle is None else fig_handle
-            self.ax = self.fig.add_subplot(111)
+            self.fig = fig_handle or plt.figure(figsize=[width, height], constrained_layout=True)
+            self.ax = ax or self.fig.add_subplot(111)
             self.im, self.cb = self.plot_data()
 #             plt.show()
         self.axx, self.axy, self._xlineouts, self._ylineouts = None, None, {}, {}
@@ -313,7 +312,7 @@ class Generic2DPlotCtrl(object):
             self._data = data
             for col in self.im.collections:
                 col.remove()
-            self.__fully_replot()
+            self.replot_axes()
 
     def update_title(self, change):
         self.ax.axes.set_title(change['new'])
@@ -336,11 +335,15 @@ class Generic2DPlotCtrl(object):
             # this dosen't work in all scenarios. it could be a bug in matplotlib/jupyterlab
             self.fig.set_size_inches(self.figwidth.value, self.figheight.value)
 
-    def __fully_replot(self):
-        self.fig.delaxes(self.ax)
-        self.fig.clear()
-        self.ax = self.fig.add_subplot(111)
-        self.im, self.cb = self.plot_data()
+    def replot_axes(self):
+#         self.fig.delaxes(self.ax)
+# #         self.fig.clear()
+#         self.ax = self.fig.add_subplot(111)
+        self.ax.cla()
+        self.im.remove()
+        self.im, _ = self.plot_data(colorbar=False)
+        if self.colorbar.value:
+            self.cb.update_normal(self.im)
 #         self.fig.subplots_adjust()  # does not compatible with constrained_layout in Matplotlib 3.0
 
     def __get_xy_minmax_delta(self):
@@ -351,11 +354,11 @@ class Generic2DPlotCtrl(object):
         bnd = [(self.y_min_wgt.value, self.y_max_wgt.value, self.y_step_wgt.value),
                (self.x_min_wgt.value, self.x_max_wgt.value, self.x_step_wgt.value)]
         self._slcs = tuple(slice(*self._data.get_index_slice(self._data.axes[i], bd)) for i, bd in enumerate(bnd))
-        #TODO: maybe we can keep some of the overlaid plots but __fully_replot will generate new axes.
+        #TODO: maybe we can keep some of the overlaid plots but replot_axes will generate new axes.
         # for now delete everything for simplicity
         self.__destroy_all_xlineout()
         self.__destroy_all_ylineout()
-        self.__fully_replot()
+        self.replot_axes()
 
     def refresh_tab_wgt(self, update_list):
         """
@@ -367,10 +370,11 @@ class Generic2DPlotCtrl(object):
         self.tab.children = tuple(newtab)
 
     def plot_data(self, **passthrough):
+        ifcolorbar = passthrough.pop('colorbar', self.colorbar.value)
         return self.pltfunc(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
                             norm=self.norm_selector.value[0](**self.__get_norm()), title=self.title.value,
                             xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
-                            ax=self.ax, fig=self.fig, colorbar=self.colorbar.value, **passthrough)
+                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar, **passthrough)
 
     def __get_tab0(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt])
@@ -520,7 +524,7 @@ class Generic2DPlotCtrl(object):
             self.axy.set_ylabel('')
 
     def __handle_lognorm(self):
-        if self.norm_selector.value[0] == LogNorm:
+        if self.norm_selector.value[0] in (LogNorm, PowerNorm):
             self.__pp = np.abs
 #             self.vmax_wgt.value = np.max(np.abs(self._data))
             vmin, _ = self.__get_vminmax()
@@ -536,12 +540,15 @@ class Generic2DPlotCtrl(object):
         tmp[0] = self.__get_tab0()
         self.refresh_tab_wgt(tmp)
         self.__handle_lognorm()
-        self.set_norm(change)
+#         self.set_norm(change)
         self.__old_norm = change['old']
 
-    def __get_vminmax(self):
-        return (None if self.if_vmin_auto.value else self.norm_selector.value[1].children[1].children[0].value,
-                None if self.if_vmax_auto.value else self.vmax_wgt.value)
+    def __get_vminmax(self, from_widgets=False):
+        if from_widgets:
+            return self.norm_selector.value[1].children[1].children[0].value, self.vmax_wgt.value
+        else:
+            return (None if self.if_vmin_auto.value else self.norm_selector.value[1].children[1].children[0].value,
+                    None if self.if_vmax_auto.value else self.vmax_wgt.value)
 
     def __axis_descr_format(self, comp):
         return osh5vis.axis_format(self._data.axes[comp].long_name, self._data.axes[comp].units)
@@ -549,19 +556,23 @@ class Generic2DPlotCtrl(object):
     def update_norm(self, *args):
         # only changing clim
         if self.__old_norm == self.norm_selector.value:
-            vmin, vmax = self.__get_vminmax()
+            vmin, vmax = self.__get_vminmax(from_widgets=True)
             self.im.set_clim([vmin, vmax])
         # norm change
         else:
-            if self.cb:
-                self.cb.remove()
-            self.im.remove()
-            self.im, self.cb = self.plot_data(im=self.im)
+            vminmax = self.__get_vminmax()
             self.__update_xlineout()
             self.__update_ylineout()
+            self.im.remove()
+            if self.colorbar.value:
+                self.im, cb = self.plot_data()
+                self.cb.ax.remove()
+                self.cb = cb
+            else:
+                self.im, _ = self.plot_data(colorbar=False)
 
-    def __get_norm(self):
-        vmin, vmax = self.__get_vminmax()
+    def __get_norm(self, vminmax_from_wiget=False):
+        vmin, vmax = self.__get_vminmax(vminmax_from_wiget)
         param = {'vmin': vmin, 'vmax': vmax, 'clip': self.if_clip_cm.value}
         if self.norm_selector.value[0] == PowerNorm:
             param['gamma'] = self.gamma.value
@@ -571,13 +582,11 @@ class Generic2DPlotCtrl(object):
         return param
 
     def set_norm(self, *_):
-        if self.cb:
-            param = self.__get_norm()
-            self.cb.set_norm(self.norm_selector.value[0](**param))
+        pass
 
     def __assgin_valid_vmin(self, v=None):
         # if it is log scale
-        if self.norm_selector.value[0] == LogNorm:
+        if self.norm_selector.value[0] in (LogNorm, PowerNorm):
             self.vlogmin_wgt.value = self.eps if v is None or v < self.eps else v
         else:
             self.vmin_wgt.value = np.min(self._data) if v is None else v
@@ -596,7 +605,7 @@ class Generic2DPlotCtrl(object):
             self.cbar.disabled, self.if_reset_cbar.disabled, self.cmap_selector.disabled, \
             self.cmap_reverse.disabled = True, True, True, True
             self.cb.remove()
-#         self.__fully_replot()
+#         self.replot_axes()
 
     def __update_vmin(self, _change):
         if self.if_vmin_auto.value:
@@ -750,16 +759,7 @@ class Slicer(Generic2DPlotCtrl):
         self.__update_axis_descr()
         self.update_data(self.data[self.slcs], slcs=[i for i in self.slcs if not isinstance(i, int)])
         self.reset_plot_area()
-        self.set_norm(change)
-        if self.cb:
-            self.cb.remove()
-        # the following is an exact copy of __fully_replot;
-        # however, calling the function wouldn't work for some reason
-        self.fig.delaxes(self.ax)
-        self.fig.clear()
-        self.ax = self.fig.add_subplot(111)
-        self.im, self.cb = self.plot_data()
-#         self.fig.subplots_adjust()  # does not compatible with constrained_layout in Matplotlib 3.0
+        self.replot_axes()
 
     def reset_slider_index(self):
         # stop the observe while updating values
