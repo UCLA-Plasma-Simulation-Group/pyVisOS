@@ -49,7 +49,7 @@ class __NameNotFound(object):
 def override_num_indexing_kw(kw, name, default_val=__NameNotFound, h5data_pos=0):
     """
         inject one more keyword to the wrapped function. If kw == name users are forced to use string indexing
-        the value of kw (usually named 'axis' or 'axes') now would be replace by the value of H5Data.index_of(name). 
+        the value of kw (usually named 'axis' or 'axes') now would be replace by the value of H5Data.index_of(name).
     :param kw: str, name of the keyword to be overridden
     :param name: str, name of the new keyword accepting string as index
     :param default_val: default value of parameter 'name'. Using mutable such as string as default value is not adviced
@@ -137,12 +137,17 @@ def metasl_map(mapping=(0, 0)):  # not well tested
 
 
 def stack(arr, axis=0, axesdata=None):
-    """Similar to numpy.stack. Arr is the list of H5Data to be stacked. By default the newly created dimension
-    will be labeled as time axis. Other meta data will be copied from the last element of arr
+    """Similar to numpy.stack. Arr is the list of H5Data to be stacked,
+    or a filename filter (such as './FLD/s1-line/s1-line-x2-01*.h5') can be read into H5Data.
+    By default the newly created dimension will be labeled as time axis.
+    Other meta data will be copied from the last element of arr
     """
     try:
+        if isinstance(arr, str):
+            # maybe arr is a list of filenames
+            arr = [read_h5(n) for n in sorted(glob.glob(arr))]
         if not isinstance(arr[-1], osh5def.H5Data):
-            raise TypeError('Input array must contain H5Data objects')
+            raise TypeError('Input be list of H5Data or filenames of Osiris data (such as "./FLD/e1/*.h5")')
     except (TypeError, IndexError):   # not an array or an empty array, just return what ever passed in
         return arr
     md = arr[-1]
@@ -178,7 +183,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
     [(func1, arg11, arg21, ..., argn1, {'kwarg11': val11, 'kwarg21': val21, ..., 'kwargn1', valn1}),
      (func2, arg12, arg22, ..., argn2, {'kwarg12': val12, 'kwarg22': val22, ..., 'kwargn2', valn2}),
      ...,
-     (func2, arg1n, arg2n, ..., argnn, {'kwarg1n': val1n, 'kwarg2n': val2n, ..., 'kwargnn', valnn})] where 
+     (func2, arg1n, arg2n, ..., argnn, {'kwarg1n': val1n, 'kwarg2n': val2n, ..., 'kwargnn', valnn})] where
      any of the *args and/or **args can be omitted. see also __parse_func_param for limitations.
         if preprocess=[(numpy.power, 2), (numpy.average, {axis=0}), numpy.sqrt], then the data to be stacked is
         numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
@@ -510,13 +515,13 @@ def unwrap(x, discont=3.141592653589793, axis=-1):
 @enhence_num_indexing_kw('axis')
 def diff(x, n=1, axis=-1):
     dx_2 = 0.5 * x.axes[axis].increment
-    
+
     @metasl
     def __diff(x, n=1, axis=-1):
         return np.diff(x, n=n, axis=axis)
 
     r = __diff(x, n=n, axis=axis)
-    r.axes[axis] = osh5def.DataAxis(axis_min=x.axes[axis].min+n*dx_2, axis_max=x.axes[axis].max-n*dx_2, 
+    r.axes[axis] = osh5def.DataAxis(axis_min=x.axes[axis].min+n*dx_2, axis_max=x.axes[axis].max-n*dx_2,
                                     axis_npoints=x.axes[axis].size-n, attrs=copy.deepcopy(x.axes[axis].attrs))
     return r
 
@@ -639,7 +644,7 @@ def log_Gabor_Filter_2d(w, w0, s0):
 
 def monogenic_signal(data, *args, filter_func=log_Gabor_Filter_2d, ffted=True, ifft=True):
     """
-    Get the monogenic signal of 2D data. This implementation is better suited for intrisically 1D signals. 
+    Get the monogenic signal of 2D data. This implementation is better suited for intrisically 1D signals.
     read the following articles for more details:
     [1] M. Felsberg and G. Sommer, IEEE Trans. Signal Process. 49, 3136 (2001).
     [2] C. P. Bridge, ArXiv:1703.09199 (2017).
