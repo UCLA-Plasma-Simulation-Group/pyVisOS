@@ -116,7 +116,7 @@ def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', **kwargs)
 
 def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
                colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, fig=None,
-               convert_tunit=False, wavelength=0.351, colorbarkwargs_dict=None, **kwpassthrough_plotting):
+               convert_tunit=False, wavelength=0.351, colorbar_kw=None, **kwpassthrough_plotting):
     if convert_xaxis:
         axis = h5data.axes[1].to_phys_unit(wavelength=wavelength)
         extx = axis[0].min(), axis[0].max()
@@ -152,10 +152,10 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
 
     if colorbar:
         clb = cblabel if cblabel is not None else h5data.data_attrs['UNITS'].tex()
-        if colorbarkwargs_dict is None:
-            colorbarkwargs_dict = {}
-        cb = add_colorbar(plot_object, fig=fig, ax=ax, cb=cb, cblabel=clb, **colorbarkwargs_dict)
-        return plot_object, cb
+        if colorbar_kw is None:
+            colorbar_kw = {}
+        ncb = add_colorbar(plot_object, fig=fig, ax=ax, cb=cb, cblabel=clb, **colorbar_kw)
+        return plot_object, ncb
     return plot_object, None
 
 
@@ -193,7 +193,7 @@ def osstreamplot(field1, field2, *args, ax=None, **kwpassthrough):
 
 def osimshow(h5data, *args, ax=None, cb=None, aspect='auto', origin='lower', **kwpassthrough):
     imshow = ax.imshow if ax is not None else plt.imshow
-    return __osplot2d(imshow, h5data, *args, cb=cb, aspect=aspect, origin=origin, **kwpassthrough)
+    return __osplot2d(imshow, h5data, *args, ax=ax, cb=cb, aspect=aspect, origin=origin, **kwpassthrough)
 
 
 def osspy(h5data, *args, ax=None, aspect='auto', origin='lower', xlabel=None,
@@ -209,12 +209,12 @@ def osspy(h5data, *args, ax=None, aspect='auto', origin='lower', xlabel=None,
 
 def oscontour(h5data, *args, ax=None, cb=None, **kwpassthrough):
     contour = ax.contour if ax is not None else plt.contour
-    return __osplot2d(contour, h5data, *args, cb=cb, **kwpassthrough)
+    return __osplot2d(contour, h5data, *args, ax=ax, cb=cb, **kwpassthrough)
 
 
 def oscontourf(h5data, *args, ax=None, cb=None, **kwpassthrough):
     contourf = ax.contourf if ax is not None else plt.contourf
-    return __osplot2d(contourf, h5data, *args, cb=cb, **kwpassthrough)
+    return __osplot2d(contourf, h5data, *args, ax=ax, cb=cb, **kwpassthrough)
 
 
 def new_fig(h5data, *args, figsize=None, dpi=None, facecolor=None, edgecolor=None, linewidth=0.0, frameon=None,
