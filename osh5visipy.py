@@ -86,10 +86,12 @@ class Generic2DPlotCtrl(object):
         items_layout = Layout(flex='1 1 auto', width='auto')
         # title
         if not title:
-            title = osh5vis.default_title(data, show_time=self.time_in_title)
+            title = osh5vis.default_title(data, show_time=False)
         self.if_reset_title = widgets.Checkbox(value=True, description='Auto')
-        self.title = widgets.Text(value=title, placeholder='data', continuous_update=False,
-                                  description='Title:', disabled=self.if_reset_title.value)
+        self.dataname = widgets.Text(value=title, placeholder='data', continuous_update=False,
+                                     description='Data Name:', disabled=self.if_reset_title.value)
+        self.if_show_time = widgets.Checkbox(value=time_in_title, description='Time in title')
+        self._time = osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'])
         # normalization
         # general parameters: vmin, vmax, clip
         self.if_vmin_auto = widgets.Checkbox(value=True, description='Auto', layout=items_layout)
@@ -284,7 +286,8 @@ class Generic2DPlotCtrl(object):
         self.norm_selector.observe(self.__update_norm_wgt, 'value')
         self.cmap_selector.observe(self.update_cmap, 'value')
         self.cmap_reverse.observe(self.update_cmap, 'value')
-        self.title.observe(self.update_title, 'value')
+        self.dataname.observe(self.update_title, 'value')
+        self.if_show_time.observe(self.update_title, 'value')
         self.xlabel.observe(self.update_xlabel, 'value')
         self.ylabel.observe(self.update_ylabel, 'value')
         self.cbar.observe(self.update_cbar, 'value')
@@ -355,7 +358,7 @@ class Generic2DPlotCtrl(object):
             self.replot_axes()
 
     def update_title(self, change):
-        self.ax.axes.set_title(change['new'])
+        self.ax.axes.set_title(self.__get_plot_title())
 
     def update_xlabel(self, change):
         self.ax.axes.xaxis.set_label_text(change['new'])
@@ -415,13 +418,19 @@ class Generic2DPlotCtrl(object):
     def plot_data(self, **passthrough):
         ifcolorbar = passthrough.pop('colorbar', self.colorbar.value)
         return self.pltfunc(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
-                            norm=self.norm_selector.value[0](**self.__get_norm()), title=self.title.value,
+                            norm=self.norm_selector.value[0](**self.__get_norm()), title=self.__get_plot_title(),
                             xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
                             ax=self.ax, fig=self.fig, colorbar=ifcolorbar, **passthrough)
+    
+    def __get_plot_title(self):
+        if self.dataname.value:
+            return self.dataname.value + ((', ' + self._time) if self.if_show_time.value else '')
+        else:
+            return self._time if self.if_show_time.value else ''
 
     def __get_tab0(self):
-        return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), 
-                             widgets.VBox([widgets.HBox([self.title, self.if_reset_title]), self.norm_btn_wgt])])
+        return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt,
+                             widgets.HBox([self.dataname, self.if_reset_title, self.if_show_time])])
 
     @staticmethod
     def _idle(data):
@@ -710,10 +719,10 @@ class Generic2DPlotCtrl(object):
 
     def __update_title(self, *_):
         if self.if_reset_title.value:
-            self.title.value = osh5vis.default_title(self._data, show_time=self.time_in_title)
-            self.title.disabled = True
+            self.dataname.value = osh5vis.default_title(self._data, show_time=False)
+            self.dataname.disabled = True
         else:
-            self.title.disabled = False
+            self.dataname.disabled = False
 
     def __update_xlabel(self, *_):
         if self.if_reset_xlabel.value:
