@@ -19,6 +19,9 @@ print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/i
 print("use `%matplotlib widget' if you are using newer version of matplotlib (3.0) + jupyterlab (0.35)")
 
 
+do_nothing = lambda x : x
+
+
 def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, **kwargs):
     """
     2D plot with widgets
@@ -53,15 +56,19 @@ def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     if isinstance(data, str):
         wl = DirSlicer(data, *args, **kwargs).widgets_list
         tab, slider = wl[0], widgets.HBox(wl[1:-1])
-    else:
-        wl = Slicer(data, *args, **kwargs).widgets_list
-        tab, slider = wl[0], widgets.HBox(wl[1:-1])
+    if isinstance(data, (tuple, list)):
+        if isinstance(data[0], str):
+            wl = MPDirSlicer(data, *args, **kwargs).widgets_list
+            tab, slider = wl[0], widgets.HBox(wl[1:-1])
+        else:
+            wl = Slicer(data, *args, **kwargs).widgets_list
+            tab, slider = wl[0], widgets.HBox(wl[1:-1])
     if show:
         if slider_only:
-            display(slider, widgets.VBox(wl[-1:]))
+            display(slider, wl[-1])
             return tab
         else:
-            display(tab, slider, widgets.VBox(wl[-1:]))
+            display(tab, slider, wl[-1])
     else:
         return wl
 
@@ -87,11 +94,12 @@ class Generic2DPlotCtrl(object):
         # title
         if not title:
             title = osh5vis.default_title(data, show_time=False)
-        self.if_reset_title = widgets.Checkbox(value=True, description='Auto')
-        self.dataname = widgets.Text(value=title, placeholder='data', continuous_update=False,
-                                     description='Data Name:', disabled=self.if_reset_title.value)
-        self.if_show_time = widgets.Checkbox(value=time_in_title, description='Time in title')
-        self._time = osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'])
+        self.if_reset_title = widgets.Checkbox(value=True, description='Auto', layout=items_layout)
+        self.datalabel = widgets.Text(value=title, placeholder='data', continuous_update=False,
+                                     description='Data Name:', disabled=self.if_reset_title.value, layout=items_layout)
+        self.if_show_time = widgets.Checkbox(value=time_in_title, description='Time in title', layout=items_layout)
+        self._time = ''
+        self.update_time_label()
         # normalization
         # general parameters: vmin, vmax, clip
         self.if_vmin_auto = widgets.Checkbox(value=True, description='Auto', layout=items_layout)
@@ -286,17 +294,17 @@ class Generic2DPlotCtrl(object):
         self.norm_selector.observe(self.__update_norm_wgt, 'value')
         self.cmap_selector.observe(self.update_cmap, 'value')
         self.cmap_reverse.observe(self.update_cmap, 'value')
-        self.dataname.observe(self.update_title, 'value')
+        self.datalabel.observe(self.update_title, 'value')
         self.if_show_time.observe(self.update_title, 'value')
         self.xlabel.observe(self.update_xlabel, 'value')
         self.ylabel.observe(self.update_ylabel, 'value')
         self.cbar.observe(self.update_cbar, 'value')
-        self.y_max_wgt.observe(self.__update_y_max, 'value')
-        self.y_min_wgt.observe(self.__update_y_min, 'value')
-        self.x_max_wgt.observe(self.__update_x_max, 'value')
-        self.x_min_wgt.observe(self.__update_x_min, 'value')
-        self.x_step_wgt.observe(self.__update_delta_x, 'value')
-        self.y_step_wgt.observe(self.__update_delta_y, 'value')
+#         self.y_max_wgt.observe(self.__update_y_max, 'value')
+#         self.y_min_wgt.observe(self.__update_y_min, 'value')
+#         self.x_max_wgt.observe(self.__update_x_max, 'value')
+#         self.x_min_wgt.observe(self.__update_x_min, 'value')
+#         self.x_step_wgt.observe(self.__update_delta_x, 'value')
+#         self.y_step_wgt.observe(self.__update_delta_y, 'value')
         self.apply_range_btn.on_click(self.update_plot_area)
         self.figname.observe(self.__reset_save_button, 'value')
         self.saveas.on_click(self.__try_savefig)
@@ -320,16 +328,15 @@ class Generic2DPlotCtrl(object):
         self.axx, self.axy, self._xlineouts, self._ylineouts = None, None, {}, {}
 
     @property
-    def self(self):
-        return self
-
-    @property
     def widgets_list(self):
         return self.tab, self.out_main
 
     @property
     def widget(self):
         return widgets.VBox([self.tab, self.out_main])
+
+    def get_dataname(self):
+        return self._data.name
 
     def update_data(self, data, slcs):
         self._data, self._slcs = data, slcs
@@ -357,7 +364,7 @@ class Generic2DPlotCtrl(object):
                 col.remove()
             self.replot_axes()
 
-    def update_title(self, change):
+    def update_title(self, *_):
         self.ax.axes.set_title(self.__get_plot_title())
 
     def update_xlabel(self, change):
@@ -373,6 +380,9 @@ class Generic2DPlotCtrl(object):
         cmap = self.cmap_selector.value if not self.cmap_reverse.value else self.cmap_selector.value + '_r'
         self.im.set_cmap(cmap)
         self.cb.set_cmap(cmap)
+
+    def update_time_label(self):
+        self._time = osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'])
 
     def adjust_figure(self, *_):
         with self.out_main:
@@ -423,18 +433,14 @@ class Generic2DPlotCtrl(object):
                             ax=self.ax, fig=self.fig, colorbar=ifcolorbar, **passthrough)
     
     def __get_plot_title(self):
-        if self.dataname.value:
-            return self.dataname.value + ((', ' + self._time) if self.if_show_time.value else '')
+        if self.datalabel.value:
+            return self.datalabel.value + ((', ' + self._time) if self.if_show_time.value else '')
         else:
             return self._time if self.if_show_time.value else ''
 
     def __get_tab0(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt,
-                             widgets.HBox([self.dataname, self.if_reset_title, self.if_show_time])])
-
-    @staticmethod
-    def _idle(data):
-        return data
+                             widgets.HBox([self.datalabel, self.if_reset_title, self.if_show_time])])
 
     def __update_xanaopts(self, change):
         opts = self.__analysis_def[change['new']]
@@ -630,7 +636,7 @@ class Generic2DPlotCtrl(object):
         else:
             self.vmin_wgt.value, self.vmax_wgt.value = np.min(v), np.max(v)
 #             self.__assgin_valid_vmin()
-            self.__pp = self._idle
+            self.__pp = do_nothing
 
     def __update_norm_wgt(self, change):
         """update tab1 (second tab) only and prepare _log_data if necessary"""
@@ -719,10 +725,10 @@ class Generic2DPlotCtrl(object):
 
     def __update_title(self, *_):
         if self.if_reset_title.value:
-            self.dataname.value = osh5vis.default_title(self._data, show_time=False)
-            self.dataname.disabled = True
+            self.datalabel.value = osh5vis.default_title(self._data, show_time=False)
+            self.datalabel.disabled = True
         else:
-            self.dataname.disabled = False
+            self.datalabel.disabled = False
 
     def __update_xlabel(self, *_):
         if self.if_reset_xlabel.value:
@@ -745,29 +751,29 @@ class Generic2DPlotCtrl(object):
         else:
             self.cbar.disabled = False
 
-    def __update_y_max(self, change):
-        self.y_max_wgt.value = change['new'] if self.y_min_wgt.value < change['new'] < self._data.axes[0].max \
-            else self._data.axes[0].max
+#     def __update_y_max(self, change):
+#         self.y_max_wgt.value = change['new'] if self.y_min_wgt.value < change['new'] < self._data.axes[0].max \
+#             else self._data.axes[0].max
 
-    def __update_x_max(self, change):
-        self.x_max_wgt.value = change['new'] if self.x_min_wgt.value < change['new'] < self._data.axes[1].max \
-            else self._data.axes[1].max
+#     def __update_x_max(self, change):
+#         self.x_max_wgt.value = change['new'] if self.x_min_wgt.value < change['new'] < self._data.axes[1].max \
+#             else self._data.axes[1].max
 
-    def __update_y_min(self, change):
-        self.y_min_wgt.value = change['new'] if self._data.axes[0].min < change['new'] < self.y_max_wgt.value \
-            else self._data.axes[0].min
+#     def __update_y_min(self, change):
+#         self.y_min_wgt.value = change['new'] if self._data.axes[0].min < change['new'] < self.y_max_wgt.value \
+#             else self._data.axes[0].min
 
-    def __update_x_min(self, change):
-        self.x_min_wgt.value = change['new'] if self._data.axes[1].min < change['new'] < self.x_max_wgt.value \
-            else self._data.axes[1].min
+#     def __update_x_min(self, change):
+#         self.x_min_wgt.value = change['new'] if self._data.axes[1].min < change['new'] < self.x_max_wgt.value \
+#             else self._data.axes[1].min
 
-    def __update_delta_y(self, change):
-        if not (0 < round(change['new'] / self._data.axes[0].increment) <= self._data[self._slcs].shape[0]):
-            self.y_step_wgt.value = self._data.axes[0].increment
+#     def __update_delta_y(self, change):
+#         if not (0 < round(change['new'] / self._data.axes[0].increment) <= self._data[self._slcs].shape[0]):
+#             self.y_step_wgt.value = self._data.axes[0].increment
 
-    def __update_delta_x(self, change):
-        if not (0 < round(change['new'] / self._data.axes[1].increment) <= self._data[self._slcs].shape[1]):
-            self.x_step_wgt.value = self._data.axes[1].increment
+#     def __update_delta_x(self, change):
+#         if not (0 < round(change['new'] / self._data.axes[1].increment) <= self._data[self._slcs].shape[1]):
+#             self.x_step_wgt.value = self._data.axes[1].increment
 
     def __reset_save_button(self, *_):
         self.saveas.description, self.saveas.tooltip, self.saveas.button_style= \
@@ -878,19 +884,19 @@ class Slicer(Generic2DPlotCtrl):
 
 
 class DirSlicer(Generic2DPlotCtrl):
-    def __init__(self, filefilter, processing=Generic2DPlotCtrl._idle, **extra_kwargs):
+    def __init__(self, filefilter, processing=do_nothing, **extra_kwargs):
         fp = filefilter + '/*.h5' if os.path.isdir(filefilter) else filefilter
-        self.filter, self.flist, self.processing = fp, sorted(glob.glob(fp)), processing
+        self.datadir, self.flist, self.processing = os.path.abspath(os.path.dirname(fp)), sorted(glob.glob(fp)), processing
         try:
             self.data = processing(osh5io.read_h5(self.flist[0]))
         except IndexError:
             raise IOError('No file found matching ' + fp)
 
         items_layout = Layout(flex='1 1 auto', width='auto')
-        self.file_slider = widgets.SelectionSlider(options=self.flist, description='filename:', value=self.flist[0],
-                                                   continuous_update=False, layout=items_layout)
-        self.time_label = widgets.Label(value=osh5vis.time_format(self.data.run_attrs['TIME'][0],
-                                                                  self.data.run_attrs['TIME UNITS']),
+        self.file_slider = widgets.IntSlider(min=0, max=len(self.flist), description=os.path.basename(self.flist[0]), 
+                                             value=0, readout=False, continuous_update=False, layout=items_layout,
+                                             style={'description_width': 'initial'})
+        self.time_label = widgets.Label(value=osh5vis.time_format(self.data.run_attrs['TIME'][0], self.data.run_attrs['TIME UNITS']),
                                         layout=items_layout)
         self.file_slider.observe(self.update_slice, 'value')
 
@@ -906,10 +912,62 @@ class DirSlicer(Generic2DPlotCtrl):
         return widgets.VBox([widgets.HBox[self.file_slider, self.time_label], self.out_main])
 
     def update_slice(self, change):
-        self.data = self.processing(osh5io.read_h5(change['new']))
+        self.file_slider.description = os.path.basename(self.flist[change['new']])
+        self.data = self.processing(osh5io.read_h5(self.flist[change['new']]))
         self.time_label.value = osh5vis.time_format(self.data.run_attrs['TIME'][0], self.data.run_attrs['TIME UNITS'])
         self.redraw(self.data)
+        if self.if_show_time:
+            self.update_time_label()
+            self.update_title(change)
 
+class MPDirSlicer:
+    def __init__(self, filefilter_list, grid, interval=1000, processing=None, figsize=None, fig=None, output_widget=None, **kwargs):
+        items_layout = Layout(flex='1 1 auto', width='auto')
+        if len(grid) != 2 or np.multiply(*grid) <= 1:
+            raise ValueError('grid must have 2 elements specifying a grid of plots. Total number of plots must be greater than 1')
+        self.nrows, self.ncols = grid
+        if len(filefilter_list) != self.nrows * self.ncols:
+            raise ValueError('Expecting %d lists in filefilter_list, got %d' % (self.nrows * self.ncols, len(filefilter_list)))
+        if processing is None:
+            processing = (do_nothing,) * len(filefilter_list)
+        elif len(processing) != self.nrows * self.ncols:
+            raise ValueError('Expecting %d functions in processing, got %d' % (self.nrows * self.ncols, len(processing)))
+        
+        width, height = figsize or plt.rcParams.get('figure.figsize')
+        self.out = output_widget or widgets.Output()
+        nplots = self.nrows * self.ncols
+#         self.fig = fig or plt.figure(figsize=[width, height], constrained_layout=True)
+#         self.ax = [self.fig.add_subplot(self.nrows, self.ncols, i) for i in range(1, len(filefilter_list) + 1)]
+        self.fig, self.ax = plt.subplots(self.nrows, self.ncols, figsize=(width, height), constrained_layout=True)
+        self._dirslicers = [DirSlicer(ff, output_widget=self.out, fig=self.fig, ax=ax)
+                            for ff, ax in zip(filefilter_list, self.ax)]
+        # adding the index in front to make sure all button names are unique (otherwise the selection wouldn't be highlighted properly)
+        data_namelist = [str(i+1)+'.'+s.get_dataname() for i, s in enumerate(self._dirslicers)]
+        self.sldd, self.tabd = self._dirslicers[0].time_label, [s.tab for s in self._dirslicers]
+        bw, bwpadded = 50, 56  # these magic numbers seems to work well on forcing the desired button layout
+        self.tb = widgets.ToggleButtons(options=data_namelist, value=data_namelist[0], description='',
+                                        style={"button_width": '%dpx' % bw})
+        ctrl_pnl = widgets.Box([self.tb],layout=Layout(display='flex', flex='0 0 auto', align_items='center',
+                                                       width='%dpx' % (bwpadded * self.ncols)))
+        self.ctrl = widgets.HBox([ctrl_pnl, self.tabd[self.tb.index]])
+        # we need a master slider to control all subplot sliders
+        self.slider = widgets.IntSlider(min=0, max=self._dirslicers[0].file_slider.max, description='', value=0,
+                                        readout=False, continuous_update=False, style={'description_width': 'initial'})
+        self.play = widgets.Play(interval=interval, value=0, min=0, max=self.slider.max, description='Press play')
+        widgets.jslink((self.play, 'value'), (self.slider, 'value'))
+        self.slider.observe(self.update_all_subplots, 'value')
+        self.tb.observe(self.show_corresponding_tab, 'index')
+
+    @property
+    def widgets_list(self):
+        return self.ctrl, self.play, self.slider, self.sldd, self.out
+    
+    def update_all_subplots(self, change):
+        for s in self._dirslicers:
+            s.file_slider.value = change['new']
+    
+    def show_corresponding_tab(self, change):
+        self.ctrl.children = (self.ctrl.children[0], self.tabd[self.tb.index])
 
 class Animation(Slicer):
     def __init__(self, data, interval=10, step=1, **kwargs):
