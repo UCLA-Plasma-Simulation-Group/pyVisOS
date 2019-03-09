@@ -639,6 +639,7 @@ def rebin(a, fac):
 
 
 def log_Gabor_Filter_2d(w, w0, s0):
+    """ np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) ) """
     return np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) )
 
 

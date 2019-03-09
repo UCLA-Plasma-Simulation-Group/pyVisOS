@@ -56,13 +56,13 @@ def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     if isinstance(data, str):
         wl = DirSlicer(data, *args, **kwargs).widgets_list
         tab, slider = wl[0], widgets.HBox(wl[1:-1])
-    if isinstance(data, (tuple, list)):
+    elif isinstance(data, (tuple, list)):
         if isinstance(data[0], str):
             wl = MPDirSlicer(data, *args, **kwargs).widgets_list
             tab, slider = wl[0], widgets.HBox(wl[1:-1])
-        else:
-            wl = Slicer(data, *args, **kwargs).widgets_list
-            tab, slider = wl[0], widgets.HBox(wl[1:-1])
+    else:
+        wl = Slicer(data, *args, **kwargs).widgets_list
+        tab, slider = wl[0], widgets.HBox(wl[1:-1])
     if show:
         if slider_only:
             display(slider, wl[-1])
