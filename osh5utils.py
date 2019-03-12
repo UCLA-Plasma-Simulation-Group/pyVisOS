@@ -143,9 +143,6 @@ def stack(arr, axis=0, axesdata=None):
     Other meta data will be copied from the last element of arr
     """
     try:
-        if isinstance(arr, str):
-            # maybe arr is a list of filenames
-            arr = [read_h5(n) for n in sorted(glob.glob(arr))]
         if not isinstance(arr[-1], osh5def.H5Data):
             raise TypeError('Input be list of H5Data or filenames of Osiris data (such as "./FLD/e1/*.h5")')
     except (TypeError, IndexError):   # not an array or an empty array, just return what ever passed in
@@ -639,7 +636,11 @@ def rebin(a, fac):
 
 
 def log_Gabor_Filter_2d(w, w0, s0):
-    """ np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) ) """
+    """
+    return np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) )
+    w0: the position of the peak
+    s0: the value of abs(s0-1) determines the width of the peak.
+    """
     return np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) )
 
 

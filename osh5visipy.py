@@ -22,7 +22,7 @@ print("use `%matplotlib widget' if you are using newer version of matplotlib (3.
 do_nothing = lambda x : x
 
 
-def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, **kwargs):
+def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, grid=None, **kwargs):
     """
     2D plot with widgets
     :param data: 2D H5Data
@@ -31,7 +31,17 @@ def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, **kwargs):
     :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
     :return: if show == True return None otherwise return a list of widgets
     """
-    wl = Generic2DPlotCtrl(data, *args, pltfunc=pltfunc, **kwargs).widgets_list
+    if isinstance(data, str):
+        h5data = osh5io.read_h5(data)
+        wl = Generic2DPlotCtrl(h5data, *args, pltfunc=pltfunc, **kwargs).widgets_list
+    elif isinstance(data, (tuple, list)):
+        if not grid:
+            raise ValueError('Specify the grid layout when plotting more than one quantity!')
+        if isinstance(data[0], str):
+            data = [osh5io.read_h5(n) for n in data]
+        wl = MultiPanelCtrl((Generic2DPlotCtrl,) * len(data), data, grid, **kwargs).widgets_list
+    else:
+        wl = Generic2DPlotCtrl(data, *args, pltfunc=pltfunc, **kwargs).widgets_list
     if show:
         display(*wl)
     else:
@@ -103,22 +113,23 @@ class Generic2DPlotCtrl(object):
         self.update_time_label()
         # normalization
         # general parameters: vmin, vmax, clip
-        self.if_vmin_auto = widgets.Checkbox(value=True, description='Auto', layout=items_layout)
-        self.if_vmax_auto = widgets.Checkbox(value=True, description='Auto', layout=items_layout)
+        self.if_vmin_auto = widgets.Checkbox(value=True, description='Auto', layout=items_layout, style={'description_width': 'initial'})
+        self.if_vmax_auto = widgets.Checkbox(value=True, description='Auto', layout=items_layout, style={'description_width': 'initial'})
         self.vmin_wgt = widgets.FloatText(value=np.min(data), description='vmin:', continuous_update=False,
-                                          disabled=self.if_vmin_auto.value, layout=items_layout)
+                                          disabled=self.if_vmin_auto.value, layout=items_layout, style={'description_width': 'initial'})
         self.vlogmin_wgt = widgets.FloatText(value=self.eps, description='vmin:', continuous_update=False,
-                                             disabled=self.if_vmin_auto.value, layout=items_layout)
+                                             disabled=self.if_vmin_auto.value, layout=items_layout, style={'description_width': 'initial'})
         self.vmax_wgt = widgets.FloatText(value=np.max(data), description='vmax:', continuous_update=False,
-                                          disabled=self.if_vmin_auto.value, layout=items_layout)
-        self.if_clip_cm = widgets.Checkbox(value=True, description='Clip', layout=items_layout)
+                                          disabled=self.if_vmin_auto.value, layout=items_layout, style={'description_width': 'initial'})
+        self.if_clip_cm = widgets.Checkbox(value=True, description='Clip', layout=items_layout, style={'description_width': 'initial'})
         # PowerNorm specific
-        self.gamma = widgets.FloatText(value=1, description='gamma:', continuous_update=False, layout=items_layout)
+        self.gamma = widgets.FloatText(value=1, description='gamma:', continuous_update=False,
+                                       layout=items_layout, style={'description_width': 'initial'})
         # SymLogNorm specific
         self.linthresh = widgets.FloatText(value=self.eps, description='linthresh:', continuous_update=False,
-                                           layout=items_layout)
+                                           layout=items_layout, style={'description_width': 'initial'})
         self.linscale = widgets.FloatText(value=1.0, description='linscale:', continuous_update=False,
-                                          layout=items_layout)
+                                          layout=items_layout, style={'description_width': 'initial'})
 
         # build the widgets tuple
         ln_wgt = (LogNorm, widgets.VBox([widgets.HBox([self.vmax_wgt, self.if_vmax_auto]),
@@ -134,7 +145,7 @@ class Generic2DPlotCtrl(object):
 
         # find out default value for norm_selector
         norm_avail = {'Log': ln_wgt, 'Normalize': n_wgt, 'Power': pn_wgt, 'SymLog': sln_wgt}
-        self.norm_selector = widgets.Dropdown(options=norm_avail,
+        self.norm_selector = widgets.Dropdown(options=norm_avail, style={'description_width': 'initial'},
                                               value=norm_avail.get(norm, n_wgt), description='Normalization:')
         self.__old_norm = self.norm_selector.value
         # additional care for LorNorm()
@@ -150,15 +161,15 @@ class Generic2DPlotCtrl(object):
         # x axis
         xmin, xmax, xinc, ymin, ymax, yinc = self.__get_xy_minmax_delta()
         self.x_min_wgt = widgets.BoundedFloatText(value=xmin, min=xmin, max=xmax, step=xinc/2, description='xmin:',
-                                                  continuous_update=False, layout=items_layout)
+                                                  continuous_update=False, layout=items_layout, style={'description_width': 'initial'})
         self.x_max_wgt = widgets.BoundedFloatText(value=xmax, min=xmin, max=xmax, step=xinc/2, description='xmax:',
-                                                  continuous_update=False, layout=items_layout)
+                                                  continuous_update=False, layout=items_layout, style={'description_width': 'initial'})
         self.x_step_wgt = widgets.BoundedFloatText(value=xinc, step=xinc, continuous_update=False,
-                                            description='$\Delta x$:', layout=items_layout)
+                                            description='$\Delta x$:', layout=items_layout, style={'description_width': 'initial'})
         widgets.jslink((self.x_min_wgt, 'max'), (self.x_max_wgt, 'value'))
         widgets.jslink((self.x_max_wgt, 'min'), (self.x_min_wgt, 'value'))
         # x label
-        self.if_reset_xlabel = widgets.Checkbox(value=True, description='Auto')
+        self.if_reset_xlabel = widgets.Checkbox(value=True, description='Auto', layout=items_layout, style={'description_width': 'initial'})
         if xlabel is False:
             self._xlabel = None
         elif isinstance(xlabel, str):
@@ -172,15 +183,15 @@ class Generic2DPlotCtrl(object):
                                            widgets.HBox([self.xlabel, self.if_reset_xlabel], layout=Layout(border='solid 1px'))])
         # y axis
         self.y_min_wgt = widgets.BoundedFloatText(value=ymin, min=ymin, max=ymax, step=yinc/2, description='ymin:',
-                                           continuous_update=False, layout=items_layout)
+                                           continuous_update=False, layout=items_layout, style={'description_width': 'initial'})
         self.y_max_wgt = widgets.BoundedFloatText(value=ymax, min=ymin, max=ymax, step=yinc/2, description='ymax:',
-                                           continuous_update=False, layout=items_layout)
+                                           continuous_update=False, layout=items_layout, style={'description_width': 'initial'})
         self.y_step_wgt = widgets.BoundedFloatText(value=yinc, step=yinc, continuous_update=False,
-                                            description='$\Delta y$:', layout=items_layout)
+                                            description='$\Delta y$:', layout=items_layout, style={'description_width': 'initial'})
         widgets.jslink((self.y_min_wgt, 'max'), (self.y_max_wgt, 'value'))
         widgets.jslink((self.y_max_wgt, 'min'), (self.y_min_wgt, 'value'))
         # y label
-        self.if_reset_ylabel = widgets.Checkbox(value=True, description='Auto')
+        self.if_reset_ylabel = widgets.Checkbox(value=True, description='Auto', layout=items_layout, style={'description_width': 'initial'})
         if ylabel is False:
             self._ylabel = None
         elif isinstance(ylabel, str):
@@ -195,7 +206,6 @@ class Generic2DPlotCtrl(object):
         tab.append(widgets.VBox([self.axis_lim_wgt, self.xaxis_lim_wgt, self.yaxis_lim_wgt]))
 
         # # # -------------------- Tab2 --------------------------
-#         overlay_item_layout = Layout(display='flex', flex='0 0 auto', width='200px')
         overlay_item_layout = Layout(display='flex', flex_flow='row wrap', width='auto')
         self.__analysis_def = {'Average': {'Simple': lambda x, a : np.mean(x, axis=a), 'RMS': lambda x, a : np.sqrt(np.mean(x*x, axis=a))},
                                'Sum': {'Simple': lambda x, a : np.sum(x, axis=a), 'Square': lambda x, a : np.sum(x*x, axis=a),
@@ -204,62 +214,73 @@ class Generic2DPlotCtrl(object):
                                'Max': {'Simple': lambda x, a : np.max(x, axis=a), 'ABS': lambda x, a : np.max(np.abs(x), axis=a)}} #TODO: envelope
         analist = [k for k in self.__analysis_def.keys()]
         # x lineout
-        self.xlineout_wgt = widgets.BoundedFloatText(value=ymin, min=ymin, max=ymax,
-                                                     step=yinc, description=self.ylabel.value)
+        self.xlineout_wgt = widgets.BoundedFloatText(value=ymin, min=ymin, max=ymax, style={'description_width': 'initial'},
+                                                     step=yinc, description=self.ylabel.value, layout={'width': 'initial'})
         widgets.jslink((self.xlineout_wgt, 'description'), (self.ylabel, 'value'))
         widgets.jslink((self.xlineout_wgt, 'min'), (self.y_min_wgt, 'value'))
         widgets.jslink((self.xlineout_wgt, 'max'), (self.y_max_wgt, 'value'))
         widgets.jslink((self.xlineout_wgt, 'step'), (self.y_step_wgt, 'value'))
-        self.add_xlineout_btn = widgets.Button(description='Lineout', tooltip='Add x-lines')
+        self.add_xlineout_btn = widgets.Button(description='Lineout', tooltip='Add x-lines', layout={'width': 'initial'})
         # simple analysis in x direction
-        self.xananame = widgets.Dropdown(options=analist, value=analist[0], description='Analysis:')
+        self.xananame = widgets.Dropdown(options=analist, value=analist[0], description='Analysis:',
+                                         layout={'width': 'initial'}, style={'description_width': 'initial'})
         xanaoptlist = [k for k in self.__analysis_def[analist[0]].keys()]
-        self.xanaopts = widgets.Dropdown(options=xanaoptlist, value=xanaoptlist[0], description='')
-        self.anaxmin = widgets.BoundedFloatText(value=ymin, min=ymin, max=ymax, step=yinc, description='from')
-        self.anaxmax = widgets.BoundedFloatText(value=ymax, min=ymin, max=ymax, step=yinc, description='to')
+        self.xanaopts = widgets.Dropdown(options=xanaoptlist, value=xanaoptlist[0], description='',
+                                         layout={'width': 'initial'}, style={'description_width': 'initial'})
+        self.anaxmin = widgets.BoundedFloatText(value=ymin, min=ymin, max=ymax, step=yinc, description='from',
+                                                layout={'width': 'initial'}, style={'description_width': 'initial'})
+        self.anaxmax = widgets.BoundedFloatText(value=ymax, min=ymin, max=ymax, step=yinc, description='to',
+                                                layout={'width': 'initial'}, style={'description_width': 'initial'})
         widgets.jslink((self.anaxmin, 'min'), (self.y_min_wgt, 'value'))
         widgets.jslink((self.anaxmin, 'max'), (self.anaxmax, 'value'))
         widgets.jslink((self.anaxmin, 'step'), (self.y_step_wgt, 'value'))
         widgets.jslink((self.anaxmax, 'min'), (self.anaxmin, 'value'))
         widgets.jslink((self.anaxmax, 'max'), (self.y_max_wgt, 'value'))
         widgets.jslink((self.anaxmax, 'step'), (self.y_step_wgt, 'value'))
-        self.xana_add = widgets.Button(description='Add', tooltip='Add analysis as x line plot')
+        self.xana_add = widgets.Button(description='Add', tooltip='Add analysis as x line plot', layout={'width': 'initial'})
         xlinegroup = widgets.HBox([self.xananame, self.xanaopts, self.anaxmin, self.anaxmax, self.xana_add], layout=Layout(border='solid 1px'))
         # list of x lines plotted
-        self.xlineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout)
+        self.xlineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout, style={'description_width': 'initial'})
         self.xlineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.xlineout_wgt, self.add_xlineout_btn], 
-                                                                     layout=Layout(border='solid 1px')), xlinegroup]), self.xlineout_list_wgt])
+                                                                     layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
+                                                        xlinegroup]), self.xlineout_list_wgt])
         # y lineout
-        self.ylineout_wgt = widgets.BoundedFloatText(value=xmin, min=xmin, max=xmax,
-                                                     step=xinc, description=self.xlabel.value)
+        self.ylineout_wgt = widgets.BoundedFloatText(value=xmin, min=xmin, max=xmax, style={'description_width': 'initial'},
+                                                     step=xinc, description=self.xlabel.value, layout={'width': 'initial'})
         widgets.jslink((self.ylineout_wgt, 'description'), (self.xlabel, 'value'))
         widgets.jslink((self.ylineout_wgt, 'min'), (self.x_min_wgt, 'value'))
         widgets.jslink((self.ylineout_wgt, 'max'), (self.x_max_wgt, 'value'))
         widgets.jslink((self.ylineout_wgt, 'step'), (self.x_step_wgt, 'value'))
-        self.add_ylineout_btn = widgets.Button(description='Lineout', tooltip='Add y-lines')
+        self.add_ylineout_btn = widgets.Button(description='Lineout', tooltip='Add y-lines', layout={'width': 'initial'})
         # simple analysis in x direction
-        self.yananame = widgets.Dropdown(options=analist, value=analist[0], description='Analysis:')
+        self.yananame = widgets.Dropdown(options=analist, value=analist[0], description='Analysis:',
+                                         layout={'width': 'initial'}, style={'description_width': 'initial'})
         yanaoptlist = [k for k in self.__analysis_def[analist[0]].keys()]
-        self.yanaopts = widgets.Dropdown(options=yanaoptlist, value=yanaoptlist[0], description='')
-        self.anaymin = widgets.BoundedFloatText(value=xmin, min=xmin, max=xmax, step=xinc, description='from')
-        self.anaymax = widgets.BoundedFloatText(value=xmax, min=xmin, max=xmax, step=xinc, description='to')
+        self.yanaopts = widgets.Dropdown(options=yanaoptlist, value=yanaoptlist[0], description='',
+                                         layout={'width': 'initial'}, style={'description_width': 'initial'})
+        self.anaymin = widgets.BoundedFloatText(value=xmin, min=xmin, max=xmax, step=xinc, description='from',
+                                                layout={'width': 'initial'}, style={'description_width': 'initial'})
+        self.anaymax = widgets.BoundedFloatText(value=xmax, min=xmin, max=xmax, step=xinc, description='to',
+                                                layout={'width': 'initial'}, style={'description_width': 'initial'})
         widgets.jslink((self.anaymin, 'min'), (self.x_min_wgt, 'value'))
         widgets.jslink((self.anaymin, 'max'), (self.anaymax, 'value'))
         widgets.jslink((self.anaymin, 'step'), (self.x_step_wgt, 'value'))
         widgets.jslink((self.anaymax, 'min'), (self.anaymin, 'value'))
         widgets.jslink((self.anaymax, 'max'), (self.x_max_wgt, 'value'))
         widgets.jslink((self.anaymax, 'step'), (self.x_step_wgt, 'value'))
-        self.yana_add = widgets.Button(description='Add', tooltip='Add analysis as y line plot')
-        ylinegroup = widgets.HBox([self.yananame, self.yanaopts, self.anaymin, self.anaymax, self.yana_add], layout=Layout(border='solid 1px'))
+        self.yana_add = widgets.Button(description='Add', tooltip='Add analysis as y line plot', layout={'width': 'initial'})
+        ylinegroup = widgets.HBox([self.yananame, self.yanaopts, self.anaymin, self.anaymax, self.yana_add],
+                                  layout=Layout(width='initial', border='solid 1px'))
         # list of x lines plotted
         self.ylineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout)
         self.ylineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.ylineout_wgt, self.add_ylineout_btn], 
-                                                                     layout=Layout(border='solid 1px')), ylinegroup]), self.ylineout_list_wgt])
+                                                                     layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
+                                                        ylinegroup]), self.ylineout_list_wgt])
         #TODO: overlay 2D plot
 
         self.overlaid_itmes = {}  # dict to keep track of the overlaid plots
         self.overlay = widgets.Tab(children=[self.xlineout_tab, self.ylineout_tab])
-        [self.overlay.set_title(i, tt) for i, tt in enumerate(['x-lineout', 'y-lineout'])]
+        [self.overlay.set_title(i, tt) for i, tt in enumerate(['x-line', 'y-line'])]
         tab.append(self.overlay)
 
         # # # -------------------- Tab3 --------------------------
@@ -344,6 +365,9 @@ class Generic2DPlotCtrl(object):
 
     def get_dataname(self):
         return self._data.name
+
+    def get_time_label(self):
+        return osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'])
 
     def update_data(self, data, slcs):
         self._data, self._slcs = data, slcs
@@ -447,7 +471,7 @@ class Generic2DPlotCtrl(object):
 
     def __get_tab0(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt,
-                             widgets.HBox([self.datalabel, self.if_reset_title, self.if_show_time])])
+                             widgets.VBox([widgets.HBox([self.datalabel, self.if_reset_title]), self.if_show_time])])
 
     def __update_xanaopts(self, change):
         opts = self.__analysis_def[change['new']]
@@ -903,19 +927,16 @@ class DirSlicer(Generic2DPlotCtrl):
             self.update_time_label()
             self.update_title(change)
 
-class MPDirSlicer:
-    def __init__(self, filefilter_list, grid, interval=1000, processing=None, figsize=None, fig=None, output_widget=None,
+
+class MultiPanelCtrl(object):
+    def __init__(self, workers, data_list, grid, worker_kw_list=None, figsize=None, fig=None, output_widget=None,
                  sharex=False, sharey=False, **kwargs):
-        items_layout = Layout(flex='1 1 auto', width='auto')
+        """ worker's base class should be Generic2DPlotCtrl """
         if len(grid) != 2 or np.multiply(*grid) <= 1:
             raise ValueError('grid must have 2 elements specifying a grid of plots. Total number of plots must be greater than 1')
         self.nrows, self.ncols = grid
-        if len(filefilter_list) != self.nrows * self.ncols:
-            raise ValueError('Expecting %d lists in filefilter_list, got %d' % (self.nrows * self.ncols, len(filefilter_list)))
-        if processing is None:
-            processing = (do_nothing,) * len(filefilter_list)
-        elif len(processing) != self.nrows * self.ncols:
-            raise ValueError('Expecting %d functions in processing, got %d' % (self.nrows * self.ncols, len(processing)))
+        if len(data_list) != self.nrows * self.ncols:
+            raise ValueError('Expecting %d lists in data_list, got %d' % (self.nrows * self.ncols, len(data_list)))
         
         width, height = figsize or plt.rcParams.get('figure.figsize')
         self.out = output_widget or widgets.Output()
@@ -928,56 +949,87 @@ class MPDirSlicer:
             for i in range(nplots):
                 if i % self.ncols != 0:
                     ylabel[i] = False
+        if worker_kw_list is None:
+            worker_kw_list = ({}, ) * nplots
         self.fig, self.ax = plt.subplots(self.nrows, self.ncols, figsize=(width, height), 
                                          sharex=sharex, sharey=sharey, constrained_layout=True)
-        self._dirslicers = [DirSlicer(ff, output_widget=self.out, fig=self.fig, ax=ax, xlabel=xlb, ylabel=ylb)
-                            for ff, ax, xlb, ylb in zip(filefilter_list, self.ax, xlabel, ylabel)]
-        data_namelist = [s.get_dataname() for s in self._dirslicers]
+        self.worker = [w(d, output_widget=self.out, fig=self.fig, ax=ax, xlabel=xlb, ylabel=ylb, **wkw, **kwargs)
+                       for w, d, ax, xlb, ylb, wkw in zip(workers, data_list, self.ax, xlabel, ylabel, worker_kw_list)]
+        data_namelist = [s.get_dataname() for s in self.worker]
         # adding the index in front to make sure all button names are unique (otherwise the selection wouldn't be highlighted properly)
         if len(data_namelist) > len(set(data_namelist)):
             data_namelist = [str(i+1)+'.'+s for i, s in enumerate(data_namelist)]
-        self.sldd, self.tabd = self._dirslicers[0].time_label, [s.tab for s in self._dirslicers]
+        self.tabd = [s.tab for s in self.worker]
         bw, bwpadded = 50, 56  # these magic numbers seems to work well on forcing the desired button layout
         self.tb = widgets.ToggleButtons(options=data_namelist, value=data_namelist[0], description='',
                                         style={"button_width": '%dpx' % bw})
         ctrl_pnl = widgets.Box([self.tb],layout=Layout(display='flex', flex='0 0 auto', align_items='center',
                                                        width='%dpx' % (bwpadded * self.ncols)))
-        self.ctrl = widgets.HBox([ctrl_pnl, self.tabd[self.tb.index]])
+        self.ctrl = widgets.HBox([ctrl_pnl, self.tabd[self.tb.index]], layout=Layout(display='flex', flex='1 1 auto', width='100%'))
         self.suptitle_wgt = widgets.Text(value=None, placeholder='Plots', continuous_update=False, description='Suptitle:')
         self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle')
-        # we need a master slider to control all subplot sliders
-        self.slider = widgets.IntSlider(min=0, max=self._dirslicers[0].file_slider.max, description='', value=0,
-                                        readout=False, continuous_update=False, style={'description_width': 'initial'})
-        self.play = widgets.Play(interval=interval, value=0, min=0, max=self.slider.max, description='Press play')
-        widgets.jslink((self.play, 'value'), (self.slider, 'value'))
-        self.slider.observe(self.update_all_subplots, 'value')
         self.tb.observe(self.show_corresponding_tab, 'index')
         self.suptitle_wgt.observe(self.update_suptitle, 'value')
         self.time_in_suptitle.observe(self.update_suptitle, 'value')
+        self.suptitle = widgets.HBox([self.suptitle_wgt, self.time_in_suptitle])
         # disable resize widgets to avoid bugs
         if sharex or sharey:
-            for s in self._dirslicers:
+            for s in self.worker:
                 s.x_min_wgt.disabled, s.y_min_wgt.disabled, s.x_max_wgt.disabled, s.y_max_wgt.disabled, \
                 s.x_step_wgt.disabled, s.y_step_wgt.disabled = (True,) * 6
 
     @property
     def widgets_list(self):
-        return self.ctrl, self.play, self.slider, self.sldd, self.suptitle_wgt, self.time_in_suptitle, self.out
+        return self.ctrl, self.suptitle, self.out
+
+    @property
+    def time(self):
+        return self.worker[0].get_time_label()
 
     def update_suptitle(self, *_):
+        print(self.time)
         if self.suptitle_wgt.value:
-            ttl = self.suptitle_wgt.value + ((', ' + self.sldd.value) if self.time_in_suptitle.value else '')
+            ttl = self.suptitle_wgt.value + ((', ' + self.time) if self.time_in_suptitle.value else '')
         else:
-            ttl = self._time if self.time_in_suptitle.value else ''
+            ttl = self.time if self.time_in_suptitle.value else None
         self.fig.suptitle(ttl)
-
-    def update_all_subplots(self, change):
-        for s in self._dirslicers:
-            s.file_slider.value = change['new']
-        self.update_suptitle(change)
     
     def show_corresponding_tab(self, change):
         self.ctrl.children = (self.ctrl.children[0], self.tabd[self.tb.index])
+
+
+class MPDirSlicer(MultiPanelCtrl):
+    def __init__(self, filefilter_list, grid, interval=1000, processing=do_nothing, figsize=None, fig=None, output_widget=None,
+                 sharex=False, sharey=False, **kwargs):
+        if isinstance(processing, (list, tuple)):
+            if len(processing) != grid[0] * grid[1]:
+                raise ValueError('Expecting %d functions in processing, got %d' % (grid[0] * grid[1], len(processing)))
+            else:
+                ps = [{'processing' :p} for p in processing]
+        else:
+            ps = ({'processing' :processing},) * len(filefilter_list)
+        super(MPDirSlicer, self).__init__((DirSlicer,) * len(filefilter_list), filefilter_list, grid, worker_kw_list=ps,
+                                         figsize=figsize, fig=fig, output_widget=output_widget, sharex=sharex, sharey=sharey, **kwargs)
+        # we need a master slider to control all subplot sliders
+        self.slider = widgets.IntSlider(min=0, max=self.worker[0].file_slider.max, description='', value=0,
+                                        readout=False, continuous_update=False, style={'description_width': 'initial'})
+        self.play = widgets.Play(interval=interval, value=0, min=0, max=self.slider.max, description='Press play')
+        self.slider.observe(self.update_all_subplots, 'value')
+        widgets.jslink((self.play, 'value'), (self.slider, 'value'))
+
+    @property
+    def widgets_list(self):
+        return self.ctrl, self.play, self.slider, self.worker[0].time_label, self.suptitle, self.out
+    
+#     @property
+#     def time_label(self):
+#         return self.worker[0].time_label
+
+    def update_all_subplots(self, change):
+        for s in self.worker:
+            s.file_slider.value = self.slider.value
+        self.update_suptitle(change)
+
 
 class Animation(Slicer):
     def __init__(self, data, interval=10, step=1, **kwargs):
