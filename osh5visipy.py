@@ -961,7 +961,7 @@ class MultiPanelCtrl(object):
             data_namelist = [str(i+1)+'.'+s for i, s in enumerate(data_namelist)]
         self.tabd = [s.tab for s in self.worker]
         bw, bwpadded = 50, 56  # these magic numbers seems to work well on forcing the desired button layout
-        self.tb = widgets.ToggleButtons(options=data_namelist, value=data_namelist[0], description='',
+        self.tb = widgets.ToggleButtons(options=data_namelist, value=data_namelist[0], description='', tooltips=data_namelist,
                                         style={"button_width": '%dpx' % bw})
         ctrl_pnl = widgets.Box([self.tb],layout=Layout(display='flex', flex='0 0 auto', align_items='center',
                                                        width='%dpx' % (bwpadded * self.ncols)))
