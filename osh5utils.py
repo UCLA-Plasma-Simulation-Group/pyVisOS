@@ -612,7 +612,7 @@ def rebin(a, fac):
      a=rand(6,4); b=rebin(a, fac=[3,2])
      a=rand(10); b=rebin(a, fac=[3])
     """
-    index = [slice(0, u - u % fac[i]) if u % fac[i] else slice(0, u) for i, u in enumerate(a.shape)]
+    index = tuple(slice(0, u - u % fac[i]) if u % fac[i] else slice(0, u) for i, u in enumerate(a.shape))
     a = a[index]
     # update axes first
     if isinstance(a, osh5def.H5Data):

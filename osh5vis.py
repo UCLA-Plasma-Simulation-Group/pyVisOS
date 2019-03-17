@@ -106,7 +106,7 @@ def osloglog(h5data, *args, ax=None, **kwpassthrough):
     return __osplot1d(loglog, h5data, *args, **kwpassthrough)
 
 
-def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', **kwargs):
+def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', use_gridspec=True, **kwargs):
     if not cb:
         cb = plt.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs) if fig is None \
              else fig.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs)
