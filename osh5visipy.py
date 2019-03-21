@@ -13,7 +13,11 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
 import matplotlib
+import subprocess
 import threading
+from datetime import datetime
+import time
+import re
 
 
 print("Importing osh5visipy. Please use `%matplotlib notebook' in your jupyter/ipython notebook;")
@@ -93,10 +97,15 @@ class FigureManager(object):
     def __init__(self):
         self.managers=[manager for manager in matplotlib._pylab_helpers.Gcf.get_all_fig_managers()]
         self.figures = [m.canvas.figure for m in managers]
-        self.nw = widgets.Button(description='', tooltip='delete %s' % tp, icon='times', layout=Layout(width='32px'))
+        self.nw = _get_delete_btn(' ')
 
 
 _items_layout = Layout(flex='1 1 auto', width='auto')
+_get_delete_btn = lambda tp : widgets.Button(description='', tooltip='delete %s' % tp, icon='times', layout=Layout(width='32px'))
+
+def _get_downloadable_url(filename):
+    return '<a href="files%s" download="%s"> %s </a>' % (os.path.abspath(filename),
+                                                         os.path.basename(filename), filename)
 
 
 class Generic2DPlotCtrl(object):
@@ -162,11 +171,12 @@ class Generic2DPlotCtrl(object):
         self.__handle_lognorm()
         # re-plot button
         self.norm_btn_wgt = widgets.Button(description='Apply', disabled=False, tooltip='Update normalization', icon='refresh')
-        tab.append(self.get_tab0())
+        tab.append(self.get_tab_data())
 
         # # # -------------------- Tab1 --------------------------
         self.setting_instructions = widgets.Label(value="Enter invalid value to reset", layout=_items_layout)
-        self.apply_range_btn = widgets.Button(description='Apply', disabled=False, tooltip='set range', icon='refresh')
+        self.apply_range_btn = widgets.Button(description='Apply', disabled=False, \
+                                              tooltip='set range. (* this will delete all overlaid plots *)', icon='refresh')
         self.axis_lim_wgt = widgets.HBox([self.setting_instructions, self.apply_range_btn])
         # x axis
         xmin, xmax, xinc, ymin, ymax, yinc = self.__get_xy_minmax_delta()
@@ -189,7 +199,7 @@ class Generic2DPlotCtrl(object):
         self.xlabel = widgets.Text(value=self._xlabel,
                                    placeholder='x', continuous_update=False,
                                    description='X label:', disabled=self.if_reset_xlabel.value)
-        self.xaxis_lim_wgt = widgets.HBox([self.x_min_wgt, self.x_max_wgt, self.x_step_wgt, 
+        self.xaxis_lim_wgt = widgets.HBox([self.x_min_wgt, self.x_max_wgt, self.x_step_wgt,
                                            widgets.HBox([self.xlabel, self.if_reset_xlabel], layout=Layout(border='solid 1px'))])
         # y axis
         self.y_min_wgt = widgets.BoundedFloatText(value=ymin, min=ymin, max=ymax, step=yinc/2, description='ymin:',
@@ -251,7 +261,7 @@ class Generic2DPlotCtrl(object):
         xlinegroup = widgets.HBox([self.xananame, self.xanaopts, self.anaxmin, self.anaxmax, self.xana_add], layout=Layout(border='solid 1px'))
         # list of x lines plotted
         self.xlineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout, style={'description_width': 'initial'})
-        self.xlineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.xlineout_wgt, self.add_xlineout_btn], 
+        self.xlineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.xlineout_wgt, self.add_xlineout_btn],
                                                                      layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
                                                         xlinegroup]), self.xlineout_list_wgt])
         # y lineout
@@ -283,14 +293,49 @@ class Generic2DPlotCtrl(object):
                                   layout=Layout(width='initial', border='solid 1px'))
         # list of x lines plotted
         self.ylineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout)
-        self.ylineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.ylineout_wgt, self.add_ylineout_btn], 
+        self.ylineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.ylineout_wgt, self.add_ylineout_btn],
                                                                      layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
                                                         ylinegroup]), self.ylineout_list_wgt])
-        #TODO: overlay 2D plot
+#         self.ct_alpha = widgets.BoundedFloatText(value=1.0, min=0., max=1., step=0.01, layout={'width': 'initial'}, style={'description_width': 'initial'})
+        self.ct_auto_color = widgets.ToggleButtons(options=['colormap', 'manual', 'same'], description='Color:', value='colormap',
+                                                   tooltips=['use selected colormap', 'set each level indevidually', 'monochromatic, same as the last level'],
+                                                   layout=_items_layout, style={'description_width': 'initial', "button_width": 'initial'})
+        self.ct_antialiased = widgets.Checkbox(value=False, description='antialiased; ', layout=_items_layout, style={'description_width': 'initial'})
+        self.ct_if_clabel = widgets.Checkbox(value=False, description='clabels ', layout=_items_layout, style={'description_width': 'initial'})
+        self.ct_if_inline_clabel = widgets.Checkbox(value=False, description='inline; ', disabled=True,
+                                                    layout=_items_layout, style={'description_width': 'initial'})
+        self.ct_cmap_selector = widgets.Dropdown(options=self.colormaps_available, value=user_cmap, description='  colormap:',
+                                                 disabled=(self.ct_auto_color.value != 'colormap'), layout={'width': 'initial'}, style={'description_width': 'initial'})
+        self.ct_cmap_reverse = widgets.Checkbox(value=False, description='Reverse; ', disabled=self.ct_cmap_selector.disabled,
+                                                layout=_items_layout, style={'description_width': 'initial'})
+        widgets.jslink((self.ct_cmap_reverse, 'disabled'), (self.ct_cmap_selector, 'disabled'))
+        self.ct_method = widgets.Dropdown(options=['contour', 'contourf'], value='contour', description='', layout=_items_layout, style={'description_width': 'initial'})
+        self.ct_plot_btn = widgets.Button(description='Plot', tooltip='plot overlay', style={'description_width': 'initial'}, layout={'width': 'initial'})
+        self.ct_opts_list, self.ct_wgt_list = widgets.Box(children=[], layout=overlay_item_layout), widgets.Box(children=[], layout=overlay_item_layout)
+        self.ct_opts_dict, self.ct_dict = {}, {}
+        self.ct_num_levels_opts = widgets.ToggleButtons(options=['auto', 'option', 'fixed:'], description=' number of levels:', value='auto',
+                                                        tooltips=['let the plotter decide how many levels to plot', 'same number of levels as the level options added below',
+                                                                  'excact number of levels (some of the level options added below may not be used)'],
+                                                        layout=_items_layout, style={'description_width': 'initial', "button_width": 'initial'})
+        self.ct_num_levels = widgets.BoundedIntText(value=8, min=1, max=plt.MaxNLocator.MAXTICKS, description='', disabled=(self.ct_num_levels_opts.value != 'fixed:'),
+                                                    layout={'width': 'initial'}, style={'description_width': 'initial'})
+        self.ct_level = widgets.Text(value='0.0', placeholder='0.0, 0.01, 10', description='Levels=', disabled=(self.ct_num_levels_opts.value != 'option'),
+                                     layout=_items_layout, style={'description_width': 'initial'})
+        self.ct_colorpicker = widgets.ColorPicker(concise=False, description='; color:', value='black', disabled=(self.ct_auto_color.value == 'colormap'),
+                                                  style={'description_width': 'initial'}, layout={'width': '200px'})
+        self.ct_linestyle = widgets.Dropdown(options=[None, 'solid', 'dashed', 'dashdot', 'dotted'], value=None, description='; linestyle:',
+                                             style={'description_width': 'initial'}, layout={'width': 'initial'})
+        self.ct_add_lvl_btn = widgets.Button(description='Add', tooltip='Add level options. Will use default settings if no option is added',
+                                             style={'description_width': 'initial'}, layout={'width': 'initial'})
+        self.ct_info_output = Output()
+        self.ct_tab = widgets.VBox([widgets.HBox([self.ct_antialiased, self.ct_if_clabel, self.ct_if_inline_clabel, self.ct_auto_color,
+                                                  self.ct_cmap_selector, self.ct_cmap_reverse, self.ct_num_levels_opts, self.ct_num_levels]),
+                                    widgets.HBox([self.ct_level, self.ct_colorpicker, self.ct_add_lvl_btn, self.ct_method, self.ct_linestyle, self.ct_plot_btn]),
+                                    self.ct_opts_list, self.ct_info_output, self.ct_wgt_list])
+        self.ct_plot_dict = {}  # dict to keep track of the overlaid plots
 
-        self.overlaid_itmes = {}  # dict to keep track of the overlaid plots
-        self.overlay = widgets.Tab(children=[self.xlineout_tab, self.ylineout_tab])
-        [self.overlay.set_title(i, tt) for i, tt in enumerate(['x-line', 'y-line'])]
+        self.overlay = widgets.Tab(children=[self.xlineout_tab, self.ylineout_tab, self.ct_tab])
+        [self.overlay.set_title(i, tt) for i, tt in enumerate(['x-lines', 'y-lines', 'contours'])]
         tab.append(self.overlay)
 
         # # # -------------------- Tab3 --------------------------
@@ -308,11 +353,10 @@ class Generic2DPlotCtrl(object):
 
         # # # -------------------- Tab4 --------------------------
         self.saveas = widgets.Button(description='Save current plot', tooltip='save current plot', button_style='')
-        self.dlink = Output()
-        self.figname = widgets.Text(value='figure.eps', description='Filename:')
+        self.dlink = widgets.HTML(value='', description='')
+        self.figname = widgets.Text(value='figure.eps', description='Figure name:', placeholder='figure name')
         self.dpi = widgets.BoundedIntText(value=300, min=4, max=3000, description='DPI:')
-        tab.append(widgets.VBox([widgets.HBox([self.figname, self.dpi, self.saveas], layout=_items_layout),
-                                 self.dlink], layout=_items_layout))
+        tab.append(self.get_tab_save())
 
         # # # -------------------- Tab5 --------------------------
         width, height = figsize or plt.rcParams.get('figure.figsize')
@@ -357,6 +401,12 @@ class Generic2DPlotCtrl(object):
         self.yananame.observe(self.__update_yanaopts, 'value')
         self.yana_add.on_click(self.__add_yana)
         self.destroy_fig_btn.on_click(self.self_destruct)
+        self.ct_auto_color.observe(self._on_ct_auto_color_wgt_change, 'value')
+        self.ct_num_levels_opts.observe(self._on_ct_num_lvl_opts_wgt_change, 'value')
+        self.ct_add_lvl_btn.on_click(self._add_contour_lvl_opts)
+        self.ct_plot_btn.on_click(self._add_contour_plot)
+        self.ct_if_clabel.observe(self._on_clabel_toggle, 'value')
+        self.ct_method.observe(self._on_ct_method_change, 'value')
 
         # plotting and then setting normalization colors
         self.out_main = output_widget or Output()
@@ -368,7 +418,7 @@ class Generic2DPlotCtrl(object):
             self.ax = ax or self.fig.add_subplot(111)
             self.im, self.cb = self.plot_data()
 #             plt.show()
-        self.axx, self.axy, self._xlineouts, self._ylineouts = None, None, {}, {}
+        self.axx, self.axy, self._xlineouts, self._ylineouts, self.im2 = None, None, {}, {}, []
 
     @property
     def widgets_list(self):
@@ -398,6 +448,7 @@ class Generic2DPlotCtrl(object):
         self.x_step_wgt.value, self.y_step_wgt.value = xstep / 2, ystep / 2
         self.__destroy_all_xlineout()
         self.__destroy_all_ylineout()
+        self._ct_destroy_all()
 
     def redraw(self, data):
         if self.pltfunc is osh5vis.osimshow:
@@ -462,6 +513,7 @@ class Generic2DPlotCtrl(object):
         # for now delete everything for simplicity
         self.__destroy_all_xlineout()
         self.__destroy_all_ylineout()
+        self._ct_destroy_all()
         self.replot_axes()
 
     def refresh_tab_wgt(self, update_list):
@@ -485,16 +537,212 @@ class Generic2DPlotCtrl(object):
         for w in self.widgets_list:
             w.close()
         self.onDestruction()
-    
+
     def get_plot_title(self):
         if self.datalabel.value:
             return self.datalabel.value + ((', ' + self._time) if self.if_show_time.value else '')
         else:
             return self._time if self.if_show_time.value else ''
 
-    def get_tab0(self):
+    def get_tab_data(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt,
                              widgets.VBox([widgets.HBox([self.datalabel, self.if_reset_title]), self.if_show_time])])
+
+    def get_tab_save(self):
+        return widgets.VBox([widgets.HBox([self.figname, self.dpi, self.saveas], layout=_items_layout),
+                             self.dlink], layout=_items_layout)
+
+    def _on_clabel_toggle(self, change):
+        self.ct_if_inline_clabel.disabled = not change['new']
+
+    def _on_ct_auto_color_wgt_change(self, change):
+        if change['new'] == 'colormap':
+            self.ct_cmap_selector.disabled, self.ct_colorpicker.disabled = False, True
+        else:
+            self.ct_cmap_selector.disabled, self.ct_colorpicker.disabled = True, False
+
+    def _on_ct_method_change(self, change):
+        # linestyle keyword only applies to contour
+        self.ct_linestyle.disabled = change['new'] != 'contour'
+
+    def _on_ct_num_lvl_opts_wgt_change(self, change):
+        self.ct_num_levels.disabled = False if change['new'] == 'fixed:' else True
+        self.ct_level.disabled = True if change['new'] != 'option' else False
+
+    def _get_contour_opt_wgt(self, lvl, color, txt_wgt_width='initial', cp_wgt_width='initial'):
+        return (widgets.FloatText(value=lvl, description='level=', disabled=(self.ct_num_levels_opts.value != 'option'),
+                                  style={'description_width': 'initial'}, layout={'width': txt_wgt_width}),
+                widgets.ColorPicker(concise=False, description='; color:', value=color, disabled=(self.ct_auto_color.value == 'colormap'),
+                                    style={'description_width': 'initial'}, layout={'width': cp_wgt_width}), _get_delete_btn('level %f' % lvl))
+
+    def _remove_ct_lvl_opt(self, btn):
+        lvl_wgt = self.ct_opts_dict.pop(btn)
+        # remove level widgets from ct_opts_list
+        tmp = list(self.ct_opts_list.children)
+        tmp.remove(lvl_wgt)
+        self.ct_opts_list.children = tuple(tmp)
+        lvl_wgt.close()
+
+    def _print_ct_info(self, msg, timeout=8):
+        with self.ct_info_output:
+            print(msg)
+            time.sleep(timeout)
+            self.ct_info_output.clear_output()
+
+    def _extract_ct_kwargs_from_wgt(self):
+        levels, colors = [], []
+        for w in self.ct_opts_list.children:
+            lvl, cp, db = w.children
+            levels.append(lvl.value)
+            colors.append(cp.value)
+            lvl.close()
+            cp.close()
+            db.close()
+            w.close()
+        kwargs = {'antialiased': self.ct_antialiased.value}
+        if self.ct_auto_color.value == 'colormap':
+            kwargs['colors'] = None
+            kwargs['cmap'] = self.ct_cmap_selector.value + ('_r' if self.ct_cmap_reverse.value else '')
+            kwargs['norm'] = self.norm_selector.value[0](**self.__get_norm())
+        elif self.ct_auto_color.value == 'manual':
+            kwargs['colors'] = colors or None
+        else:
+            kwargs['colors'] = None if not colors else (colors[-1], ) * len(colors)
+
+        if not self.ct_linestyle.disabled:
+            kwargs['linestyles'] = self.ct_linestyle.value
+
+        if self.ct_num_levels_opts.value == 'fixed:':
+            kwargs['levels'] = self.ct_num_levels.value
+        elif self.ct_num_levels_opts.value == 'option':
+            if levels:
+                if len(levels) > len(set(levels)):
+                    if self.ct_auto_color.value == 'manual':
+                        self._print_ct_info('Found duplicated levels, last appearance takes precedence')
+                        tmp = dict(zip(levels, kwargs['colors']))  # use dict to get rid of duplicates
+                        levels, kwargs['colors'] = list(tmp.keys()), list(tmp.values())
+                    else:
+                        levels = list(set(levels))  # use dict to get rid of duplicates
+                kwargs['levels'] = sorted(levels)
+                print(levels)
+                if kwargs['colors'] is not None:
+                    ii = sorted(range(len(levels)), key=lambda k: levels[k])
+                    c = kwargs['colors']
+                    kwargs['colors'] = list(c[i] for i in ii)
+            else:
+                self._print_ct_info('number of levels = option: but no option is added, fall back to auto')
+
+        if self.ct_auto_color.value == 'colormap' and self.ct_num_levels_opts.value == 'auto' and self.ct_opts_list.children:
+            self._print_ct_info('Level options have no effect.', 2)
+        return kwargs
+
+    def _ct_plot(self, pltfunc, if_clabel, if_inline_clabel, kwargs):
+        if kwargs:  # this is called to replot for new data, kwargs contain all necessary info to generate the contour, kwargs will be altered
+            pltfunc = kwargs.pop('method', 'contour')
+            if_clabel = kwargs.pop('if_clabel', self.ct_if_clabel)
+            if_inline_clabel = kwargs.pop('inline', self.ct_if_inline_clabel)
+        else: # this is called when user press the plot button, kwargs will return keywords for the contour plot
+            kwargs.update(self._extract_ct_kwargs_from_wgt())
+        if pltfunc == 'contour':
+            im2, _ = osh5vis.oscontour(self.__pp(self._data[self._slcs]), ax=self.ax, fig=self.fig, colorbar=False,
+                                       xlabel=False, ylabel=False, title=False, **kwargs)
+        else:
+            im2, _ = osh5vis.oscontourf(self.__pp(self._data[self._slcs]), ax=self.ax, fig=self.fig, colorbar=False,
+                                        xlabel=False, ylabel=False, title=False, **kwargs)
+        self.im2.append(im2)
+        kwargs['levels'] = im2.levels
+        # have to set_alpha after the plot, otherwise alpha value cannot be updated later (not sure why)
+        alpha = kwargs.get('alpha', 0.5)
+        self.im2[-1].set_alpha(alpha)
+        kwargs['alpha'] = alpha
+        if if_clabel:
+            self.ax.clabel(self.im2[-1], im2.levels, use_clabeltext=True, inline=if_inline_clabel)
+        return kwargs
+
+    def _ct_clear_lvl_opts(self, *_):
+        for opt in self.ct_opts_list.children:
+            for w in opt.children:
+                w.close()
+            opt.close()
+        self.ct_opts_list.children = tuple()
+
+    def _ct_delete_plot(self, btn):
+        wgt, kwargs, im = self.ct_plot_dict.pop(btn)
+        self.ct_plot_dict.pop(wgt.children[1])  # remove the alpha key
+        self.im2.remove(im)
+        for c in im.collections:
+            c.remove()
+        tmp = list(self.ct_wgt_list.children)
+        tmp.remove(wgt)
+        self.ct_wgt_list.children = tuple(tmp)
+        for w in wgt.children:
+            w.close()
+        wgt.close()
+
+    def _ct_set_alpha(self, change):
+        kwargs, im = self.ct_plot_dict[change['owner']]
+        im.set_alpha(change['new'])
+        kwargs['alpha'] = change['new']
+
+    def _add_contour_plot_wgt(self, kwargs):
+        identifier = widgets.Label(value='Levels=' + str(kwargs['levels']) + '; ', style={'description_width': 'initial'}, layout={'width': 'initial'})
+        alpha = widgets.BoundedFloatText(value=kwargs.get('alpha', 0.5), min=0., max=1., step=0.01, description='opacity:', continuous_update=False,
+                                         style={'description_width': 'initial'}, layout={'width': '120px'})
+        db = _get_delete_btn(kwargs['method'])
+        db.on_click(self._ct_delete_plot)
+        alpha.observe(self._ct_set_alpha, 'value')
+
+        wgt = widgets.HBox([identifier, alpha, db],  layout=Layout(border='solid 1px'))
+        self.ct_plot_dict[db] = [wgt, kwargs, self.im2[-1]]
+        self.ct_plot_dict[alpha] = self.ct_plot_dict[db][-2:]
+        self.ct_wgt_list.children += (wgt,)
+
+    def _add_contour_plot(self, *_):
+        kw = self._ct_plot(self.ct_method.value, self.ct_if_clabel.value, self.ct_if_inline_clabel.value, {})
+        # save clabel kwargs for replotting
+        kw['if_clabel'] = self.ct_if_clabel
+        kw['inline'] = self.ct_if_inline_clabel.value
+        kw['method'] = self.ct_method.value
+        # clear the level options in the output
+        self._ct_clear_lvl_opts()
+        # add a widgets to handle further interaction
+        self._add_contour_plot_wgt(kw)
+
+    def _ct_destroy_all(self):
+        # close all widgets
+        for wgt in self.ct_wgt_list.children:
+            for w in wgt.children:
+                w.close()
+            wgt.close()
+        self.ct_wgt_list.children, self.ct_plot_dict = (), {}
+        # remove all contours
+        for im in self.im2:
+            for c in im.collections:
+                c.remove()
+            im.remove()
+        self.im2 = []
+
+    def _get_level_added(self):
+        return [lvl_wgt.children[0].value for lvl_wgt in self.ct_opts_list.children]
+
+    def _add_one_ct_lvl_opt(self, lvl, co):
+        lvl, cp, db = self._get_contour_opt_wgt(lvl, co, '100px', '150px')
+        widgets.jslink((lvl, 'disabled'), (self.ct_level, 'disabled'))
+        widgets.jslink((cp, 'disabled'), (self.ct_colorpicker, 'disabled'))
+        db.on_click(self._remove_ct_lvl_opt)
+        lvl_wgt = widgets.HBox([lvl, cp, db], layout=Layout(border='solid 1px'))
+        self.ct_opts_dict[db] = lvl_wgt
+        self.ct_opts_list.children += (lvl_wgt,)
+
+    def _add_contour_lvl_opts(self, *_):
+        level_list = re.split('\s*,\s*|\s+|\s*;\s*', self.ct_level.value)
+        for lvl in level_list:
+            try:
+                lv = float(lvl)
+            except ValueError:
+                continue
+            finally:
+                self._add_one_ct_lvl_opt(lv, self.ct_colorpicker.value)
 
     def __update_xanaopts(self, change):
         opts = self.__analysis_def[change['new']]
@@ -505,9 +753,10 @@ class Generic2DPlotCtrl(object):
         start, end = self._data[self._slcs].loc.label2int(0, self.anaxmin.value), self._data[self._slcs].loc.label2int(0, self.anaxmax.value)
         if start < end:
             fn =self.__analysis_def[self.xananame.value][self.xanaopts.value]
+            s, e = self._data[self._slcs].axes[0][start], self._data[self._slcs].axes[0][end]
             data, posstr = (self.__pp(fn(self._data[self._slcs][start:end, :], 0)),
-                            '%.2f ~ %.2f' % (self._data[self._slcs].axes[0][start], self._data[self._slcs].axes[0][end]))
-            tp = posstr + ' ' + self.xanaopts.value + ' ' + self.xananame.value
+                            '%.2f ~ %.2f' % (s, e))
+            tp = str(s) + ' ~ ' + str(e) + ' ' + self.xanaopts.value + ' ' + self.xananame.value
         self.__add_xline(data, posstr, tp, 240)
 
     def __update_yanaopts(self, change):
@@ -519,9 +768,10 @@ class Generic2DPlotCtrl(object):
         start, end = self._data[self._slcs].loc.label2int(1, self.anaymin.value), self._data[self._slcs].loc.label2int(1, self.anaymax.value)
         if start < end:
             fn = self.__analysis_def[self.yananame.value][self.yanaopts.value]
+            s, e = self._data[self._slcs].axes[1][start], self._data[self._slcs].axes[1][end]
             data, posstr = (self.__pp(fn(self._data[self._slcs][:, start:end], 1)),
-                             '%.2f ~ %.2f' % (self._data[self._slcs].axes[1][start], self._data[self._slcs].axes[1][end]))
-            tp = posstr + ' ' + self.yanaopts.value + ' ' + self.yananame.value
+                             '%.2f ~ %.2f' % (s, e))
+            tp = str(s) + ' ~ ' + str(e) + ' ' + self.yanaopts.value + ' ' + self.yananame.value
         self.__add_yline(data, posstr, tp, 240)
 
     def __update_twinx_scale(self):
@@ -572,7 +822,7 @@ class Generic2DPlotCtrl(object):
         # plot
         xlineout = osh5vis.osplot1d(data, ax=self.axx, xlabel='', ylabel='', title='')[0]
         # add widgets (color picker + delete button)
-        nw = widgets.Button(description='', tooltip='delete %s' % tp, icon='times', layout=Layout(width='32px'))
+        nw = _get_delete_btn(tp)
         nw.on_click(self.__remove_xlineout)
         co = xlineout.get_color()
         cpk = widgets.ColorPicker(concise=False, description=descr, value=co, style={'description_width': 'initial'},
@@ -587,7 +837,7 @@ class Generic2DPlotCtrl(object):
         pos = self._data[self._slcs].loc.label2int(0, self.xlineout_wgt.value)
         # plot
         data, posstr = self.__pp(self._data[self._slcs][pos, :]), '%.2f' % self._data.axes[0][pos]
-        tp = posstr + ' lineout'
+        tp = str(self._data.axes[0][pos]) + ' lineout'
         self.__add_xline(data, posstr, tp, 170)
 
     def __update_xlineout(self):
@@ -650,7 +900,7 @@ class Generic2DPlotCtrl(object):
         # plot
         ylineout = osh5vis.osplot1d(data, ax=self.axy, xlabel='', ylabel='', title='', transpose=True)[0]
         # add widgets (color picker + delete button)
-        nw = widgets.Button(description='', tooltip='delete %s' % tp, icon='times', layout=Layout(width='32px'))
+        nw = _get_delete_btn(tp)
         nw.on_click(self.__remove_ylineout)
         co = ylineout.get_color()
         cpk = widgets.ColorPicker(concise=False, description=descr, value=co, style={'description_width': 'initial'},
@@ -665,7 +915,7 @@ class Generic2DPlotCtrl(object):
         pos = self._data.loc.label2int(1, self.ylineout_wgt.value)
         # plot
         data, posstr = self.__pp(self._data[self._slcs][:, pos]), '%.2f' % self._data.axes[1][pos]
-        tp = posstr + ' lineout'
+        tp = str(self._data.axes[1][pos]) + ' lineout'
         self.__add_yline(data, posstr, tp, 170)
 
     def __update_ylineout(self):
@@ -695,7 +945,7 @@ class Generic2DPlotCtrl(object):
     def __update_norm_wgt(self, change):
         """update tab1 (second tab) only and prepare _log_data if necessary"""
         tmp = [None] * len(self.tab_contents)
-        tmp[0] = self.get_tab0()
+        tmp[0] = self.get_tab_data()
         self.refresh_tab_wgt(tmp)
         self.__handle_lognorm()
         self.__old_norm = change['old']
@@ -813,10 +1063,7 @@ class Generic2DPlotCtrl(object):
         try:
             self.fig.savefig(self.figname.value, dpi=self.dpi.value)
 #             self.dlink.clear_output(wait=True)
-            with self.dlink:
-                clear_output(wait=True)
-                print('shift+right_click to downloaod:')
-                display(FileLink(self.figname.value))
+            self.dlink.value, self.dlink.description = _get_downloadable_url(self.figname.value), 'Download:'
             self.__reset_save_button(0)
         except PermissionError:
             self.saveas.description, self.saveas.tooltip, self.saveas.button_style= \
@@ -864,12 +1111,12 @@ class Slicer(Generic2DPlotCtrl):
         super(Slicer, self).__init__(data[tuple(self.slcs)], slcs=tuple(i for i in self.slcs if not isinstance(i, int)),
                                      time_in_title=not data.has_axis('t'), **extra_kwargs)
         #TODO: this is probably not a good design as it might break anytime we change the structure of tab0, refactory needed.
-        # add the check box to tab0, 
-        tmp = [None] * len(self.tab_contents)
-        tmp[0] = self.get_tab0()
-        self.refresh_tab_wgt(tmp)
+        # add the check box to tab0,
+#         tmp = [None] * len(self.tab_contents)
+#         tmp[0] = self.get_tab_data()
+#         self.refresh_tab_wgt(tmp)
 
-    def get_tab0(self):
+    def get_tab_data(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt,
                              widgets.VBox([widgets.HBox([self.datalabel, self.if_reset_title]), self.if_show_time, self.if_pos_in_title])])
     @property
@@ -936,8 +1183,158 @@ class Slicer(Generic2DPlotCtrl):
             self.update_title()
 
 
+class SaveMovieManager(object):
+    def __init__(self, fig, frame_range, gen1frame, frame_range_opts=None):
+        self.fig, self.gen1frame, self.figdir, self.basename = fig, gen1frame, './', 'movie'
+        stdout = subprocess.check_output(['ffmpeg', '-encoders', '-v', 'quiet']).decode()
+        #TODO: sane options for each encoder
+        self.known_encoders = {'libx265': ["-crf", "18", "-preset", "slow"],
+                               'hevc': ["-crf", "18", "-preset", "slow"],
+                               'libx264': ["-tune", "stillimage", "-crf", "18", "-preset", "slow", "-pix_fmt", "yuv420p"],
+                               'h264': ["-tune", "stillimage", "-crf", "18", "-preset", "slow", "-pix_fmt", "yuv420p"],
+                               'mpeg4': ["-q:v", "2"], 'mpeg': [], 'flv': [], 'qtrle': [], 'rawvideo': []}
+        for encoder in self.known_encoders.keys():
+            if encoder in stdout:
+                self.encoder, self.dflt_savename, self.dflt_btn_dscr, self.dflt_btn_tp = \
+                encoder, 'movie.mp4', 'Generate movie', 'convert a series of plots into a movie'
+                break
+        else:
+            self.encoder, self.dflt_savename, self.dflt_btn_dscr, self.dflt_btn_tp = \
+            None, 'movie.tgz', 'Generate tar file', 'ffmpeg not found. A tgz file will be generated.'
+        self.fps = widgets.BoundedIntText(value=30, min=1, max=300, description='FPS:', layout=_items_layout, style={'description_width': 'initial'})
+        starting, ending = frame_range[0] if len(frame_range) == 2 else 0, frame_range[-1]
+        self.frame_range_opts = frame_range_opts or range(starting, ending)
+        self.frame_range = widgets.SelectionRangeSlider(options=self.frame_range_opts, index=(starting, ending - 1), description='movie range:',
+                                                        style={'description_width': 'initial', 'min_width': '220px'})
+        self.filename = widgets.Text(value=self.dflt_savename, description='Movie name:', placeholder='movie name')
+        self.filename.observe(self.set_savename, 'value')
+        self.savebtn = widgets.Button(description=self.dflt_btn_dscr, tooltip=self.dflt_btn_tp, button_style='')
+        self.savebtn.on_click(self.generate_figures)
+        self.deletetemp = widgets.Checkbox(value=True, description='Delete temporary figures',
+                                           layout=_items_layout, style={'description_width': 'initial'})
+        self.output, self.dlink = Output(), widgets.HTML(value='', description='')
+        self.whatif_file_exist = widgets.RadioButtons(options=['delete conflicting png files and continue', 'skip existing files',
+                                                               'create new temporary directory'], value='skip existing files',
+                                                      description='', layout=_items_layout, style={'description_width': 'initial'})
+        self.worker = threading.Thread(target=self._plot_and_encode)
+#         self.worker.daemon = True
+
+    @property
+    def widgets_list(self):
+        return self.filename, self.frame_range, self.deletetemp, self.fps, self.savebtn, self.dlink, self.output
+
+    @property
+    def widget(self):
+        return widgets.VBox([widgets.HBox([self.filename, self.frame_range, self.deletetemp, self.fps, self.savebtn], layout=_items_layout),
+                             self.dlink, self.output], layout=_items_layout)
+
+    def set_savename(self, change):
+        self.__reset_save_button()
+        self.output.clear_output()
+        self.basename = os.path.splitext(os.path.basename(change['new']))[0]
+
+    def __reset_save_button(self, *_):
+        self.savebtn.description, self.savebtn.tooltip, self.savebtn.button_style, self.savebtn.disabled = \
+        self.dflt_btn_dscr, self.dflt_btn_tp, '', False
+
+    def _delete_temp_fig_files(self):
+        deleteme = glob.glob(self.figdir + '/' + self.basename + '-*.png')
+        self.savebtn.description, self.savebtn.tooltip, self.savebtn.button_style, self.savebtn.disabled = \
+        "Deleting", 'Unstopptable', 'info', True
+        for f in deleteme:
+            os.remove(f)
+
+    def handle_path_file_conflict(self):
+        """ what to do when user press the button. return True to indicate no further action required """
+        self.output.clear_output()
+        if self.savebtn.button_style == 'warning':  # second press, we have path/file problem to sort out
+            if self.whatif_file_exist.index == 0:
+                self._delete_temp_fig_files()
+            elif self.whatif_file_exist.index == 2:
+                self.figdir += datetime.now().strftime('__%Y-%m-%d_%H-%M-%S')
+                os.makedirs(self.figdir)
+        elif self.savebtn.button_style == 'info':  # second or third press, we are generating the movie, user call for abort
+            self.__reset_save_button()
+            return True
+        elif not self.savebtn.button_style:  # user press the button for the first time
+            self.savebtn.description, self.savebtn.tooltip, self.savebtn.button_style = \
+            'continue', 'continue with selected option', 'warning'
+            with self.output:
+                print('directory ' + self.figdir + ' not empty')
+                display(self.whatif_file_exist)
+            return True
+        else:
+            return True
+
+    def __encode(self):
+        if self.encoder:
+            #TODO: pipe the output to the output widgets. somehow it is not working with the threading (for now)
+            try:
+                subprocess.check_output(["ffmpeg", "-framerate", str(self.fps.value),
+                                         "-start_number", str(self.frame_range.index[0]),
+                                         "-i", self.figdir + '/' + self.basename + '-%06d.png',
+                                         '-c:v', self.encoder, *self.known_encoders[self.encoder],
+                                         '-y', self.filename.value], stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as exc:
+                self.__reset_save_button()
+                with self.output:
+                    print(exc.output)
+                return True  # pretty sure this is not how it should work
+        else:
+            with self.output:
+                subprocess.check_output(["tar", "-cvzf", self.filename.value, self.figdir + '/' + self.basename + '-*.png'])
+
+    def _plot_and_encode(self):
+        for i in range(self.frame_range.index[0], self.frame_range.index[1] + 1):
+            # our convention is that when button_style is 'info' we are plotting or encoding,
+            # button_style should not be set to 'info' in any other cases
+            if self.savebtn.button_style != 'info':
+                break
+            self.__savefig(i)
+            self.savebtn.description = "(%d/%d) Abort" % (i, self.frame_range.index[1])
+        else:
+            self.savebtn.description, self.savebtn.tooltip, self.savebtn.disabled = "Encoding", 'Unstoppable', True
+            if self.__encode():
+                return True
+            if self.deletetemp.value:
+                self._delete_temp_fig_files()
+                try:
+                    os.rmdir(self.figdir)
+                except OSError:
+                    pass
+            #TODO: output widget not working with threading
+            self.dlink.value, self.dlink.description = _get_downloadable_url(self.filename.value), 'Download:'
+        self.__reset_save_button()
+
+    def generate_figures(self, *_):
+        self.figdir = os.path.abspath(os.path.dirname(self.filename.value)) + '/' + self.basename
+        try:
+            if not os.path.exists(self.figdir):
+                os.makedirs(self.figdir)
+            # find out whether we are risking overwriting files
+            if glob.glob(self.figdir + '/' + '*.png'):
+                if self.handle_path_file_conflict():
+                    return
+            self.savebtn.description, self.savebtn.tooltip, self.savebtn.button_style, self.savebtn.disabled = \
+            "Abort", 'Stop generating', 'info', False
+            #TODO: we might be able to parallize this loop but this code is likely running on shared resources
+            self.worker.start()
+        except PermissionError:
+            self.savebtn.description, self.savebtn.tooltip, self.savebtn.button_style = \
+                        'Error', 'please try another path', 'danger'
+            with self.output:
+                print('Permission Denied: cannot write to ' + self.figdir)
+
+    def __savefig(self, i):
+        savename = self.figdir + '/' + self.basename + '-{:06d}'.format(i) + '.png'
+        if os.path.exists(savename) and self.whatif_file_exist.index == 1:
+            return
+        self.gen1frame(i)
+        self.fig.savefig(savename, dpi=300)
+
+
 class DirSlicer(Generic2DPlotCtrl):
-    def __init__(self, filefilter, processing=do_nothing, **extra_kwargs):
+    def __init__(self, filefilter, processing=do_nothing, savemovie=None, **extra_kwargs):
         fp = filefilter + '/*.h5' if os.path.isdir(filefilter) else filefilter
         self.datadir, self.flist, self.processing = os.path.abspath(os.path.dirname(fp)), sorted(glob.glob(fp)), processing
         try:
@@ -945,14 +1342,19 @@ class DirSlicer(Generic2DPlotCtrl):
         except IndexError:
             raise IOError('No file found matching ' + fp)
 
-        self.file_slider = widgets.IntSlider(min=0, max=len(self.flist), description=os.path.basename(self.flist[0]), 
-                                             value=0, readout=False, continuous_update=False, layout=_items_layout,
+        self.file_slider = widgets.IntSlider(min=0, max=len(self.flist) - 1, description=os.path.basename(self.flist[0]),
+                                             value=0, continuous_update=False, layout=_items_layout,
                                              style={'description_width': 'initial'})
         self.time_label = widgets.Label(value=osh5vis.time_format(self.data.run_attrs['TIME'][0], self.data.run_attrs['TIME UNITS']),
                                         layout=_items_layout)
         self.file_slider.observe(self.update_slice, 'value')
 
         super(DirSlicer, self).__init__(self.data, time_in_title=False, **extra_kwargs)
+
+        self.savemovie = savemovie or SaveMovieManager(self.fig, (0, len(self.flist)), self.plot_ith_slice)
+        tmp = [None] * len(self.tab_contents)
+        tmp[4] = self.__get_tab_save()
+        self.refresh_tab_wgt(tmp)
 
     @property
     def widgets_list(self):
@@ -961,6 +1363,15 @@ class DirSlicer(Generic2DPlotCtrl):
     @property
     def widget(self):
         return widgets.VBox([widgets.HBox[self.file_slider, self.time_label], self.out_main])
+
+    # cannot overload get_tab_save() because of circular dependent between SaveMovieManager __init__ and Generic2DPlotCtrl __init__
+    def __get_tab_save(self):
+        return widgets.VBox([widgets.HBox([self.figname, self.dpi, self.saveas], layout=_items_layout),
+                             self.dlink, self.savemovie.widget], layout=_items_layout)
+
+    def plot_ith_slice(self, i):
+        c = {'new': i}
+        self.update_slice(c)
 
     def update_slice(self, change):
         self.file_slider.description = os.path.basename(self.flist[change['new']])
@@ -971,9 +1382,12 @@ class DirSlicer(Generic2DPlotCtrl):
             self.update_time_label()
             self.update_title(change)
 
+    def select_ith_file(self, i):
+        self.file_slider.value = i
+
 
 class MultiPanelCtrl(object):
-    def __init__(self, workers, data_list, grid, worker_kw_list=None, figsize=None, fig=None, output_widget=None,
+    def __init__(self, workers, data_list, grid, worker_kw_list=None, figsize=None, fig_ax=tuple(), output_widget=None,
                  sharex=False, sharey=False, **kwargs):
         """ worker's base class should be Generic2DPlotCtrl """
         if len(grid) != 2 or np.multiply(*grid) <= 1:
@@ -981,7 +1395,7 @@ class MultiPanelCtrl(object):
         self.nrows, self.ncols = grid
         if len(data_list) != self.nrows * self.ncols:
             raise ValueError('Expecting %d lists in data_list, got %d' % (self.nrows * self.ncols, len(data_list)))
-        
+
         width, height = figsize or plt.rcParams.get('figure.figsize')
         self.out = output_widget or widgets.Output()
         nplots = self.nrows * self.ncols
@@ -995,8 +1409,8 @@ class MultiPanelCtrl(object):
                     ylabel[i] = False
         if worker_kw_list is None:
             worker_kw_list = ({}, ) * nplots
-        self.fig, self.ax = plt.subplots(self.nrows, self.ncols, figsize=(width, height), 
-                                         sharex=sharex, sharey=sharey, constrained_layout=True)
+        self.fig, self.ax = fig_ax or plt.subplots(self.nrows, self.ncols, figsize=(width, height),
+                                                   sharex=sharex, sharey=sharey, constrained_layout=True)
         dstr = kwargs.pop('onDestruction', self.self_destruct)
         self.worker = [w(d, output_widget=self.out, fig=self.fig, ax=ax, xlabel=xlb, ylabel=ylb, onDestruction=dstr, **wkw, **kwargs)
                        for w, d, ax, xlb, ylb, wkw in zip(workers, data_list, self.ax, xlabel, ylabel, worker_kw_list)]
@@ -1011,7 +1425,7 @@ class MultiPanelCtrl(object):
         ctrl_pnl = widgets.Box([self.tb],layout=Layout(display='flex', flex='0 0 auto', align_items='center',
                                                        width='%dpx' % (bwpadded * self.ncols)))
         self.ctrl = widgets.HBox([ctrl_pnl, self.tabd[self.tb.index]], layout=Layout(display='flex', flex='1 1 auto', width='100%'))
-        self.suptitle_wgt = widgets.Text(value=None, placeholder='Plots', continuous_update=False, description='Suptitle:')
+        self.suptitle_wgt = widgets.Text(value=None, placeholder='None', continuous_update=False, description='Suptitle:')
         self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle')
         self.tb.observe(self.show_corresponding_tab, 'index')
         self.suptitle_wgt.observe(self.update_suptitle, 'value')
@@ -1036,19 +1450,18 @@ class MultiPanelCtrl(object):
         self.suptitle.close()
 
     def update_suptitle(self, *_):
-        print(self.time)
         if self.suptitle_wgt.value:
             ttl = self.suptitle_wgt.value + ((', ' + self.time) if self.time_in_suptitle.value else '')
         else:
             ttl = self.time if self.time_in_suptitle.value else None
         self.fig.suptitle(ttl)
-    
+
     def show_corresponding_tab(self, change):
         self.ctrl.children = (self.ctrl.children[0], self.tabd[self.tb.index])
 
 
 class MPDirSlicer(MultiPanelCtrl):
-    def __init__(self, filefilter_list, grid, interval=1000, processing=do_nothing, figsize=None, fig=None, output_widget=None,
+    def __init__(self, filefilter_list, grid, interval=1000, processing=do_nothing, figsize=None, fig_ax=tuple(), output_widget=None,
                  sharex=False, sharey=False, **kwargs):
         if isinstance(processing, (list, tuple)):
             if len(processing) != grid[0] * grid[1]:
@@ -1057,12 +1470,20 @@ class MPDirSlicer(MultiPanelCtrl):
                 ps = [{'processing' :p} for p in processing]
         else:
             ps = ({'processing' :processing},) * len(filefilter_list)
+        #TODO: replicating some lines in the super class. there should be a better way >>>>>
+        width, height = figsize or plt.rcParams.get('figure.figsize')
+        self.fig, self.ax = fig_ax or plt.subplots(*grid, figsize=(width, height),
+                                                   sharex=sharex, sharey=sharey, constrained_layout=True)
+        fp = filefilter_list[0] + '/*.h5' if os.path.isdir(filefilter_list[0]) else filefilter_list[0]
+        flist = sorted(glob.glob(fp))
+        # <<<<< all because we need to initialize SaveMovieManager before super().__init__()
+        smm = SaveMovieManager(self.fig, (0, len(flist)), self.plot_ith_slice)
         super(MPDirSlicer, self).__init__((DirSlicer,) * len(filefilter_list), filefilter_list, grid, worker_kw_list=ps,
-                                          figsize=figsize, fig=fig, output_widget=output_widget, sharex=sharex, sharey=sharey,
-                                          onDestruction=self.self_destruct, **kwargs)
+                                          figsize=figsize, fig_ax=(self.fig, self.ax), output_widget=output_widget, sharex=sharex,
+                                          sharey=sharey, onDestruction=self.self_destruct, savemovie=smm, **kwargs)
         # we need a master slider to control all subplot sliders
         self.slider = widgets.IntSlider(min=0, max=self.worker[0].file_slider.max, description='', value=0,
-                                        readout=False, continuous_update=False, style={'description_width': 'initial'})
+                                        continuous_update=False, style={'description_width': 'initial'})
         self.play = widgets.Play(interval=interval, value=0, min=0, max=self.slider.max, description='Press play')
         self.slider.observe(self.update_all_subplots, 'value')
         widgets.jslink((self.play, 'value'), (self.slider, 'value'))
@@ -1070,7 +1491,7 @@ class MPDirSlicer(MultiPanelCtrl):
     @property
     def widgets_list(self):
         return self.ctrl, self.play, self.slider, self.worker[0].time_label, self.suptitle, self.out
-    
+
     def self_destruct(self):
         try:
             self.worker[0].time_label.close()
@@ -1079,6 +1500,10 @@ class MPDirSlicer(MultiPanelCtrl):
         self.play.close()
         self.slider.close()
         super().self_destruct()
+
+    def plot_ith_slice(self, i):
+        c = {'new': i}
+        self.update_all_subplots(c)
 
     def update_all_subplots(self, change):
         for s in self.worker:

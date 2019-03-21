@@ -180,9 +180,12 @@ def __set_axes_labels_and_title_2d(h5data, xunit, yunit, ax=None, convert_tunit=
         ylabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], yunit)
     if title is None:
         title = default_title(h5data, convert_tunit=convert_tunit, wavelength=wavelength)
-    set_xlabel(xlabel)
-    set_ylabel(ylabel)
-    set_title(title)
+    if xlabel is not False:
+        set_xlabel(xlabel)
+    if ylabel is not False:
+        set_ylabel(ylabel)
+    if title is not False:
+        set_title(title)
 
 
 def osstreamplot(field1, field2, *args, ax=None, **kwpassthrough):
