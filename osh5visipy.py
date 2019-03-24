@@ -578,7 +578,7 @@ class Generic2DPlotCtrl(object):
     def _update_xconverter(self, change):
         if self.xfmttr is None:
             self.xfmttr = self.ax.xaxis.get_major_formatter()
-        self.ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda y, pos: self.yfmttr(y*self.yconv, pos)))
+        self.ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda y, pos: self.xfmttr(y*self.yconv, pos)))
         if change['new']:
             self.xconv, xunit = self._data.axes[1].punit_convert_factor()
         else:
@@ -1539,6 +1539,7 @@ class MultiPanelCtrl(object):
         self.time_in_suptitle.observe(self.update_suptitle, 'value')
         self.time_in_cgs_unit.observe(self.update_suptitle, 'value')
         self.suptitle = widgets.HBox([self.suptitle_wgt, self.time_in_suptitle, self.time_in_cgs_unit])
+        #TODO: some axes setting should be shared (using widgets.jslink maybe) among different panels
         # disable resize widgets to avoid bugs
         if sharex or sharey:
             for s in self.worker:
