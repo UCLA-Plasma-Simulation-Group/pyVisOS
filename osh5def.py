@@ -104,13 +104,20 @@ class DataAxis:
         except IndexError:
             return 0
 
-    def to_phys_unit(self, wavelength=None, density=None, **unused):
+    def to_phys_unit(self, wavelength=None, density=None, **_unused):
         """
         convert this axis to physical units. note that this function won't change the actual axis.
         the copy of the axis data is returned
         :param wavelength: laser wavelength in micron
         :param density: critical plasma density in cm^-3
         :return: a converted axes, unit
+        """
+        fac, unit = self.punit_convert_factor(wavelength=wavelength, density=density)
+        return self.ax * fac, unit
+
+    def punit_convert_factor(self, wavelength=None, density=None, **_ununsed):
+        """
+        converting factor of physical units
         """
         if not wavelength:
             if not density:
@@ -121,14 +128,14 @@ class DataAxis:
         elif not density:
             density = 3.93e20 * wavelength**2
         if self.attrs['UNITS'].is_frequency():
-            return self.ax * 2.998e2 / wavelength, 'THz'
+            return 2.998e2 / wavelength, 'THz'
         if self.attrs['UNITS'].is_time():
-            return self.ax * wavelength * 5.31e-4, 'ps'
+            return wavelength * 5.31e-4, 'ps'
         if self.attrs['UNITS'].is_length():
-            return self.ax * wavelength / (2 * np.pi), '\mu m'
+            return wavelength / (2 * np.pi), '\mu m'
         if self.attrs['UNITS'].is_density():
-            return self.ax * density, 'cm^{-3}'
-        return self.ax, self.units
+            return density, 'cm^{-3}'
+        return 1.0, self.units
 
 
 class OSUnits:

@@ -12,6 +12,7 @@ import glob
 import os
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
+# from matplotlib import ticker
 import matplotlib
 import subprocess
 from datetime import datetime
@@ -114,7 +115,8 @@ class Generic2DPlotCtrl(object):
 
     def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), ), title=None, norm=None,
                  fig=None, figsize=None, time_in_title=True, ax=None, output_widget=None,
-                 xlabel=None, ylabel=None, onDestruction=do_nothing, **kwargs):
+                 xlabel=None, ylabel=None, onDestruction=do_nothing,
+                 convert_xaxis=False, convert_yaxis=False, **kwargs):
         self._data, self._slcs, self.im_xlt, self.time_in_title, self.pltfunc, self.onDestruction = \
         data, slcs, None, time_in_title, pltfunc, onDestruction
         user_cmap, show_colorbar = kwargs.pop('cmap', 'jet'), kwargs.pop('colorbar', True)
@@ -126,9 +128,11 @@ class Generic2DPlotCtrl(object):
         self.if_reset_title = widgets.Checkbox(value=True, description='Auto', layout=_items_layout)
         self.datalabel = widgets.Text(value=title, placeholder='data', continuous_update=False,
                                      description='Data Name:', disabled=self.if_reset_title.value, layout=_items_layout)
-        self.if_show_time = widgets.Checkbox(value=time_in_title, description='Time in title', layout=_items_layout)
-        self._time = ''
-        self.update_time_label()
+        self.if_show_time = widgets.Checkbox(value=time_in_title, description='Time in title, ', layout=_items_layout)
+        self.time_in_cgs = widgets.Checkbox(value=time_in_title, description='time in cgs unit',
+                                            layout={'width': 'initial'}, style={'description_width': 'initial'})
+#         self._time = ''
+#         self.update_time_label()
         # normalization
         # general parameters: vmin, vmax, clip
         self.if_vmin_auto = widgets.Checkbox(value=True, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
@@ -188,39 +192,51 @@ class Generic2DPlotCtrl(object):
         widgets.jslink((self.x_min_wgt, 'max'), (self.x_max_wgt, 'value'))
         widgets.jslink((self.x_max_wgt, 'min'), (self.x_min_wgt, 'value'))
         # x label
+        if convert_xaxis:
+            self.xconv, xunit = data.axes[1].punit_convert_factor()
+        else:
+            self.xconv, xunit = 1.0, data.axes[1].units
         self.if_reset_xlabel = widgets.Checkbox(value=True, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
+        self.if_x_cgs_unit = widgets.Checkbox(value=False, description='cgs unit;  ', layout={'width': 'initial'}, style={'description_width': 'initial'})
         if xlabel is False:
             self._xlabel = None
         elif isinstance(xlabel, str):
             self._xlabel = xlabel
         else:
-            self._xlabel = osh5vis.axis_format(data.axes[1].long_name, data.axes[1].units)
+            self._xlabel = osh5vis.axis_format(data.axes[1].long_name, xunit)
         self.xlabel = widgets.Text(value=self._xlabel,
                                    placeholder='x', continuous_update=False,
                                    description='X label:', disabled=self.if_reset_xlabel.value)
-        self.xaxis_lim_wgt = widgets.HBox([self.x_min_wgt, self.x_max_wgt, self.x_step_wgt,
+        widgets.jslink((self.xlabel, 'disabled'), (self.if_reset_xlabel, 'value'))
+        self.xaxis_lim_wgt = widgets.HBox([self.if_x_cgs_unit, self.x_min_wgt, self.x_max_wgt, self.x_step_wgt,
                                            widgets.HBox([self.xlabel, self.if_reset_xlabel], layout=Layout(border='solid 1px'))])
         # y axis
         self.y_min_wgt = widgets.BoundedFloatText(value=ymin, min=ymin, max=ymax, step=yinc/2, description='ymin:',
-                                           continuous_update=False, layout=_items_layout, style={'description_width': 'initial'})
+                                                  continuous_update=False, layout=_items_layout, style={'description_width': 'initial'})
         self.y_max_wgt = widgets.BoundedFloatText(value=ymax, min=ymin, max=ymax, step=yinc/2, description='ymax:',
-                                           continuous_update=False, layout=_items_layout, style={'description_width': 'initial'})
-        self.y_step_wgt = widgets.BoundedFloatText(value=yinc, step=yinc, continuous_update=False,
-                                            description='$\Delta y$:', layout=_items_layout, style={'description_width': 'initial'})
+                                                  continuous_update=False, layout=_items_layout, style={'description_width': 'initial'})
+        self.y_step_wgt = widgets.BoundedFloatText(value=yinc, step=yinc, continuous_update=False, description='$\Delta y$:',
+                                                   layout=_items_layout, style={'description_width': 'initial'})
         widgets.jslink((self.y_min_wgt, 'max'), (self.y_max_wgt, 'value'))
         widgets.jslink((self.y_max_wgt, 'min'), (self.y_min_wgt, 'value'))
         # y label
+        if convert_yaxis:
+            self.yconv, yunit = data.axes[0].punit_convert_factor()
+        else:
+            self.yconv, yunit = 1.0, data.axes[0].units
         self.if_reset_ylabel = widgets.Checkbox(value=True, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
+        self.if_y_cgs_unit = widgets.Checkbox(value=False, description='cgs unit;  ', layout={'width': 'initial'}, style={'description_width': 'initial'})
         if ylabel is False:
             self._ylabel = None
         elif isinstance(ylabel, str):
             self._ylabel = ylabel
         else:
-            self._ylabel = osh5vis.axis_format(data.axes[0].long_name, data.axes[0].units)
+            self._ylabel = osh5vis.axis_format(data.axes[0].long_name, yunit)
         self.ylabel = widgets.Text(value=self._ylabel,
                                    placeholder='y', continuous_update=False,
                                    description='Y label:', disabled=self.if_reset_ylabel.value)
-        self.yaxis_lim_wgt = widgets.HBox([self.y_min_wgt, self.y_max_wgt, self.y_step_wgt,
+        widgets.jslink((self.ylabel, 'disabled'), (self.if_reset_ylabel, 'value'))
+        self.yaxis_lim_wgt = widgets.HBox([self.if_y_cgs_unit, self.y_min_wgt, self.y_max_wgt, self.y_step_wgt,
                                            widgets.HBox([self.ylabel, self.if_reset_ylabel], layout=Layout(border='solid 1px'))])
         tab.append(widgets.VBox([self.axis_lim_wgt, self.xaxis_lim_wgt, self.yaxis_lim_wgt]))
 
@@ -375,6 +391,8 @@ class Generic2DPlotCtrl(object):
         self.if_reset_title.observe(self.__update_title, 'value')
         self.if_reset_xlabel.observe(self.__update_xlabel, 'value')
         self.if_reset_ylabel.observe(self.__update_ylabel, 'value')
+        self.if_x_cgs_unit.observe(self._update_xconverter, 'value')
+        self.if_y_cgs_unit.observe(self._update_yconverter, 'value')
         self.if_reset_cbar.observe(self.__update_cbar, 'value')
         self.norm_btn_wgt.on_click(self.update_norm)
         self.if_vmin_auto.observe(self.__update_vmin, 'value')
@@ -384,6 +402,7 @@ class Generic2DPlotCtrl(object):
         self.cmap_reverse.observe(self.update_cmap, 'value')
         self.datalabel.observe(self.update_title, 'value')
         self.if_show_time.observe(self.update_title, 'value')
+        self.time_in_cgs.observe(self.update_title, 'value')
         self.xlabel.observe(self.update_xlabel, 'value')
         self.ylabel.observe(self.update_ylabel, 'value')
         self.cbar.observe(self.update_cbar, 'value')
@@ -409,12 +428,14 @@ class Generic2DPlotCtrl(object):
         # plotting and then setting normalization colors
         self.out_main = output_widget or Output()
         self.observer_thrd, self.cb = None, None
-        if not fig:
-            ax = None
+#         if not fig:
+#             ax = None
         with self.out_main:
             self.fig = fig or plt.figure(figsize=[width, height], constrained_layout=True)
             self.ax = ax or self.fig.add_subplot(111)
             self.im, self.cb = self.plot_data()
+        # cannot get the axes ticks formatter here because the figure may not have been shown
+        self.xfmttr, self.yfmttr = None, None
 #             plt.show()
         self.axx, self.axy, self._xlineouts, self._ylineouts, self.im2 = None, None, {}, {}, []
 
@@ -429,8 +450,8 @@ class Generic2DPlotCtrl(object):
     def get_dataname(self):
         return self._data.name
 
-    def get_time_label(self):
-        return osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'])
+    def get_time_label(self, convert_tunit=False):
+        return osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'], convert_tunit=convert_tunit)
 
     def update_data(self, data, slcs):
         self._data, self._slcs = data, slcs
@@ -478,8 +499,8 @@ class Generic2DPlotCtrl(object):
         self.im.set_cmap(cmap)
         self.cb.set_cmap(cmap)
 
-    def update_time_label(self):
-        self._time = osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'])
+#     def update_time_label(self):
+#         self._time = osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'])
 
     def adjust_figure(self, *_):
         with self.out_main:
@@ -538,13 +559,14 @@ class Generic2DPlotCtrl(object):
 
     def get_plot_title(self):
         if self.datalabel.value:
-            return self.datalabel.value + ((', ' + self._time) if self.if_show_time.value else '')
+            return self.datalabel.value + ((', ' + self.get_time_label(self.time_in_cgs.value)) if self.if_show_time.value else '')
         else:
-            return self._time if self.if_show_time.value else ''
+            return self.get_time_label(self.time_in_cgs.value) if self.if_show_time.value else ''
 
     def get_tab_data(self):
         return widgets.HBox([widgets.VBox([self.norm_selector, self.norm_selector.value[1]]), self.norm_btn_wgt,
-                             widgets.VBox([widgets.HBox([self.datalabel, self.if_reset_title]), self.if_show_time])])
+                             widgets.VBox([widgets.HBox([self.datalabel, self.if_reset_title]),
+                                           widgets.HBox([self.if_show_time, self.time_in_cgs])])])
 
     def get_tab_save(self):
         return widgets.VBox([widgets.HBox([self.figname, self.dpi, self.saveas], layout=_items_layout),
@@ -552,6 +574,35 @@ class Generic2DPlotCtrl(object):
 
     def _on_clabel_toggle(self, change):
         self.ct_if_inline_clabel.disabled = not change['new']
+
+    def _update_xconverter(self, change):
+        if self.xfmttr is None:
+            self.xfmttr = self.ax.xaxis.get_major_formatter()
+        self.ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda y, pos: self.yfmttr(y*self.yconv, pos)))
+        if change['new']:
+            self.xconv, xunit = self._data.axes[1].punit_convert_factor()
+        else:
+            self.xconv, xunit = 1.0, self._data.axes[1].units
+        self.ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, pos: self.xfmttr(x*self.xconv, pos)))
+        if self.if_reset_xlabel.value:
+            self._xlabel = osh5vis.axis_format(self._data.axes[1].long_name, xunit)
+            # toggle the reset checkbox
+            self.if_reset_xlabel.value = False
+            self.if_reset_xlabel.value = True
+
+    def _update_yconverter(self, change):
+        if self.yfmttr is None:
+            self.yfmttr = self.ax.yaxis.get_major_formatter()
+        if change['new']:
+            self.yconv, yunit = self._data.axes[0].punit_convert_factor()
+        else:
+            self.yconv, yunit = 1.0, self._data.axes[0].units
+        self.ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda y, pos: self.yfmttr(y*self.yconv, pos)))
+        if self.if_reset_ylabel.value:
+            self._ylabel = osh5vis.axis_format(self._data.axes[0].long_name, yunit)
+            # toggle the reset checkbox
+            self.if_reset_ylabel.value = False
+            self.if_reset_ylabel.value = True
 
     def _on_ct_auto_color_wgt_change(self, change):
         if change['new'] == 'colormap':
@@ -1051,19 +1102,13 @@ class Generic2DPlotCtrl(object):
         else:
             self.datalabel.disabled = False
 
-    def __update_xlabel(self, *_):
-        if self.if_reset_xlabel.value:
+    def __update_xlabel(self, change):
+        if change['new']:
             self.xlabel.value = self._xlabel
-            self.xlabel.disabled = True
-        else:
-            self.xlabel.disabled = False
 
-    def __update_ylabel(self, *_):
-        if self.if_reset_ylabel.value:
+    def __update_ylabel(self, change):
+        if change['new']:
             self.ylabel.value = self._ylabel
-            self.ylabel.disabled = True
-        else:
-            self.ylabel.disabled = False
 
     def __update_cbar(self, *_):
         if self.if_reset_cbar.value:
@@ -1439,8 +1484,8 @@ class DirSlicer(Generic2DPlotCtrl):
         self.redraw(self.data)
         self.update_lineouts()
         self.update_contours()
-        if self.if_show_time:
-            self.update_time_label()
+        if self.if_show_time.value:
+#             self.update_time_label()
             self.update_title(change)
 
     def select_ith_file(self, i):
@@ -1487,11 +1532,13 @@ class MultiPanelCtrl(object):
                                                        width='%dpx' % (bwpadded * self.ncols)))
         self.ctrl = widgets.HBox([ctrl_pnl, self.tabd[self.tb.index]], layout=Layout(display='flex', flex='1 1 auto', width='100%'))
         self.suptitle_wgt = widgets.Text(value=None, placeholder='None', continuous_update=False, description='Suptitle:')
-        self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle')
+        self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle, ', style={'description_width': 'initial'})
+        self.time_in_cgs_unit = widgets.Checkbox(value=False, description='time in cgs unit', style={'description_width': 'initial'})
         self.tb.observe(self.show_corresponding_tab, 'index')
         self.suptitle_wgt.observe(self.update_suptitle, 'value')
         self.time_in_suptitle.observe(self.update_suptitle, 'value')
-        self.suptitle = widgets.HBox([self.suptitle_wgt, self.time_in_suptitle])
+        self.time_in_cgs_unit.observe(self.update_suptitle, 'value')
+        self.suptitle = widgets.HBox([self.suptitle_wgt, self.time_in_suptitle, self.time_in_cgs_unit])
         # disable resize widgets to avoid bugs
         if sharex or sharey:
             for s in self.worker:
@@ -1504,7 +1551,7 @@ class MultiPanelCtrl(object):
 
     @property
     def time(self):
-        return self.worker[0].get_time_label()
+        return self.worker[0].get_time_label(convert_tunit=self.time_in_cgs_unit.value)
 
     def self_destruct(self):
         self.ctrl.close()
