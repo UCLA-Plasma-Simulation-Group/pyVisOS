@@ -72,7 +72,7 @@ def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
         wl = DirSlicer(data, *args, **kwargs).widgets_list
         tab, slider = wl[0], widgets.HBox(wl[1:-1])
     elif isinstance(data, (tuple, list)):
-        if isinstance(data[0], str):
+        if isinstance(data[0], (str, tuple, list)):
             wl = MPDirSlicer(data, *args, **kwargs).widgets_list
             tab, slider = wl[0], widgets.HBox(wl[1:-1])
     else:
@@ -1339,8 +1339,8 @@ class Slicer(Generic2DPlotCtrl):
 
 
 class SaveMovieManager(object):
-    def __init__(self, fig, frame_range, gen1frame, frame_range_opts=None):
-        self.fig, self.gen1frame, self.figdir, self.basename = fig, gen1frame, './', 'movie'
+    def __init__(self, fig, gen1frame, frame_range=None, frame_range_opts=None):
+        self.fig, self.gen1frame, self.figdir, self.basename, self.frame_range_opts = fig, gen1frame, './', 'movie', frame_range_opts
         stdout = subprocess.check_output(['ffmpeg', '-encoders', '-v', 'quiet']).decode()
         #TODO: sane options for each encoder
         self.known_encoders = {'libx265': ["-crf", "18", "-preset", "slow"],
@@ -1357,10 +1357,9 @@ class SaveMovieManager(object):
             self.encoder, self.dflt_savename, self.dflt_btn_dscr, self.dflt_btn_tp = \
             None, 'movie.tgz', 'Generate tar file', 'ffmpeg not found. A tgz file will be generated.'
         self.fps = widgets.BoundedIntText(value=30, min=1, max=300, description='FPS:', layout=_items_layout, style={'description_width': 'initial'})
-        starting, ending = frame_range[0] if len(frame_range) == 2 else 0, frame_range[-1]
-        self.frame_range_opts = frame_range_opts or range(starting, ending)
-        self.frame_range = widgets.SelectionRangeSlider(options=self.frame_range_opts, index=(starting, ending - 1), description='movie range:',
+        self.frame_range = widgets.SelectionRangeSlider(options=[0], description='movie range:',
                                                         style={'description_width': 'initial', 'min_width': '220px'})
+        self.update_frame_range(frame_range)
         self.filename = widgets.Text(value=self.dflt_savename, description='Movie name:', placeholder='movie name')
         self.filename.observe(self.set_savename, 'value')
         self.savebtn = widgets.Button(description=self.dflt_btn_dscr, tooltip=self.dflt_btn_tp, button_style='')
@@ -1381,6 +1380,13 @@ class SaveMovieManager(object):
     def widget(self):
         return widgets.VBox([widgets.HBox([self.filename, self.frame_range, self.deletetemp, self.fps, self.savebtn], layout=_items_layout),
                              self.dlink, self.smm_output], layout=_items_layout)
+
+    def update_frame_range(self, frame_range):
+        if frame_range is not None:
+            starting, ending = frame_range if len(frame_range) == 2 else (0, frame_range[-1])
+            self.frame_range_opts = range(starting, ending)
+            self.frame_range.options = self.frame_range_opts
+            self.frame_range.index = starting, ending - 1
 
     def set_savename(self, change):
         self.__reset_save_button()
@@ -1488,8 +1494,11 @@ class SaveMovieManager(object):
 
 class DirSlicer(Generic2DPlotCtrl):
     def __init__(self, filefilter, processing=do_nothing, savemovie=None, **extra_kwargs):
-        fp = filefilter + '/*.h5' if os.path.isdir(filefilter) else filefilter
-        self.datadir, self.flist, self.processing = os.path.abspath(os.path.dirname(fp)), sorted(glob.glob(fp)), processing
+        if isinstance(filefilter, (tuple, list)):  # filefilter is a list of filenames
+            self.datadir, self.flist, self.processing = os.path.abspath(os.path.dirname(filefilter[0])), filefilter, processing
+        else:  # filefilter is a path name or a string that can be passed down to glob to get a list of file names
+            fp = filefilter + '/*.h5' if os.path.isdir(filefilter) else filefilter
+            self.datadir, self.flist, self.processing = os.path.abspath(os.path.dirname(fp)), sorted(glob.glob(fp)), processing
         try:
             self.data = processing(osh5io.read_h5(self.flist[0]))
         except IndexError:
@@ -1503,8 +1512,11 @@ class DirSlicer(Generic2DPlotCtrl):
         self.file_slider.observe(self.update_slice, 'value')
 
         super(DirSlicer, self).__init__(self.data, time_in_title=False, **extra_kwargs)
-
-        self.savemovie = savemovie or SaveMovieManager(self.fig, (0, len(self.flist)), self.plot_ith_slice)
+        if savemovie is None:
+            self.savemovie = SaveMovieManager(self.fig, self.plot_ith_slice, (0, len(self.flist)))
+        else:
+            self.savemovie = savemovie
+            self.savemovie.update_frame_range((0, len(self.flist)))
         tmp = [None] * len(self.tab_contents)
         tmp[4] = self.__get_tab_save()
         self.refresh_tab_wgt(tmp)
@@ -1580,8 +1592,8 @@ class MultiPanelCtrl(object):
                     ylabel[i] = False
         if worker_kw_list is None:
             worker_kw_list = ({}, ) * nplots
-        self.fig, self.ax = fig_ax or plt.subplots(self.nrows, self.ncols, figsize=(width, height),
-                                                   sharex=sharex, sharey=sharey, constrained_layout=True)
+        self.fig, axes = fig_ax or plt.subplots(self.nrows, self.ncols, figsize=(width, height), sharex=sharex, sharey=sharey, constrained_layout=True)
+        self.ax = axes.flatten()
         dstr = kwargs.pop('onDestruction', self.self_destruct)
         self.worker = [w(d, output_widget=self.out, fig=self.fig, ax=ax, xlabel=xlb, ylabel=ylb, onDestruction=dstr, **wkw, **kwargs)
                        for w, d, ax, xlb, ylb, wkw in zip(workers, data_list, self.ax, xlabel, ylabel, worker_kw_list)]
@@ -1628,7 +1640,8 @@ class MultiPanelCtrl(object):
             ttl = self.suptitle_wgt.value + ((', ' + self.time) if self.time_in_suptitle.value else '')
         else:
             ttl = self.time if self.time_in_suptitle.value else None
-        self.fig.suptitle(ttl)
+        if ttl is not None:
+            self.fig.suptitle(ttl)
 
     def show_corresponding_tab(self, change):
         self.ctrl.children = (self.ctrl.children[0], self.tabd[self.tb.index])
@@ -1646,12 +1659,11 @@ class MPDirSlicer(MultiPanelCtrl):
             ps = ({'processing' :processing},) * len(filefilter_list)
         #TODO: replicating some lines in the super class. there should be a better way >>>>>
         width, height = figsize or plt.rcParams.get('figure.figsize')
-        self.fig, self.ax = fig_ax or plt.subplots(*grid, figsize=(width, height),
-                                                   sharex=sharex, sharey=sharey, constrained_layout=True)
-        fp = filefilter_list[0] + '/*.h5' if os.path.isdir(filefilter_list[0]) else filefilter_list[0]
-        flist = sorted(glob.glob(fp))
+        self.fig, self.ax = fig_ax or plt.subplots(*grid, figsize=(width, height), sharex=sharex, sharey=sharey, constrained_layout=True)
+#         fp = filefilter_list[0] + '/*.h5' if os.path.isdir(filefilter_list[0]) else filefilter_list[0]
+#         flist = sorted(glob.glob(fp))
         # <<<<< all because we need to initialize SaveMovieManager before super().__init__()
-        smm = SaveMovieManager(self.fig, (0, len(flist)), self.plot_ith_slice_mp)
+        smm = SaveMovieManager(self.fig, self.plot_ith_slice_mp)
         super(MPDirSlicer, self).__init__((DirSlicer,) * len(filefilter_list), filefilter_list, grid, worker_kw_list=ps,
                                           figsize=figsize, fig_ax=(self.fig, self.ax), output_widget=output_widget, sharex=sharex,
                                           sharey=sharey, onDestruction=self.self_destruct, savemovie=smm, **kwargs)
