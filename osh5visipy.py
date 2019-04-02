@@ -151,7 +151,7 @@ class Generic2DPlotCtrl(object):
     eps = 1e-40
     colormaps_available = sorted(c for c in plt.colormaps() if not c.endswith("_r"))
 
-    def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), ), title=None, norm=None,
+    def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), ), title=None, norm='',
                  fig=None, figsize=None, time_in_title=True, ax=None, output_widget=None,
                  xlabel=None, ylabel=None, onDestruction=do_nothing,
                  convert_xaxis=False, convert_yaxis=False, **kwargs):
@@ -163,24 +163,37 @@ class Generic2DPlotCtrl(object):
         # title
         if not title:
             title = osh5vis.default_title(data, show_time=False)
+        t_in_axis = data.has_axis('t')
         self.if_reset_title = widgets.Checkbox(value=True, description='Auto', layout=_items_layout)
         self.datalabel = widgets.Text(value=title, placeholder='data', continuous_update=False,
                                      description='Data Name:', disabled=self.if_reset_title.value, layout=_items_layout)
-        self.if_show_time = widgets.Checkbox(value=time_in_title, description='Time in title, ', layout=_items_layout)
-        self.time_in_cgs = widgets.Checkbox(value=time_in_title, description='time in cgs unit',
+        self.if_show_time = widgets.Checkbox(value=time_in_title and not t_in_axis, description='Time in title, ', layout=_items_layout)
+        self.time_in_cgs = widgets.Checkbox(value=time_in_title and not t_in_axis, description='time in cgs unit',
                                             layout={'width': 'initial'}, style={'description_width': 'initial'})
-#         self._time = ''
-#         self.update_time_label()
+        lognorm = norm == 'Log'
+        self.__pp = np.abs if lognorm else do_nothing
+        if 'clim' in kwargs:
+            if kwargs['clim'][0] is not None:
+                vmin, auto_vmin = kwargs['clim'][0], False
+                logvmin = vmin if lognorm else self.eps
+            else:
+                vmin, logvmin, auto_vmin = np.min(data), self.eps, True
+            if kwargs['clim'][1] is not None:
+                vmax, auto_vmax = kwargs['clim'][1], False
+            else:
+                vmax, auto_vmax = np.max(data), True
+        else:
+            vmin, logvmin, vmax, auto_vmin, auto_vmax = np.min(data), self.eps, np.max(data), True, True
         # normalization
         # general parameters: vmin, vmax, clip
-        self.if_vmin_auto = widgets.Checkbox(value=True, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
-        self.if_vmax_auto = widgets.Checkbox(value=True, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
-        self.vmin_wgt = widgets.FloatText(value=np.min(data), description='vmin:', continuous_update=False,
+        self.if_vmin_auto = widgets.Checkbox(value=auto_vmin, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
+        self.if_vmax_auto = widgets.Checkbox(value=auto_vmax, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
+        self.vmin_wgt = widgets.FloatText(value=vmin, description='vmin:', continuous_update=False,
                                           disabled=self.if_vmin_auto.value, layout=_items_layout, style={'description_width': 'initial'})
-        self.vlogmin_wgt = widgets.FloatText(value=self.eps, description='vmin:', continuous_update=False,
+        self.vlogmin_wgt = widgets.FloatText(value=logvmin, description='vmin:', continuous_update=False,
                                              disabled=self.if_vmin_auto.value, layout=_items_layout, style={'description_width': 'initial'})
-        self.vmax_wgt = widgets.FloatText(value=np.max(data), description='vmax:', continuous_update=False,
-                                          disabled=self.if_vmin_auto.value, layout=_items_layout, style={'description_width': 'initial'})
+        self.vmax_wgt = widgets.FloatText(value=vmax, description='vmax:', continuous_update=False,
+                                          disabled=self.if_vmax_auto.value, layout=_items_layout, style={'description_width': 'initial'})
         self.if_clip_cm = widgets.Checkbox(value=True, description='Clip', layout=_items_layout, style={'description_width': 'initial'})
         # PowerNorm specific
         self.gamma = widgets.FloatText(value=1, description='gamma:', continuous_update=False,
@@ -424,6 +437,21 @@ class Generic2DPlotCtrl(object):
         self.tab.children = tab
         [self.tab.set_title(i, tt) for i, tt in enumerate(self.tab_contents)]
 
+        # plotting and then setting normalization colors
+        self.out_main = output_widget or Output()
+        self.observer_thrd, self.cb = None, None
+#         if not fig:
+#             ax = None
+        with self.out_main:
+            self.fig = fig or plt.figure(figsize=[width, height], constrained_layout=True)
+            self.ax = ax or self.fig.add_subplot(111)
+            self.im, self.cb = self.plot_data()
+#             vmin, vmax = self.__get_vminmax(from_widgets=True)
+            self.im.set_clim(vmin, vmax)
+        # cannot get the axes ticks formatter here because the figure may not have been shown
+        self.xfmttr, self.yfmttr = None, None
+#             plt.show()
+        self.axx, self.axy, self._xlineouts, self._ylineouts, self.im2 = None, None, {}, {}, []
 
         # link and activate the widgets
         self.if_reset_title.observe(self.__update_title, 'value')
@@ -463,19 +491,7 @@ class Generic2DPlotCtrl(object):
         self.ct_if_clabel.observe(self._on_clabel_toggle, 'value')
         self.ct_method.observe(self._on_ct_method_change, 'value')
 
-        # plotting and then setting normalization colors
-        self.out_main = output_widget or Output()
-        self.observer_thrd, self.cb = None, None
-#         if not fig:
-#             ax = None
-        with self.out_main:
-            self.fig = fig or plt.figure(figsize=[width, height], constrained_layout=True)
-            self.ax = ax or self.fig.add_subplot(111)
-            self.im, self.cb = self.plot_data()
-        # cannot get the axes ticks formatter here because the figure may not have been shown
-        self.xfmttr, self.yfmttr = None, None
-#             plt.show()
-        self.axx, self.axy, self._xlineouts, self._ylineouts, self.im2 = None, None, {}, {}, []
+        self.vmin_wgt.value, self.vlogmin_wgt.value, self.vmax_wgt.value = vmin, logvmin, vmax
 
     @property
     def widgets_list(self):
@@ -566,7 +582,7 @@ class Generic2DPlotCtrl(object):
     def __get_xy_minmax_delta(self):
         return (round(self._data.axes[1].min, 2), round(self._data.axes[1].ax.max(), 2), round(self._data.axes[1].increment, 2),
                 round(self._data.axes[0].min, 2), round(self._data.axes[0].ax.max(), 2), round(self._data.axes[0].increment, 2))
-    
+
     def _update_xy_minmaxstep_wgt(self, d):
         xmin, xmax, xstep, ymin, ymax, ystep = self.__get_xy_minmax_delta()
         if d == 'x':
@@ -1153,7 +1169,7 @@ class Generic2DPlotCtrl(object):
         if self.norm_selector.value[0] == LogNorm:
             self.vlogmin_wgt.value = self.eps if v is None or v < self.eps else v
         else:
-            self.vmin_wgt.value = np.min(self._data) if v is None else v
+            self.vmin_wgt.value = np.min(self.__pp(self._data[self._slcs])) if v is None else v
 
     def __add_colorbar(self):
         clb = self.cbar.value
@@ -1182,7 +1198,7 @@ class Generic2DPlotCtrl(object):
 
     def __update_vmax(self, _change):
         if self.if_vmax_auto.value:
-            self.vmax_wgt.value = np.max(self._data)
+            self.vmax_wgt.value = np.max(self.__pp(self._data[self._slcs]))
             self.vmax_wgt.disabled = True
         else:
             self.vmax_wgt.disabled = False
@@ -1257,13 +1273,13 @@ class Slicer(Generic2DPlotCtrl):
                                               value=self.data.shape[self.comp] // 2, continuous_update=False)
 
         self.axis_selector = widgets.Dropdown(options=list(range(data.ndim)), value=self.comp, description='axis:')
+        self.if_pos_in_title = widgets.Checkbox(value=False, description='Slider position in title', layout=_items_layout)
+        super(Slicer, self).__init__(data[tuple(self.slcs)], slcs=tuple(i for i in self.slcs if not isinstance(i, int)),
+                                     time_in_title=not data.has_axis('t'), **extra_kwargs)
         self.axis_selector.observe(self.switch_slice_direction, 'value')
         self.index_slider.observe(self.update_slice, 'value')
         self.axis_pos.observe(self.__update_index_slider, 'value')
-        self.if_pos_in_title = widgets.Checkbox(value=False, description='Slider position in title', layout=_items_layout)
         self.if_pos_in_title.observe(self.update_title, 'value')
-        super(Slicer, self).__init__(data[tuple(self.slcs)], slcs=tuple(i for i in self.slcs if not isinstance(i, int)),
-                                     time_in_title=not data.has_axis('t'), **extra_kwargs)
         #TODO: this is probably not a good design as it might break anytime we change the structure of tab0, refactory needed.
         # add the check box to tab0,
 #         tmp = [None] * len(self.tab_contents)
@@ -1361,16 +1377,16 @@ class SaveMovieManager(object):
                                                         style={'description_width': 'initial', 'min_width': '220px'})
         self.update_frame_range(frame_range)
         self.filename = widgets.Text(value=self.dflt_savename, description='Movie name:', placeholder='movie name')
-        self.filename.observe(self.set_savename, 'value')
         self.savebtn = widgets.Button(description=self.dflt_btn_dscr, tooltip=self.dflt_btn_tp, button_style='')
-        self.savebtn.on_click(self.generate_figures)
         self.deletetemp = widgets.Checkbox(value=True, description='Delete temporary figures',
                                            layout=_items_layout, style={'description_width': 'initial'})
         self.smm_output, self.dlink = Output(), widgets.HTML(value='', description='')
         self.whatif_file_exist = widgets.RadioButtons(options=['delete conflicting png files and continue', 'skip existing files',
                                                                'create new temporary directory'], value='skip existing files',
                                                       description='', layout=_items_layout, style={'description_width': 'initial'})
-        self.worker = None
+        # link widget events
+        self.filename.observe(self.set_savename, 'value')
+        self.savebtn.on_click(self.generate_figures)
 
     @property
     def widgets_list(self):
@@ -1509,7 +1525,6 @@ class DirSlicer(Generic2DPlotCtrl):
                                              style={'description_width': 'initial'})
         self.time_label = widgets.Label(value=osh5vis.time_format(self.data.run_attrs['TIME'][0], self.data.run_attrs['TIME UNITS']),
                                         layout=_items_layout)
-        self.file_slider.observe(self.update_slice, 'value')
 
         super(DirSlicer, self).__init__(self.data, time_in_title=False, **extra_kwargs)
         if savemovie is None:
@@ -1520,6 +1535,7 @@ class DirSlicer(Generic2DPlotCtrl):
         tmp = [None] * len(self.tab_contents)
         tmp[4] = self.__get_tab_save()
         self.refresh_tab_wgt(tmp)
+        self.file_slider.observe(self.update_slice, 'value')
 
     @property
     def widgets_list(self):
@@ -1611,10 +1627,6 @@ class MultiPanelCtrl(object):
         self.suptitle_wgt = widgets.Text(value=None, placeholder='None', continuous_update=False, description='Suptitle:')
         self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle, ', style={'description_width': 'initial'})
         self.time_in_cgs_unit = widgets.Checkbox(value=False, description='time in cgs unit', style={'description_width': 'initial'})
-        self.tb.observe(self.show_corresponding_tab, 'index')
-        self.suptitle_wgt.observe(self.update_suptitle, 'value')
-        self.time_in_suptitle.observe(self.update_suptitle, 'value')
-        self.time_in_cgs_unit.observe(self.update_suptitle, 'value')
         self.suptitle = widgets.HBox([self.suptitle_wgt, self.time_in_suptitle, self.time_in_cgs_unit])
         #TODO: some axes setting should be shared (using widgets.jslink maybe) among different panels
         # disable resize widgets to avoid bugs
@@ -1622,6 +1634,11 @@ class MultiPanelCtrl(object):
             for s in self.worker:
                 s.x_min_wgt.disabled, s.y_min_wgt.disabled, s.x_max_wgt.disabled, s.y_max_wgt.disabled, \
                 s.x_step_wgt.disabled, s.y_step_wgt.disabled = (True,) * 6
+        # link widget events
+        self.tb.observe(self.show_corresponding_tab, 'index')
+        self.suptitle_wgt.observe(self.update_suptitle, 'value')
+        self.time_in_suptitle.observe(self.update_suptitle, 'value')
+        self.time_in_cgs_unit.observe(self.update_suptitle, 'value')
 
     @property
     def widgets_list(self):
@@ -1649,7 +1666,9 @@ class MultiPanelCtrl(object):
 
 class MPDirSlicer(MultiPanelCtrl):
     def __init__(self, filefilter_list, grid, interval=1000, processing=do_nothing, figsize=None, fig_ax=tuple(), output_widget=None,
-                 sharex=False, sharey=False, **kwargs):
+                 sharex=False, sharey=False, worker_kw_list=None, **kwargs):
+        if worker_kw_list is None:
+            worker_kw_list = [{},] * (grid[0] * grid[1])
         if isinstance(processing, (list, tuple)):
             if len(processing) != grid[0] * grid[1]:
                 raise ValueError('Expecting %d functions in processing, got %d' % (grid[0] * grid[1], len(processing)))
@@ -1657,6 +1676,8 @@ class MPDirSlicer(MultiPanelCtrl):
                 ps = [{'processing' :p} for p in processing]
         else:
             ps = ({'processing' :processing},) * len(filefilter_list)
+        for kw, p in zip(worker_kw_list, ps):
+            kw.update(p)
         #TODO: replicating some lines in the super class. there should be a better way >>>>>
         width, height = figsize or plt.rcParams.get('figure.figsize')
         self.fig, self.ax = fig_ax or plt.subplots(*grid, figsize=(width, height), sharex=sharex, sharey=sharey, constrained_layout=True)
@@ -1664,7 +1685,7 @@ class MPDirSlicer(MultiPanelCtrl):
 #         flist = sorted(glob.glob(fp))
         # <<<<< all because we need to initialize SaveMovieManager before super().__init__()
         smm = SaveMovieManager(self.fig, self.plot_ith_slice_mp)
-        super(MPDirSlicer, self).__init__((DirSlicer,) * len(filefilter_list), filefilter_list, grid, worker_kw_list=ps,
+        super(MPDirSlicer, self).__init__((DirSlicer,) * len(filefilter_list), filefilter_list, grid, worker_kw_list=worker_kw_list,
                                           figsize=figsize, fig_ax=(self.fig, self.ax), output_widget=output_widget, sharex=sharex,
                                           sharey=sharey, onDestruction=self.self_destruct, savemovie=smm, **kwargs)
         # we need a master slider to control all subplot sliders
