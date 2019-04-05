@@ -151,8 +151,8 @@ class Generic2DPlotCtrl(object):
     eps = 1e-40
     colormaps_available = sorted(c for c in plt.colormaps() if not c.endswith("_r"))
 
-    def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), ), title=None, norm='',
-                 fig=None, figsize=None, time_in_title=True, ax=None, output_widget=None,
+    def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), slice(None, )), title=None, norm='',
+                 fig=None, figsize=None, time_in_title=True, cgs_time=False, ax=None, output_widget=None,
                  xlabel=None, ylabel=None, onDestruction=do_nothing,
                  convert_xaxis=False, convert_yaxis=False, **kwargs):
         self._data, self._slcs, self.im_xlt, self.time_in_title, self.pltfunc, self.onDestruction = \
@@ -168,7 +168,7 @@ class Generic2DPlotCtrl(object):
         self.datalabel = widgets.Text(value=title, placeholder='data', continuous_update=False,
                                      description='Data Name:', disabled=self.if_reset_title.value, layout=_items_layout)
         self.if_show_time = widgets.Checkbox(value=time_in_title and not t_in_axis, description='Time in title, ', layout=_items_layout)
-        self.time_in_cgs = widgets.Checkbox(value=time_in_title and not t_in_axis, description='time in cgs unit',
+        self.time_in_cgs = widgets.Checkbox(value=cgs_time, description='time in cgs unit',
                                             layout={'width': 'initial'}, style={'description_width': 'initial'})
         lognorm = norm == 'Log'
         self.__pp = np.abs if lognorm else do_nothing
@@ -512,8 +512,8 @@ class Generic2DPlotCtrl(object):
         self._xlabel, self._ylabel = osh5vis.axis_format(data.axes[1].long_name, data.axes[1].units), \
                                      osh5vis.axis_format(data.axes[0].long_name, data.axes[0].units)
         self.__update_title()
-        self.__update_xlabel()
-        self.__update_ylabel()
+        self.__update_xlabel({'new': True})
+        self.__update_ylabel({'new': True})
 
     def reset_plot_area(self):
         self.x_min_wgt.value, self.x_max_wgt.value, xstep, \
@@ -580,8 +580,8 @@ class Generic2DPlotCtrl(object):
 #         self.fig.subplots_adjust()  # does not compatible with constrained_layout in Matplotlib 3.0
 
     def __get_xy_minmax_delta(self):
-        return (round(self._data.axes[1].min, 2), round(self._data.axes[1].ax.max(), 2), round(self._data.axes[1].increment, 2),
-                round(self._data.axes[0].min, 2), round(self._data.axes[0].ax.max(), 2), round(self._data.axes[0].increment, 2))
+        return (float('%.2g' % self._data.axes[1].min), float('%.2g' % self._data.axes[1].ax.max()), float('%.2g' % self._data.axes[1].increment),
+                float('%.2g' % self._data.axes[0].min), float('%.2g' % self._data.axes[0].ax.max()), float('%.2g' % self._data.axes[0].increment))
 
     def _update_xy_minmaxstep_wgt(self, d):
         xmin, xmax, xstep, ymin, ymax, ystep = self.__get_xy_minmax_delta()
@@ -687,8 +687,7 @@ class Generic2DPlotCtrl(object):
             self.xconv, xunit = 1.0, self._data.axes[1].units
         self.ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: self.xfmttr(x*self.xconv, pos)))
         self._update_xy_minmaxstep_wgt(d='x')
-        with self.ct_info_output:
-            self.update_lineouts(dim='y', description_only=True)
+        self.update_lineouts(dim='y', description_only=True)
         if self.if_reset_xlabel.value:
             self._xlabel = osh5vis.axis_format(self._data.axes[1].long_name, xunit)
             # toggle the reset checkbox
@@ -704,8 +703,7 @@ class Generic2DPlotCtrl(object):
             self.yconv, yunit = 1.0, self._data.axes[0].units
         self.ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, pos: self.yfmttr(y*self.yconv, pos)))
         self._update_xy_minmaxstep_wgt(d='y')
-        with self.ct_info_output:
-            self.update_lineouts(dim='x', description_only=True)
+        self.update_lineouts(dim='x', description_only=True)
         if self.if_reset_ylabel.value:
             self._ylabel = osh5vis.axis_format(self._data.axes[0].long_name, yunit)
             # toggle the reset checkbox
@@ -1006,7 +1004,7 @@ class Generic2DPlotCtrl(object):
     def get_xlineout_data_and_index(self, loc):
         pos = self._data.loc.label2int(0, loc)
         posstr = '%.2f' % (self._data.axes[0][pos] * self.yconv)
-        return self.__pp(self._data[self._slcs][pos, :]), posstr, pos
+        return self.__pp(self._data[pos, :][self._slcs[1]]), posstr, pos
 
     def __add_xlineout(self, *_):
         data, posstr, pos = self.get_xlineout_data_and_index(self.xlineout_wgt.value / self.yconv)
@@ -1087,7 +1085,7 @@ class Generic2DPlotCtrl(object):
     def get_ylineout_data_and_index(self, loc):
         pos = self._data.loc.label2int(1, loc)
         posstr = '%.2f' % (self._data.axes[1][pos] * self.xconv)
-        return self.__pp(self._data[self._slcs][:, pos]), posstr, pos
+        return self.__pp(self._data[:, pos][self._slcs[0]]), posstr, pos
 
     def __add_ylineout(self, *_):
         data, posstr, pos = self.get_ylineout_data_and_index(self.ylineout_wgt.value / self.xconv)
@@ -1623,7 +1621,7 @@ class MultiPanelCtrl(object):
                                         style={"button_width": '%dpx' % bw})
         ctrl_pnl = widgets.Box([self.tb],layout=Layout(display='flex', flex='0 0 auto', align_items='center',
                                                        width='%dpx' % (bwpadded * self.ncols)))
-        self.ctrl = widgets.HBox([ctrl_pnl, self.tabd[self.tb.index]], layout=Layout(display='flex', flex='1 1 auto', width='100%'))
+        self.ctrl = widgets.HBox([ctrl_pnl, self.tabd[self.tb.index]], layout=_items_layout)
         self.suptitle_wgt = widgets.Text(value=None, placeholder='None', continuous_update=False, description='Suptitle:')
         self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle, ', style={'description_width': 'initial'})
         self.time_in_cgs_unit = widgets.Checkbox(value=False, description='time in cgs unit', style={'description_width': 'initial'})

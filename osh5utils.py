@@ -505,7 +505,7 @@ def angle(x, deg=0):
 
 @enhence_num_indexing_kw('axis')
 @metasl
-def unwrap(x, discont=3.141592653589793, axis=-1):
+def unwrap(x, discont=np.pi, axis=-1):
     return np.unwrap(x, discont=discont, axis=axis)
 
 
@@ -524,18 +524,20 @@ def diff(x, n=1, axis=-1):
 
 # ---------------------------------- NumPy Wrappers ---------------------------------------
 
-def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False):
+def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False, iftf=ifftn):
     """decompose a vector field into transverse and longitudinal direction
     fldarr: list of field components in the order of x, y, z
     ffted: If the input fields have been Fourier transformed
     finalize: what function to call after all transforms,
         for example finalize=abs will be converted the fields to amplitude
     idim: inverse fourier transform in idim direction(s)
-    outquonts: output quantities: default=('L','t')
+    outquants: output quantities: default=('L','t')
         'L': total amplitude square of longitudinal components
         'T': total amplitude square of transverse components
         't' or 't1', 't2', ...: transverse components, 't' means all transverse components
         'l' or 'l1', 'l2', ...: longitudinal components, 'l' means all longitudinal components
+    norft: if set to true then use full fft instead of rfft (only relevant when the field data is of real numbers)
+    iftf: the inverse fft method
     return: list of field components in the following order (if some are not requested they will be simply omitted):
         ['L', 'T', 't', 'l']
     """
@@ -558,8 +560,8 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     def rename(fld, name, longname):
         if isinstance(fld, osh5def.H5Data):
             # replace numbers in the string
-            fld.name = re.sub("\d+", fld.name, name)
-            fld.data_attrs['NAME'] = re.sub("\d+", name, fld.data_attrs.get('NAME', fld.name))
+            fld.name = re.sub("\d+", name, fld.name)
+#             fld.data_attrs['NAME'] = re.sub("\d+", name, fld.data_attrs.get('NAME', fld.name))
             fld.data_attrs['LONG_NAME'] = re.sub("\d+", longname, fld.data_attrs.get('LONG_NAME', ''))
         return fld
 
@@ -575,14 +577,14 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     for i, fi in enumerate(fftfld):
         tmp = kdotfld * kv[i]
         if 't' in outquants or 't' + str(i + 1) in outquants:
-            ft.append((finalize(wrap_up(fftfld[i] - tmp)), '{t' + str(i + 1) + '}'))
+            ft.append((finalize(wrap_up(fftfld[i] - tmp)), 't' + str(i + 1)))
             if 'T' in outquants:
                 fT += np.abs(ft[-1][0])**2
         elif 'T' in outquants:
             fT += np.abs(wrap_up(fftfld[i] - tmp))**2
 
         if 'l' in outquants or 'l'+str(i+1) in outquants:
-            fl.append((finalize(wrap_up(tmp)), '{l'+str(i+1) + '}'))
+            fl.append((finalize(wrap_up(tmp)), 'l'+str(i+1)))
             if 'L' in outquants:
                 fL += np.abs(fl[-1][0])**2
         elif 'L' in outquants:
@@ -595,10 +597,10 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
         res.append(rename(fT, 'T', 'T^2'))
     if ft:
         for fi in ft:
-            res.append(rename(fi[0], fi[1], fi[1]))
+            res.append(rename(fi[0], fi[1], '{' + fi[1] + '}'))
     if fl:
         for fi in fl:
-            res.append(rename(fi[0], fi[1], fi[1]))
+            res.append(rename(fi[0], fi[1], '{' + fi[1] + '}'))
     return tuple(res)
 
 
