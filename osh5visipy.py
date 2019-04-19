@@ -1355,7 +1355,10 @@ class Slicer(Generic2DPlotCtrl):
 class SaveMovieManager(object):
     def __init__(self, fig, gen1frame, frame_range=None, frame_range_opts=None):
         self.fig, self.gen1frame, self.figdir, self.basename, self.frame_range_opts = fig, gen1frame, './', 'movie', frame_range_opts
-        stdout = subprocess.check_output(['ffmpeg', '-encoders', '-v', 'quiet']).decode()
+        try:
+            stdout = subprocess.check_output(['ffmpeg', '-encoders', '-v', 'quiet']).decode()
+        except FileNotFoundError:
+            stdout = ''
         #TODO: sane options for each encoder
         self.known_encoders = {'libx265': ["-crf", "18", "-preset", "slow"],
                                'hevc': ["-crf", "18", "-preset", "slow"],
