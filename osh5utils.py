@@ -9,24 +9,23 @@ import warnings
 import osh5io
 import glob
 from scipy import signal
+from scipy import ndimage
 
 
-def metasl(func=None, unit=None):
+def metasl(func=None, axes=None, unit=None):
     """save meta data before calling the function and restore them to output afterwards
     It has the following limitations:
         It saves the metadata of the first argument and only supports function that return one quantity
     """
     if func is None:
-        return partial(metasl, unit=unit)
+        return partial(metasl, axes=axes, unit=unit)
 
     @wraps(func)
     def sl(*args, **kwargs):
-        saved = None
         # save meta data into a list
-        if hasattr(args[0], 'meta2dict'):
-            saved = args[0].meta2dict()
+        saved = args[0].meta2dict() if hasattr(args[0], 'meta2dict') else None
         # execute user function
-        out = func(*args, **kwargs)
+        out = func(args[0].view(np.ndarray), *args[1:], **kwargs)
         # load saved meta data into specified positions
         try:
             if isinstance(out, osh5def.H5Data):
@@ -38,6 +37,8 @@ def metasl(func=None, unit=None):
         # Update unit if necessary
         if unit is not None:
             out.data_attrs['UNITS'] = osh5def.OSUnits(unit)
+        if axes is not None:
+            out.axes = axes
         return out
     return sl
 
@@ -473,7 +474,6 @@ def hilbert(x, N=None, axis=-1):
     return signal.hilbert(x, N=N, axis=axis)
 
 
-@enhence_num_indexing_kw('axis')
 @metasl
 def hilbert2(x, N=None):
     return signal.hilbert2(x, N=N)
@@ -514,10 +514,10 @@ def diff(x, n=1, axis=-1):
     dx_2 = 0.5 * x.axes[axis].increment
 
     @metasl
-    def __diff(x, n=1, axis=-1):
-        return np.diff(x, n=n, axis=axis)
+    def __diff(x, n=1, ax=-1):
+        return np.diff(x, n=n, axis=ax)
 
-    r = __diff(x, n=n, axis=axis)
+    r = __diff(x, n=n, ax=axis)
     r.axes[axis] = osh5def.DataAxis(axis_min=x.axes[axis].min+n*dx_2, axis_max=x.axes[axis].max-n*dx_2,
                                     axis_npoints=x.axes[axis].size-n, attrs=copy.deepcopy(x.axes[axis].attrs))
     return r
@@ -605,11 +605,12 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
 
 
 # modified from SciPy cookbook
-def rebin(a, fac):
+def rebin(a, fac, method='sum'):
     """
     rebin ndarray or H5Data into a smaller ndarray or H5Data of the same rank whose dimensions
     are factors of the original dimensions. If fac in some dimension is not whole divided by
     a.shape, the residual is trimmed from the last part of array.
+    :param method: can be either sum or mean
     example usages:
      a=rand(6,4); b=rebin(a, fac=[3,2])
      a=rand(10); b=rebin(a, fac=[3])
@@ -618,23 +619,98 @@ def rebin(a, fac):
     a = a[index]
     # update axes first
     if isinstance(a, osh5def.H5Data):
-        for i, x in enumerate(a.axes):
+        ax = copy.deepcopy(a.axes)
+        for i, x in enumerate(ax):
             x.ax = x.ax[::fac[i]]
+    mthd = 'mean' if method.lower() == 'mean' else 'sum'
 
-    @metasl
+    @metasl(axes=ax)
     def __rebin(h, fac):
         # have to convert to ndarray otherwise sum will fail
-        h = h.view(np.ndarray)
+#         h = h.view(np.ndarray)
         shape = h.shape
         lenShape = len(shape)
         newshape = np.floor_divide(shape, np.asarray(fac))
         evList = ['h.reshape('] + \
                  ['newshape[%d],fac[%d],'%(i,i) for i in range(lenShape)] + \
-                 [')'] + ['.sum(%d)'%(i+1) for i in range(lenShape)] + \
-                 ['/fac[%d]'%i for i in range(lenShape)]
+                 [')'] + ['.' + mthd + '(%d)'%(i+1) for i in range(lenShape)]
         return eval(''.join(evList))
 
     return __rebin(a, fac)
+
+
+def rolling(a, window, center=False):
+    ax = copy.deepcopy(a.axes)
+    if center:
+        ax[-1].ax = ax[-1].ax[window-1 :] - ax[-1].increment * (window // 2)
+    else:
+        ax[-1].ax = ax[-1].ax[window-1 :]
+    @metasl(axes=ax)
+    def rolling_average(x, window):
+#         x = arr.view(np.ndarray)
+        shape = x.shape[:-1] + (x.shape[-1] - window + 1, window)
+        strides = x.strides + (x.strides[-1],)
+        return np.mean(np.lib.stride_tricks.as_strided(x, shape=shape, strides=strides), -1)
+    return rolling_average(a, window)
+
+
+@metasl
+def smooth(x,window_len=11,window='hanning'):
+    """smooth the data using a window with requested size. Modified from scipy cookbook.
+
+    This method is based on the convolution of a scaled window with the signal.
+    The signal is prepared by introducing reflected copies of the signal
+    (with the window size) in both ends so that transient parts are minimized
+    in the begining and end part of the output signal.
+
+    input:
+        a: the input signal
+        window_len: the dimension of the smoothing window; should be an odd integer
+        window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
+            flat window will produce a moving average smoothing.
+
+    output:
+        the smoothed signal
+
+    example:
+
+    t=linspace(-2,2,0.1)
+    x=sin(t)+randn(len(t))*0.1
+    y=smooth(x)
+
+    see also:
+
+    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
+    scipy.signal.lfilter
+
+    TODO: the window parameter could be the window itself if an array instead of a string
+    NOTE: length(output) != length(input), to correct this: return y[(window_len/2-1):-(window_len/2)] instead of just y.
+    """
+#     x = a.view(np.ndarray)
+    if x.ndim != 1:
+        raise ValueError("smooth only accepts 1 dimension arrays.")
+
+    if x.size < window_len:
+        raise ValueError("Input vector needs to be bigger than window size.")
+
+
+    if window_len<3:
+        return x
+
+
+    if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+        raise ValueError("Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
+
+
+    s=np.r_[x[window_len-1:0:-1],x,x[-2:-window_len-1:-1]]
+    #print(len(s))
+    if window == 'flat': #moving average
+        w=np.ones(window_len,'d')
+    else:
+        w=eval('np.'+window+'(window_len)')
+
+    y=np.convolve(w/w.sum(),s,mode='valid')
+    return y[(window_len//2-1):-(window_len//2)]
 
 
 def log_Gabor_Filter_2d(w, w0, s0):
@@ -716,6 +792,33 @@ def monogenic_filtered_signal(monogenic_signal):
     :param monogenic_signal: the output of the monogenic_signal function
     """
     return monogenic_signal[0]
+
+
+@enhence_num_indexing_kw('axis')
+def monogenic_local_k(monogenic_local_phase, axis=-1, denoise=False, kmax=None):
+    """
+    calculate the local wavevector of a 2D monogenic signal
+    :param monogenic_local_phase: local phase obtained from monogenic_local_phase function
+    :param axis: along which axis the wavevector is defined
+    :param denoise: If denoise is not False then try to remove noisy signals from
+                    output (mainly one-pixel jumps in wavevector due to imperfect unwrapping);
+                    if denoise equals to 'safe' then additional step is taken to change only
+                    those pixels identified as artifects
+    :param kmax: replace wevevector whose absolute value is larger than kmax with kmax, keeping the original sign.
+    """
+    r = diff(unwrap(monogenic_local_phase, axis=axis), axis=axis) / monogenic_local_phase.axes[axis].increment
+    if denoise:
+        if denoise == 'safe':
+            tmp = ndimage.filters.median_filter(r.values, size=3)
+            mask = np.abs(r.values) > np.abs(tmp) * 2
+            np.copyto(r.values, tmp, where=mask)
+        else:
+            r.values = ndimage.filters.median_filter(r.values, size=3)
+    if kmax is not None:
+        r.values[r.values > kmax] = kmax
+        r.values[r.values < -kmax] = - kmax
+    r.data_attrs['UNITS'] = monogenic_local_phase.axes[axis].units**-1
+    return r
 
 
 if __name__ == '__main__':
