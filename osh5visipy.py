@@ -27,15 +27,30 @@ print("use `%matplotlib widget' if you are using newer version of matplotlib (3.
 do_nothing = lambda x : x
 
 
-def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, grid=None, **kwargs):
-    """
+__2dplot_param_doc = """
     2D plot with widgets
-    :param data: 2D H5Data
+    :param data: (list of) 2D H5Data
     :param args: arguments passed to 2d plotting widgets. reserved for future use
     :param show: whether to show the widgets
+    :param grid: a tuple (row, column) specifying the layout of subplots. Must be set when plotting more than one subplot
     :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
     :return: if show == True return None otherwise return a list of widgets
-    """
+"""
+
+__2dplot_example_doc = """
+    example usage:
+        os%s_w(filename)  # filename is a string, display %s of the file with filename
+
+        os%s_w(data)  # data is a H5Data variable, display %s of data
+
+        os%s_w((filename1, filename2, filename3), grid=(3,1))  # display %s of 3 files in 3 rows
+
+        os%s_w((data1, data2, data3, data4), grid=(2,2))  # display %s of 4  H5Data variables in a 2 by 2 grid
+"""
+
+
+def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, grid=None, **kwargs):
+    """%s""" % (__2dplot_param_doc + (__2dplot_example_doc % (('pltfunc', ) * 8)))
     if isinstance(data, str):
         h5data = osh5io.read_h5(data)
         wl = Generic2DPlotCtrl(h5data, *args, pltfunc=pltfunc, **kwargs).widgets_list
@@ -54,30 +69,42 @@ def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, grid=None, **kw
 
 
 osimshow_w = partial(os2dplot_w, pltfunc=osh5vis.osimshow)
+osimshow_w.__doc__ = """%s"""  % (__2dplot_param_doc + (__2dplot_example_doc % (('imshow',) * 8)))
 oscontour_w = partial(os2dplot_w, pltfunc=osh5vis.oscontour)
+oscontour_w.__doc__ = """%s"""  % (__2dplot_param_doc + (__2dplot_example_doc % (('contour',) * 8)))
 oscontourf_w = partial(os2dplot_w, pltfunc=osh5vis.oscontourf)
+oscontourf_w.__doc__ = """%s"""  % (__2dplot_param_doc + (__2dplot_example_doc % (('contourf',) * 8)))
 
 
 def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     """
     A slider for 3D data
-    :param data: 3D H5Data or directory name (a string)
+    :param data: (a list of) 3D H5Data or directory name (a string)
     :param args: arguments passed to plotting widgets. reserved for future use
     :param show: whether to show the widgets
     :param slider_only: if True only show the slider otherwise show also other plot control (aka 'the tab')
     :param kwargs: keyword arguments passed to 2d plotting widgets. reserved for future use
     :return: whatever widgets that are not shown
+    example usage:
+        slicer_w(dirname)  # dirname is the name of a directory, display the quantity inside dirname,
+                           # slider bar let you choose which file to display
+
+        slicer_w(data)  # data is a 3d H5Data variable, slider bar let you choose the position along certain axis
+
+        slicer_w((dirname1, dirname2, dirname3, dirname4), grid=(2, 2))  # display 4 subplots in a 2 by 2 grid,
+                                                                         # slider bar let you choose which time step to display,
+                                                                         # number of files in dirname# should be the same
     """
     if isinstance(data, str):
         wl = DirSlicer(data, *args, **kwargs).widgets_list
-        tab, slider = wl[0], widgets.HBox(wl[1:-1])
     elif isinstance(data, (tuple, list)):
         if isinstance(data[0], (str, tuple, list)):
             wl = MPDirSlicer(data, *args, **kwargs).widgets_list
-            tab, slider = wl[0], widgets.HBox(wl[1:-1])
+        else:
+            raise NotImplementedError('Unexpected data. Cannot process input parameters')
     else:
         wl = Slicer(data, *args, **kwargs).widgets_list
-        tab, slider = wl[0], widgets.HBox(wl[1:-1])
+    tab, slider = wl[0], widgets.HBox(wl[1:-1])
     if show:
         if slider_only:
             display(slider, wl[-1])
