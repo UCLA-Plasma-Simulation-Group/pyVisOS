@@ -168,6 +168,7 @@ class FigureManager(object):
 _items_layout = Layout(flex='1 1 auto', width='auto')
 _get_delete_btn = lambda tp : widgets.Button(description='', tooltip='delete %s' % tp, icon='times', layout=Layout(width='32px'))
 
+
 def _get_downloadable_url(filename):
     return '<a href="files%s" download="%s"> %s </a>' % (os.path.abspath(filename),
                                                          os.path.basename(filename), filename)
@@ -550,27 +551,30 @@ class Generic2DPlotCtrl(object):
         self.__destroy_all_ylineout()
         self._ct_destroy_all()
 
-    def redraw(self, data, update_vminmax=False):
+    def redraw(self, data=None, update_vminmax=False):
+        if data:
+            self._data = data
         if self.pltfunc is osh5vis.osimshow:
             "if the size of the data is the same we can just redraw part of figure"
-            self._data = data
             processed_data = self.__pp(data[self._slcs]).view(np.ndarray)
             self.im.set_data(processed_data)
             if update_vminmax:
                 vmin = np.min(processed_data) if self.if_vmin_auto.value else None
                 vmax = np.max(processed_data) if self.if_vmax_auto.value else None
                 if vmin is not None:
-                    self.norm_selector.value[1].children[1].children[0].value = vmin
+                    self.current_vmin = vmin
                 if vmax is not None:
                     self.vmax_wgt.value = vmax
                 self.im.set_clim(vmin, vmax)
             self.fig.canvas.draw_idle()
         else:
             "for contour/contourf we have to do a full replot"
-            self._data = data
-            for col in self.im.collections:
-                col.remove()
-            self.replot_axes()
+            self._replot_contour()
+
+    def _replot_contour(self):
+        for col in self.im.collections:
+            col.remove()
+        self.replot_axes()
 
     def update_title(self, *_):
         self.ax.axes.set_title(self.get_plot_title())
@@ -723,6 +727,22 @@ class Generic2DPlotCtrl(object):
                 padding = 0.05 * (vmax - vmin)
                 args = {'left': vmin - padding, 'right': vmax + padding}
                 self.axy.set_xlim(**args)
+
+    def update_contours(self):
+        for wgt in self.ct_wgt_list.children:
+            _, _, db = wgt.children
+            w, kwargs, im = self.ct_plot_dict[db]
+            # reconstruct the contour
+            self.im2.remove(im)
+            # free up resources
+            for c in im[0].collections:
+                c.remove()
+            for l in im[1]:
+                l.remove()
+            # _ct_plot will append im2 with the new plot
+            tmp = kwargs.copy()
+            self._ct_plot(None, None, None, tmp)
+            self.ct_plot_dict[db][-1] = self.im2[-1]
 
     def _on_clabel_toggle(self, change):
         self.ct_if_inline_clabel.disabled = not change['new']
@@ -1173,33 +1193,39 @@ class Generic2DPlotCtrl(object):
         self.__handle_lognorm()
         self.__old_norm = change['old']
 
+    @property
+    def current_vmin(self):
+        return self.norm_selector.value[1].children[1].children[0].value
+
+    @current_vmin.setter
+    def current_vmin(self, val):
+        self.norm_selector.value[1].children[1].children[0].value = val
+
     def __get_vminmax(self, from_widgets=False):
         if from_widgets:
-            return self.norm_selector.value[1].children[1].children[0].value, self.vmax_wgt.value
+            return self.current_vmin, self.vmax_wgt.value
         else:
-            return (None if self.if_vmin_auto.value else self.norm_selector.value[1].children[1].children[0].value,
+            return (None if self.if_vmin_auto.value else self.current_vmin,
                     None if self.if_vmax_auto.value else self.vmax_wgt.value)
 
     def __axis_descr_format(self, comp):
         return osh5vis.axis_format(self._data.axes[comp].long_name, self._data.axes[comp].units)
 
     def update_norm(self, *args):
-        # only changing clim
-        if self.__old_norm == self.norm_selector.value:
-            vmin, vmax = self.__get_vminmax(from_widgets=True)
-            self.im.set_clim([vmin, vmax])
-        # norm change
-        else:
-            vminmax = self.__get_vminmax()
-            self.__update_xlineout()
-            self.__update_ylineout()
-            self.im.remove()
-            if self.colorbar.value:
-                self.im, cb = self.plot_data()
-                self.cb.ax.remove()
-                self.cb = cb
+        with self.ct_info_output:
+            # only changing clim
+            if self.__old_norm == self.norm_selector.value:
+                if self.pltfunc is osh5vis.osimshow:
+                    vmin, vmax = self.__get_vminmax(from_widgets=True)
+                    self.im.set_clim([vmin, vmax])
+                else:
+                    self._replot_contour()
+            # norm change
             else:
-                self.im, _ = self.plot_data(colorbar=False)
+                self.__update_xlineout()
+                self.__update_ylineout()
+                self.redraw()
+                self.update_contours()
 
     def __get_norm(self, vminmax_from_wiget=False):
         vmin, vmax = self.__get_vminmax(vminmax_from_wiget)
@@ -1602,22 +1628,6 @@ class DirSlicer(Generic2DPlotCtrl):
     def plot_ith_slice(self, i):
         c = {'new': i}
         self.update_slice(c)
-
-    def update_contours(self):
-        for wgt in self.ct_wgt_list.children:
-            _, _, db = wgt.children
-            w, kwargs, im = self.ct_plot_dict[db]
-            # reconstruct the contour
-            self.im2.remove(im)
-            # free up resources
-            for c in im[0].collections:
-                c.remove()
-            for l in im[1]:
-                l.remove()
-            # _ct_plot will append im2 with the new plot
-            tmp = kwargs.copy()
-            self._ct_plot(None, None, None, tmp)
-            self.ct_plot_dict[db][-1] = self.im2[-1]
 
     def update_slice(self, change):
         self.file_slider.description = os.path.basename(self.flist[change['new']])
