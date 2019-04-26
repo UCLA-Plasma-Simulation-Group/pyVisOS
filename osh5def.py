@@ -150,8 +150,8 @@ class OSUnits:
             self.power = cp.deepcopy(s.power)
         else:
             self.power = np.array([frac(0), frac(0), frac(0), frac(0), frac(0)])
-            # if isinstance(s, bytes):
-            #     s = s.decode("utf-8")
+            if isinstance(s, bytes):
+                s = s.decode("utf-8")
             if 'a.u.' != s:
                 sl = s.split()
                 nominator = True
