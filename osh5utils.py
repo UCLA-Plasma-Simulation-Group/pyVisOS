@@ -524,20 +524,21 @@ def diff(x, n=1, axis=-1):
 
 # ---------------------------------- NumPy Wrappers ---------------------------------------
 
-def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False, iftf=ifftn):
+def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False, iftf=ifftn, inplace=False):
     """decompose a vector field into transverse and longitudinal direction
     fldarr: list of field components in the order of x, y, z
     ffted: If the input fields have been Fourier transformed
     finalize: what function to call after all transforms,
         for example finalize=abs will be converted the fields to amplitude
-    idim: inverse fourier transform in idim direction(s)
+    idim: inverse fourier transform in idim direction(s), None means keep FFT data as is
     outquants: output quantities: default=('L','t')
         'L': total amplitude square of longitudinal components
         'T': total amplitude square of transverse components
         't' or 't1', 't2', ...: transverse components, 't' means all transverse components
         'l' or 'l1', 'l2', ...: longitudinal components, 'l' means all longitudinal components
     norft: if set to true then use full fft instead of rfft (only relevant when the field data is of real numbers)
-    iftf: the inverse fft method
+    iftf: the inverse fft method used if idim is not None
+    inplace: perform field decomposition inplace, setting this to True will change fldarr
     return: list of field components in the following order (if some are not requested they will be simply omitted):
         ['L', 'T', 't', 'l']
     """
@@ -566,9 +567,17 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
         return fld
 
     if ffted:
-        fftfld = [copy.deepcopy(fi) for fi in fldarr]
+        if inplace:
+            fftfld = fldarr
+        else:
+            fftfld = [copy.deepcopy(fi) for fi in fldarr]
     else:
-        fftfld = [ftf(fi) for fi in fldarr]
+        if inplace:
+            for i, fi in enumerate(fldarr):
+                fldarr[i] = ftf(fi)
+            fftfld = fldarr
+        else:
+            fftfld = [ftf(fi) for fi in fldarr]
     kv = np.meshgrid(*reversed([x.ax for x in fftfld[0].axes]), sparse=True)
     k2 = sum(ki**2 for ki in kv)  # |k|^2
     k2[k2 == 0.0] = float('inf')
