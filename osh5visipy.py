@@ -12,7 +12,6 @@ import glob
 import os
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
-from matplotlib import ticker
 from matplotlib._pylab_helpers import Gcf as pylab_gcf
 import subprocess
 from datetime import datetime
@@ -182,9 +181,10 @@ class Generic2DPlotCtrl(object):
     def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), slice(None, )), title=None, norm='',
                  fig=None, figsize=None, time_in_title=True, phys_time=False, ax=None, output_widget=None,
                  xlabel=None, ylabel=None, onDestruction=do_nothing,
-                 convert_xaxis=False, convert_yaxis=False, **kwargs):
+                 convert_xaxis=False, convert_yaxis=False, register_callbacks=None, **kwargs):
         self._data, self._slcs, self.im_xlt, self.time_in_title, self.pltfunc, self.onDestruction = \
         data, slcs, None, time_in_title, pltfunc, onDestruction
+        self.callbacks = {} if register_callbacks is None else register_callbacks
         user_cmap, show_colorbar = kwargs.pop('cmap', 'jet'), kwargs.pop('colorbar', True)
         tab = []
         # # # -------------------- Tab0 --------------------------
@@ -251,15 +251,17 @@ class Generic2DPlotCtrl(object):
         self.__old_norm = self.norm_selector.value
         # additional care for LorNorm()
         self.__handle_lognorm()
+#         self.vmin_wgt.value, self.vlogmin_wgt.value, self.vmax_wgt.value = vmin, logvmin, vmax
         # re-plot button
         self.norm_btn_wgt = widgets.Button(description='Apply', disabled=False, tooltip='Update normalization', icon='refresh')
         tab.append(self.get_tab_data())
 
         # # # -------------------- Tab1 --------------------------
-        self.setting_instructions = widgets.Label(value="Enter invalid value to reset", layout=_items_layout)
+        self.if_xrange_auto = widgets.Checkbox(value=True, description='Auto xrange', layout=_items_layout, style={'description_width': 'initial'})
+        self.if_yrange_auto = widgets.Checkbox(value=True, description='Auto yrange', layout=_items_layout, style={'description_width': 'initial'})
         self.apply_range_btn = widgets.Button(description='Apply', disabled=False, \
                                               tooltip='set range. (* this will delete all overlaid plots *)', icon='refresh')
-        self.axis_lim_wgt = widgets.HBox([self.setting_instructions, self.apply_range_btn])
+        self.axis_lim_wgt = widgets.HBox([self.if_xrange_auto, self.if_yrange_auto, self.apply_range_btn])
         # x axis
         xmin, xmax, xinc, ymin, ymax, yinc = self.__get_xy_minmax_delta()
         if convert_xaxis:
@@ -267,18 +269,22 @@ class Generic2DPlotCtrl(object):
         else:
             self.xconv, xunit = 1.0, data.axes[1].units
         self.x_min_wgt = widgets.BoundedFloatText(value=xmin * self.xconv, min=xmin * self.xconv, max=xmax * self.xconv, step=xinc * self.xconv/2, description='xmin:',
-                                                  continuous_update=False, layout=_items_layout, style={'description_width': 'initial'})
+                                                  disabled=True, layout=_items_layout, style={'description_width': 'initial'})
         self.x_max_wgt = widgets.BoundedFloatText(value=xmax * self.xconv, min=xmin * self.xconv, max=xmax * self.xconv, step=xinc * self.xconv/2, description='xmax:',
-                                                  continuous_update=False, layout=_items_layout, style={'description_width': 'initial'})
-        self.x_step_wgt = widgets.BoundedFloatText(value=xinc * self.xconv, step=xinc * self.xconv, continuous_update=False,
-                                            description='$\Delta x$:', layout=_items_layout, style={'description_width': 'initial'})
+                                                  disabled=True, layout=_items_layout, style={'description_width': 'initial'})
+        self.x_step_wgt = widgets.BoundedFloatText(value=xinc * self.xconv, step=xinc * self.xconv, disabled=True,
+                                                   description='$\Delta x$:', layout=_items_layout, style={'description_width': 'initial'})
         widgets.jslink((self.x_min_wgt, 'max'), (self.x_max_wgt, 'value'))
         widgets.jslink((self.x_max_wgt, 'min'), (self.x_min_wgt, 'value'))
+        widgets.jslink((self.x_min_wgt, 'disabled'), (self.if_xrange_auto, 'value'))
+        widgets.jslink((self.x_max_wgt, 'disabled'), (self.if_xrange_auto, 'value'))
+        widgets.jslink((self.x_step_wgt, 'disabled'), (self.if_xrange_auto, 'value'))
         # x label
         self.if_reset_xlabel = widgets.Checkbox(value=True, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
-        self.if_x_phys_unit = widgets.Checkbox(value=False, description='phys unit;  ', layout={'width': 'initial'}, style={'description_width': 'initial'})
+        self.if_x_phys_unit = widgets.Checkbox(value=convert_xaxis, description='phys unit;  ', layout={'width': 'initial'}, style={'description_width': 'initial'})
         if xlabel is False:
             self._xlabel = None
+            self.if_reset_xlabel.value = False
         elif isinstance(xlabel, str):
             self._xlabel = xlabel
         else:
@@ -295,18 +301,22 @@ class Generic2DPlotCtrl(object):
         else:
             self.yconv, yunit = 1.0, data.axes[0].units
         self.y_min_wgt = widgets.BoundedFloatText(value=ymin * self.yconv, min=ymin * self.yconv, max=ymax * self.yconv, step=yinc * self.yconv/2, description='ymin:',
-                                                  continuous_update=False, layout=_items_layout, style={'description_width': 'initial'})
+                                                  disabled=True, layout=_items_layout, style={'description_width': 'initial'})
         self.y_max_wgt = widgets.BoundedFloatText(value=ymax * self.yconv, min=ymin * self.yconv, max=ymax * self.yconv, step=yinc * self.yconv/2, description='ymax:',
-                                                  continuous_update=False, layout=_items_layout, style={'description_width': 'initial'})
-        self.y_step_wgt = widgets.BoundedFloatText(value=yinc * self.yconv, step=yinc * self.yconv, continuous_update=False, description='$\Delta y$:',
+                                                  disabled=True, layout=_items_layout, style={'description_width': 'initial'})
+        self.y_step_wgt = widgets.BoundedFloatText(value=yinc * self.yconv, step=yinc * self.yconv, disabled=True, description='$\Delta y$:',
                                                    layout=_items_layout, style={'description_width': 'initial'})
         widgets.jslink((self.y_min_wgt, 'max'), (self.y_max_wgt, 'value'))
         widgets.jslink((self.y_max_wgt, 'min'), (self.y_min_wgt, 'value'))
+        widgets.jslink((self.y_min_wgt, 'disabled'), (self.if_yrange_auto, 'value'))
+        widgets.jslink((self.y_max_wgt, 'disabled'), (self.if_yrange_auto, 'value'))
+        widgets.jslink((self.y_step_wgt, 'disabled'), (self.if_xrange_auto, 'value'))
         # y label
         self.if_reset_ylabel = widgets.Checkbox(value=True, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
-        self.if_y_phys_unit = widgets.Checkbox(value=False, description='phys unit;  ', layout={'width': 'initial'}, style={'description_width': 'initial'})
+        self.if_y_phys_unit = widgets.Checkbox(value=convert_yaxis, description='phys unit;  ', layout={'width': 'initial'}, style={'description_width': 'initial'})
         if ylabel is False:
             self._ylabel = None
+            self.if_reset_ylabel.value = False
         elif isinstance(ylabel, str):
             self._ylabel = ylabel
         else:
@@ -466,6 +476,7 @@ class Generic2DPlotCtrl(object):
         [self.tab.set_title(i, tt) for i, tt in enumerate(self.tab_contents)]
 
         # plotting and then setting normalization colors
+#         self.vmin_wgt.value, self.vlogmin_wgt.value, self.vmax_wgt.value = vmin, logvmin, vmax
         self.out_main = output_widget or Output()
         self.observer_thrd, self.cb = None, None
 #         if not fig:
@@ -473,11 +484,9 @@ class Generic2DPlotCtrl(object):
         with self.out_main:
             self.fig = fig or plt.figure(figsize=[width, height], constrained_layout=True)
             self.ax = ax or self.fig.add_subplot(111)
-            self.im, self.cb = self.plot_data()
+            self.im, self.cb = self.plot_data(vminmax_from_widget=True)
 #             vmin, vmax = self.__get_vminmax(from_widgets=True)
-            self.im.set_clim(vmin, vmax)
-        # cannot get the axes ticks formatter here because the figure may not have been shown
-        self.xfmttr, self.yfmttr = None, None
+#             self.im.set_clim(vmin, vmax)
 #             plt.show()
         self.axx, self.axy, self._xlineouts, self._ylineouts, self.im2 = None, None, {}, {}, []
 
@@ -518,8 +527,8 @@ class Generic2DPlotCtrl(object):
         self.ct_plot_btn.on_click(self._add_contour_plot)
         self.ct_if_clabel.observe(self._on_clabel_toggle, 'value')
         self.ct_method.observe(self._on_ct_method_change, 'value')
-
-        self.vmin_wgt.value, self.vlogmin_wgt.value, self.vmax_wgt.value = vmin, logvmin, vmax
+        self.if_xrange_auto.observe(self.reset_xrange_step, 'value')
+        self.if_yrange_auto.observe(self.reset_yrange_step, 'value')
 
     @property
     def widgets_list(self):
@@ -544,27 +553,47 @@ class Generic2DPlotCtrl(object):
         self.__update_ylabel({'new': True})
 
     def reset_plot_area(self):
-        self.x_min_wgt.value, self.x_max_wgt.value, xstep, \
-        self.y_min_wgt.value, self.y_max_wgt.value, ystep = self.__get_xy_minmax_delta()
+        self.x_min_wgt.min, self.x_max_wgt.max, xstep, \
+        self.y_min_wgt.min, self.y_max_wgt.max, ystep = self.__get_xy_minmax_delta()
+        self.x_min_wgt.value, self.x_max_wgt.value, self.y_min_wgt.value, self.y_max_wgt.value = \
+        self.x_min_wgt.min, self.x_max_wgt.max, self.y_min_wgt.min, self.y_max_wgt.max
         self.x_step_wgt.value, self.y_step_wgt.value = xstep / 2, ystep / 2
         self.__destroy_all_xlineout()
         self.__destroy_all_ylineout()
         self._ct_destroy_all()
 
-    def redraw(self, data=None, update_vminmax=False):
-        if data:
+    def redraw(self, data=None, update_vminmax=False, newfile=False):
+        # set new extent if necessary
+        if newfile:
+            no_need_to_update = np.allclose((self._data.axes[0].min, self._data.axes[0].max, self._data.axes[1].min, self._data.axes[1].max),
+                                            (data.axes[0].min, data.axes[0].max, data.axes[1].min, data.axes[1].max))
+            no_need_to_update = False
+        if data is not None:
             self._data = data
         if self.pltfunc is osh5vis.osimshow:
             "if the size of the data is the same we can just redraw part of figure"
-            processed_data = self.__pp(data[self._slcs]).view(np.ndarray)
+            processed_data = self.__pp(self._data[self._slcs]).view(np.ndarray)
             self.im.set_data(processed_data)
+            if newfile and (not no_need_to_update):
+                xvmm, yvmm = (None, None) if self.if_xrange_auto.value else self.ax.get_xbound(), (None, None) if self.if_yrange_auto.value else self.ax.get_ybound()
+                xmm, _, ymm, _ = osh5vis.get_extent_and_unit(data[self._slcs], convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value)
+                Generic2DPlotCtrl.update_axis_units('xy', self, (xmm[0], xmm[1], ymm[0], ymm[1]), xconv=self.xconv, yconv=self.yconv)
+                self.ax.set_xbound(xmm)
+                self.ax.set_ybound(ymm)
+                self.fig.canvas.toolbar.update()
+                self.fig.canvas.toolbar.push_current()
+                # zoom-in, back to previous view
+                self.ax.set_xbound(xvmm)
+                self.ax.set_ybound(yvmm)
             if update_vminmax:
-                vmin = np.min(processed_data) if self.if_vmin_auto.value else None
-                vmax = np.max(processed_data) if self.if_vmax_auto.value else None
-                if vmin is not None:
-                    self.current_vmin = vmin
-                if vmax is not None:
-                    self.vmax_wgt.value = vmax
+                self.__handle_lognorm()
+                vmin, vmax = self.__get_vminmax(from_widgets=True)
+#                 vmin = np.min(processed_data) if self.if_vmin_auto.value else None
+#                 vmax = np.max(processed_data) if self.if_vmax_auto.value else None
+#                 if vmin is not None:
+#                     self.current_vmin = vmin
+#                 if vmax is not None:
+#                     self.vmax_wgt.value = vmax
                 self.im.set_clim(vmin, vmax)
             self.fig.canvas.draw_idle()
         else:
@@ -602,6 +631,14 @@ class Generic2DPlotCtrl(object):
             # this dosen't work in all scenarios. it could be a bug in matplotlib/jupyterlab
             self.fig.set_size_inches(self.figwidth.value, self.figheight.value)
 
+    def register_callbacks(self, others):
+        keys = self.callbacks.keys()
+        for k in others.keys():
+            if k in keys:
+                self.callbacks[k] += others[k]
+            else:
+                self.callbacks[k] = others[k]
+
     def replot_axes(self):
 #         self.fig.delaxes(self.ax)
 # #         self.fig.clear()
@@ -615,15 +652,27 @@ class Generic2DPlotCtrl(object):
 #         self.fig.subplots_adjust()  # does not compatible with constrained_layout in Matplotlib 3.0
 
     def __get_xy_minmax_delta(self):
-        return (float('%.2g' % self._data.axes[1].min), float('%.2g' % self._data.axes[1].ax.max()), float('%.2g' % self._data.axes[1].increment),
-                float('%.2g' % self._data.axes[0].min), float('%.2g' % self._data.axes[0].ax.max()), float('%.2g' % self._data.axes[0].increment))
+#         return (float('%.2g' % self._data.axes[1].min), float('%.2g' % self._data.axes[1].ax.max()), float('%.2g' % self._data.axes[1].increment),
+#                 float('%.2g' % self._data.axes[0].min), float('%.2g' % self._data.axes[0].ax.max()), float('%.2g' % self._data.axes[0].increment))
+        return (self._data.axes[1].min, self._data.axes[1].ax.max(), self._data.axes[1].increment,
+                self._data.axes[0].min, self._data.axes[0].ax.max(), self._data.axes[0].increment)
 
     def _update_xy_minmaxstep_wgt(self, d):
         xmin, xmax, xstep, ymin, ymax, ystep = self.__get_xy_minmax_delta()
-        if d == 'x':
-            self.x_min_wgt.value, self.x_max_wgt.value, self.x_step_wgt.value = xmin * self.xconv, xmax * self.xconv, xstep * self.xconv * 0.5
-        else:
-            self.y_min_wgt.value, self.y_max_wgt.value, self.y_step_wgt.value = ymin * self.yconv, ymax * self.yconv, ystep * self.yconv * 0.5
+        if 'x' in d:
+            self.x_min_wgt.min, self.x_max_wgt.max, self.x_step_wgt.value = xmin * self.xconv, xmax * self.xconv, xstep * self.xconv * 0.5
+            self.x_min_wgt.value, self.x_max_wgt.value = self.x_min_wgt.min, self.x_max_wgt.max
+        if 'y' in d:
+            self.y_min_wgt.min, self.y_max_wgt.max, self.y_step_wgt.value = ymin * self.yconv, ymax * self.yconv, ystep * self.yconv * 0.5
+            self.y_min_wgt.value, self.y_max_wgt.value = self.y_min_wgt.min, self.y_max_wgt.max
+
+    def reset_xrange_step(self, change):
+        if change['new']:
+            self._update_xy_minmaxstep_wgt('x')
+
+    def reset_yrange_step(self, change):
+        if change['new']:
+            self._update_xy_minmaxstep_wgt('y')
 
     def update_plot_area(self, *_):
         bnd = [(self.y_min_wgt.value / self.yconv, self.y_max_wgt.value / self.yconv, self.y_step_wgt.value / self.yconv),
@@ -645,12 +694,15 @@ class Generic2DPlotCtrl(object):
         newtab = [tmp[i] if not t else t for i, t in enumerate(update_list)]
         self.tab.children = tuple(newtab)
 
-    def plot_data(self, **passthrough):
+    def current_norm(self, vminmax_from_widget=False):
+        return self.norm_selector.value[0](**self.__get_norm(vminmax_from_widget=vminmax_from_widget))
+
+    def plot_data(self, vminmax_from_widget=False, **passthrough):
         ifcolorbar = passthrough.pop('colorbar', self.colorbar.value)
         return self.pltfunc(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
-                            norm=self.norm_selector.value[0](**self.__get_norm()), title=self.get_plot_title(),
+                            norm=self.current_norm(vminmax_from_widget), title=self.get_plot_title(),
                             xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
-                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar,
+                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar, 
                             convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value, **passthrough)
 
     def self_destruct(self, *_):
@@ -682,10 +734,11 @@ class Generic2DPlotCtrl(object):
         else:
             return (float(l[1]), )
 
-    def update_lineouts(self, dim='xy', description_only=False):
+    def update_lineouts(self, dim='xy', description_only=False, xconv=None, yconv=None):
         # update x lineouts/analysis
         if 'x' in dim:
             vminl, vmaxl = [], []
+            xaxis = self._data[self._slcs].axes[1].ax
             for wgt in self.xlineout_list_wgt.children:
                 cpk, nw = wgt.children
                 params = self.extract_lineout_params(nw.tooltip)
@@ -693,12 +746,14 @@ class Generic2DPlotCtrl(object):
                     data, posstr, _ = self._get_xana_data_descr(*params, description_only=description_only)
                 else:
                     data, posstr, _ = self.get_xlineout_data_and_index(params[0])
+                cpk.description = posstr
                 if description_only:
-                    cpk.description = posstr
-                else:
-                    self._xlineouts[cpk].set_ydata(data)
-                    vminl.append(np.min(data)[0])
-                    vmaxl.append(np.max(data)[0])
+                    continue
+                self._xlineouts[cpk].set_ydata(data)
+                vminl.append(np.min(data)[0])
+                vmaxl.append(np.max(data)[0])
+                if xconv is not None:
+                    self._xlineouts[cpk].set_xdata(xconv * xaxis)
             if (not description_only) and len(self.xlineout_list_wgt.children) != 0:
                 vmin, vmax = self.__get_vminmax()
                 vmin, vmax = vmin if vmin else np.min(vminl), vmax if vmax else np.max(vmaxl)
@@ -708,6 +763,7 @@ class Generic2DPlotCtrl(object):
         # update y lineouts/analysis
         if 'y' in dim:
             vminl, vmaxl = [], []
+            yaxis = self._data[self._slcs].axes[0].ax
             for wgt in self.ylineout_list_wgt.children:
                 cpk, nw = wgt.children
                 params = self.extract_lineout_params(nw.tooltip)
@@ -715,12 +771,14 @@ class Generic2DPlotCtrl(object):
                     data, posstr, _ = self._get_yana_data_descr(*params, description_only=description_only)
                 else:
                     data, posstr, _ = self.get_ylineout_data_and_index(params[0])
+                cpk.description = posstr
                 if description_only:
-                    cpk.description = posstr
-                else:
-                    self._ylineouts[cpk].set_xdata(data)
-                    vminl.append(np.min(data)[0])
-                    vmaxl.append(np.max(data)[0])
+                    continue
+                self._ylineouts[cpk].set_xdata(data)
+                vminl.append(np.min(data)[0])
+                vmaxl.append(np.max(data)[0])
+                if yconv is not None:
+                    self._ylineouts[cpk].set_ydata(yconv * yaxis)
             if (not description_only) and len(self.ylineout_list_wgt.children) != 0:
                 vmin, vmax = self.__get_vminmax()
                 vmin, vmax = vmin if vmin else np.min(vminl), vmax if vmax else np.max(vmaxl)
@@ -747,37 +805,85 @@ class Generic2DPlotCtrl(object):
     def _on_clabel_toggle(self, change):
         self.ct_if_inline_clabel.disabled = not change['new']
 
+    @staticmethod
+    def update_axis_units(dim, thisclass, ext, xconv=None, yconv=None, xunit=None, yunit=None, xconv_now=None, yconv_now=None):
+        if xconv_now is not None:
+            thisclass.xconv = xconv_now
+        if yconv_now is not None:
+            thisclass.yconv = yconv_now
+        thisclass.im.set_extent(ext)
+        #TODO: contour/contourf do not have set_extent?? Have to reconstruct from scratch
+        thisclass.update_contours()
+        thisclass._update_xy_minmaxstep_wgt(d=dim)
+        thisclass.update_lineouts(dim=dim, xconv=xconv, yconv=yconv)
+        if 'x' in dim:
+            if thisclass.if_reset_xlabel.value and xunit is not None:
+                thisclass._xlabel = osh5vis.axis_format(thisclass._data.axes[1].long_name, xunit)
+                # toggle the reset checkbox
+                thisclass.if_reset_xlabel.value = False
+                thisclass.if_reset_xlabel.value = True
+        if 'y' in dim:
+            if thisclass.if_reset_ylabel.value and yunit is not None:
+                thisclass._ylabel = osh5vis.axis_format(thisclass._data.axes[0].long_name, yunit)
+                # toggle the reset checkbox
+                thisclass.if_reset_ylabel.value = False
+                thisclass.if_reset_ylabel.value = True
+
     def _update_xconverter(self, change):
-        if self.xfmttr is None:
-            self.xfmttr = self.ax.xaxis.get_major_formatter()
         if change['new']:
-            self.xconv, xunit = self._data.axes[1].punit_convert_factor()
+            xconv, xunit = self._data.axes[1].punit_convert_factor()
         else:
-            self.xconv, xunit = 1.0, self._data.axes[1].units
-        self.ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: self.xfmttr(x*self.xconv, pos)))
-        self._update_xy_minmaxstep_wgt(d='x')
-        self.update_lineouts(dim='y', description_only=True)
-        if self.if_reset_xlabel.value:
-            self._xlabel = osh5vis.axis_format(self._data.axes[1].long_name, xunit)
-            # toggle the reset checkbox
-            self.if_reset_xlabel.value = False
-            self.if_reset_xlabel.value = True
+            xconv, xunit = 1.0, self._data.axes[1].units
+        if xconv == self.xconv:
+            return
+        else:
+            self.xconv, xconv = xconv, self.xconv
+            xconv = 1./xconv if self.xconv == 1.0 else self.xconv
+        data = self._data[self._slcs]
+        xmm, _, ymm, _ = osh5vis.get_extent_and_unit(data, convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value)
+        xvmm, yvmm = self.ax.get_xbound(), self.ax.get_ybound()
+        # set new extent, zoom out to full scale, update it as the "home view"
+        #TODO: there might be finer control over the view if we dig deeper into matplotlib interactive backend
+        #      but I don't know how stable those APIs are.
+        Generic2DPlotCtrl.update_axis_units('x', self, (xmm[0], xmm[1], ymm[0], ymm[1]), xconv=self.xconv, xunit=xunit)
+        shared = self.callbacks.get('sharedx', tuple())
+        for w in shared:
+            Generic2DPlotCtrl.update_axis_units('x', w, (xmm[0], xmm[1], ymm[0], ymm[1]), xconv=self.xconv, xunit=xunit, xconv_now=self.xconv)
+        self.ax.set_xbound(xmm)
+        self.ax.set_ybound(ymm)
+        self.fig.canvas.toolbar.update()
+        self.fig.canvas.toolbar.push_current()
+        # zoom-in, back to previous view
+        self.ax.set_xbound((xvmm[0] * xconv, xvmm[1] * xconv))
+        self.ax.set_ybound(yvmm)
 
     def _update_yconverter(self, change):
-        if self.yfmttr is None:
-            self.yfmttr = self.ax.yaxis.get_major_formatter()
         if change['new']:
-            self.yconv, yunit = self._data.axes[0].punit_convert_factor()
+            yconv, yunit = self._data.axes[0].punit_convert_factor()
         else:
-            self.yconv, yunit = 1.0, self._data.axes[0].units
-        self.ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, pos: self.yfmttr(y*self.yconv, pos)))
+            yconv, yunit = 1.0, self._data.axes[0].units
+        if yconv == self.yconv:
+            return
+        else:
+            self.yconv, yconv = yconv, self.yconv
+            yconv = 1./yconv if self.yconv == 1.0 else self.yconv
+        data = self._data[self._slcs]
+        xmm, _ = osh5vis.get_x_extent_and_unit(data, convert_xaxis=self.if_x_phys_unit.value)
+        ymm, _ = osh5vis.get_y_extent_and_unit(data, convert_yaxis=self.if_y_phys_unit.value)
+        xvmm, yvmm = self.ax.get_xbound(), self.ax.get_ybound()
+        Generic2DPlotCtrl.update_axis_units('y', self, (xmm[0], xmm[1], ymm[0], ymm[1]), yconv=self.yconv, yunit=yunit)
+        shared = self.callbacks.get('sharedy', tuple())
+        for w in shared:
+            Generic2DPlotCtrl.update_axis_units('y', w, (xmm[0], xmm[1], ymm[0], ymm[1]), yconv=self.yconv, yunit=yunit, yconv_now=self.yconv)
+        self.ax.set_xbound(xmm)
+        self.ax.set_ybound(ymm)
+        self.fig.canvas.toolbar.update()
+        self.fig.canvas.toolbar.push_current()
+        # zoom-in, back to previous view
+        self.ax.set_ybound((yvmm[0] * yconv, yvmm[1] * yconv))
+        self.ax.set_xbound(xvmm)
         self._update_xy_minmaxstep_wgt(d='y')
-        self.update_lineouts(dim='x', description_only=True)
-        if self.if_reset_ylabel.value:
-            self._ylabel = osh5vis.axis_format(self._data.axes[0].long_name, yunit)
-            # toggle the reset checkbox
-            self.if_reset_ylabel.value = False
-            self.if_reset_ylabel.value = True
+        self.update_lineouts(dim='y', yconv=yconv)
 
     def _on_ct_auto_color_wgt_change(self, change):
         if change['new'] == 'colormap':
@@ -869,9 +975,11 @@ class Generic2DPlotCtrl(object):
             kwargs.update(self._extract_ct_kwargs_from_wgt())
         if pltfunc == 'contour':
             im2, _ = osh5vis.oscontour(self.__pp(self._data[self._slcs]), ax=self.ax, fig=self.fig, colorbar=False,
+                                       convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value,
                                        xlabel=False, ylabel=False, title=False, **kwargs)
         else:
             im2, _ = osh5vis.oscontourf(self.__pp(self._data[self._slcs]), ax=self.ax, fig=self.fig, colorbar=False,
+                                        convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value,
                                         xlabel=False, ylabel=False, title=False, **kwargs)
         kwargs['levels'] = im2.levels
         # have to set_alpha after the plot, otherwise alpha value cannot be updated later (not sure why)
@@ -1057,7 +1165,8 @@ class Generic2DPlotCtrl(object):
             self.axx = self.ax.twinx()
             self.__update_twinx_scale()
         # plot
-        xlineout = osh5vis.osplot1d(data, ax=self.axx, xlabel='', ylabel='', title='')[0]
+        xlim = self.ax.get_xlim()
+        xlineout = osh5vis.osplot1d(data, convert_xaxis=self.if_x_phys_unit.value, ax=self.axx, xlim=xlim, xlabel='', ylabel='', title='')[0]
         # add widgets (color picker + delete button)
         nw = _get_delete_btn(tp)
         nw.on_click(self.__remove_xlineout)
@@ -1138,7 +1247,8 @@ class Generic2DPlotCtrl(object):
             self.axy = self.ax.twiny()
             self.__update_twiny_scale()
         # plot
-        ylineout = osh5vis.osplot1d(data, ax=self.axy, xlabel='', ylabel='', title='', transpose=True)[0]
+        ylim = self.ax.get_ylim()
+        ylineout = osh5vis.osplot1d(data, convert_xaxis=self.if_y_phys_unit.value, ax=self.axy, xlim=ylim, xlabel='', ylabel='', title='', transpose=True)[0]
         # add widgets (color picker + delete button)
         nw = _get_delete_btn(tp)
         nw.on_click(self.__remove_ylineout)
@@ -1171,18 +1281,36 @@ class Generic2DPlotCtrl(object):
             #TDDO: a walkaround for a strange behavior of constrained_layout, should be removed in the future
             self.axy.set_ylabel('')
 
-    def __handle_lognorm(self):
+    def __sample_rate_for_vminmax(self):
         s = self._data.shape
-        dx, dy = 10 if s[1] > 200 else 1, 10 if s[0] > 200 else 1
-        v = self._data.values[::dy, ::dx]
+        return 10 if s[1] > 200 else 1, 10 if s[0] > 200 else 1
+
+    def __handle_lognorm(self):
+        dx, dy = self.__sample_rate_for_vminmax()
+        if self.if_vmin_auto.value or self.if_vmax_auto.value:
+            v = self._data.values[::dy, ::dx]
         if self.norm_selector.value[0] == LogNorm:
             self.__pp = np.abs
-            self.vlogmin_wgt.value, self.vmax_wgt.value = np.min(np.abs(v[v!=0])), np.max(np.abs(v))
-#             vmin, _ = self.__get_vminmax()
-#             self.__assgin_valid_vmin(v=vmin)
+            if self.if_vmin_auto.value or self.if_vmax_auto.value:
+                logv = v[v!=0]
+                if np.size(logv) > 0:
+                    vmin, vmax = np.min(np.abs(logv)), np.max(np.abs(v))
+                else:
+                    vmin, vmax = self.eps, np.max(np.abs(v))
+                if self.if_vmin_auto.value or self.vlogmin_wgt.value <= 0:
+                    self.vlogmin_wgt.value = vmin if vmin > 0 else self.eps
+                if self.if_vmax_auto.value or self.vmax_wgt.value <= 0:
+                    self.vmax_wgt.value = vmax
+                if self.vmax_wgt.value <= self.vlogmin_wgt.value:
+                    if self.if_vmax_auto.value:
+                        self.vmax_wgt.value = vmax if vmax > vmin else vmin + self.eps
+                    if self.if_vmin_auto.value:
+                        self.vlogmin_wgt.value = vmin if vmin > 0 else self.eps
         else:
-            self.vmin_wgt.value, self.vmax_wgt.value = np.min(v), np.max(v)
-#             self.__assgin_valid_vmin()
+            if self.if_vmin_auto.value:
+                self.vmin_wgt.value = np.min(v)
+            if self.if_vmax_auto.value:
+                self.vmax_wgt.value = np.max(v)
             self.__pp = do_nothing
 
     def __update_norm_wgt(self, change):
@@ -1191,7 +1319,6 @@ class Generic2DPlotCtrl(object):
         tmp[0] = self.get_tab_data()
         self.refresh_tab_wgt(tmp)
         self.__handle_lognorm()
-        self.__old_norm = change['old']
 
     @property
     def current_vmin(self):
@@ -1212,23 +1339,29 @@ class Generic2DPlotCtrl(object):
         return osh5vis.axis_format(self._data.axes[comp].long_name, self._data.axes[comp].units)
 
     def update_norm(self, *args):
-        with self.ct_info_output:
-            # only changing clim
-            if self.__old_norm == self.norm_selector.value:
-                if self.pltfunc is osh5vis.osimshow:
-                    vmin, vmax = self.__get_vminmax(from_widgets=True)
-                    self.im.set_clim([vmin, vmax])
-                else:
-                    self._replot_contour()
-            # norm change
+        # only changing clim
+        if self.__old_norm == self.norm_selector.value:
+            if self.pltfunc is osh5vis.osimshow:
+                vmin, vmax = self.__get_vminmax(from_widgets=True)
+                self.im.set_clim([vmin, vmax])
             else:
-                self.__update_xlineout()
-                self.__update_ylineout()
-                self.redraw()
-                self.update_contours()
+                self._replot_contour()
+        # norm change
+        else:
+            self.__old_norm = self.norm_selector.value
+            if self.norm_selector.value[0] == LogNorm:
+                self.im.set_data(self.__pp(self._data[self._slcs]).view(np.ndarray))
+            self.__update_xlineout()
+            self.__update_ylineout()
+            self.im.set_norm(self.current_norm())
+            if self.colorbar.value:
+                #TODO: walkaround for an upstream bug: https://github.com/matplotlib/matplotlib/issues/5424
+                self.im.autoscale()
+                self.cb.update_bruteforce(self.im)
+            self.update_contours()
 
-    def __get_norm(self, vminmax_from_wiget=False):
-        vmin, vmax = self.__get_vminmax(vminmax_from_wiget)
+    def __get_norm(self, vminmax_from_widget=False):
+        vmin, vmax = self.__get_vminmax(from_widgets=vminmax_from_widget)
         param = {'vmin': vmin, 'vmax': vmax, 'clip': self.if_clip_cm.value}
         if self.norm_selector.value[0] == PowerNorm:
             param['gamma'] = self.gamma.value
@@ -1237,12 +1370,14 @@ class Generic2DPlotCtrl(object):
             param['linscale'] = self.linscale.value
         return param
 
-    def __assgin_valid_vmin(self, v=None):
-        # if it is log scale
-        if self.norm_selector.value[0] == LogNorm:
-            self.vlogmin_wgt.value = self.eps if v is None or v < self.eps else v
-        else:
-            self.vmin_wgt.value = np.min(self.__pp(self._data[self._slcs])) if v is None else v
+#     def __assgin_valid_vmin(self, v=None):
+#         # if it is log scale
+#         dx, dy = self.__sample_rate_for_vminmax()
+#         a = self._data.values[::dy, ::dx]
+#         if self.norm_selector.value[0] == LogNorm:
+#             self.vlogmin_wgt.value = np.min(np.abs(a[a!=0])) if v is None else v
+#         else:
+#             self.vmin_wgt.value = np.min(a) if v is None else v
 
     def __add_colorbar(self):
         clb = self.cbar.value
@@ -1262,7 +1397,8 @@ class Generic2DPlotCtrl(object):
 
     def __update_vmin(self, _change):
         if self.if_vmin_auto.value:
-            self.__assgin_valid_vmin()
+#             self.__assgin_valid_vmin()
+            self.__handle_lognorm()
             self.vmin_wgt.disabled = True
             self.vlogmin_wgt.disabled = True
         else:
@@ -1271,7 +1407,8 @@ class Generic2DPlotCtrl(object):
 
     def __update_vmax(self, _change):
         if self.if_vmax_auto.value:
-            self.vmax_wgt.value = np.max(self.__pp(self._data[self._slcs]))
+#             self.vmax_wgt.value = np.max(self.__pp(self._data[self._slcs]))
+            self.__handle_lognorm()
             self.vmax_wgt.disabled = True
         else:
             self.vmax_wgt.disabled = False
@@ -1422,7 +1559,7 @@ class Slicer(Generic2DPlotCtrl):
         self.x = index['new']
         self.__update_axis_value()
         self.slcs[self.comp] = self.x
-        self.redraw(self.data[tuple(self.slcs)])
+        self.redraw(data=self.data[tuple(self.slcs)])
         if self.if_pos_in_title.value:
             self.update_title()
 
@@ -1633,7 +1770,7 @@ class DirSlicer(Generic2DPlotCtrl):
         self.file_slider.description = os.path.basename(self.flist[change['new']])
         self.data = self.processing(osh5io.read_h5(self.flist[change['new']]))
         self.time_label.value = osh5vis.time_format(self.data.run_attrs['TIME'][0], self.data.run_attrs['TIME UNITS'])
-        self.redraw(self.data, update_vminmax=True)
+        self.redraw(data=self.data, update_vminmax=True, newfile=True)
         self.update_lineouts()
         self.update_contours()
         if self.if_show_time.value:
@@ -1673,6 +1810,33 @@ class MultiPanelCtrl(object):
         self.worker = [w(d, output_widget=self.out, fig=self.fig, ax=ax, xlabel=xlb, ylabel=ylb, onDestruction=dstr, **wkw, **kwargs)
                        for w, d, ax, xlb, ylb, wkw in zip(workers, data_list, self.ax, xlabel, ylabel, worker_kw_list)]
         data_namelist = [s.get_dataname() for s in self.worker]
+        # register callbacks for shared axes
+        if str(sharex).lower() in ('true', 'all'):
+            for i, w in enumerate(self.worker):
+                w.register_callbacks({'sharedx': self.worker[:i] + self.worker[i+1:]})
+            for w in self.worker:
+                widgets.jslink((self.worker[0].if_xrange_auto, 'value'), (w.if_xrange_auto, 'value'))
+        elif str(sharex).lower() == 'col':
+            for i, w in enumerate(self.worker):
+                col, row = i % self.ncols, i // self.ncols
+                sel = self.worker[col::self.ncols]
+                w.register_callbacks({'sharedx': sel[:row] + sel[row+1:]})
+            for i in range(self.ncols):
+                for j in range(1, self.nrows):
+                    widgets.jslink((self.worker[i].if_xrange_auto, 'value'), (self.worker[i+self.ncols*j].if_xrange_auto, 'value'))
+        if str(sharey).lower() in ('true', 'all'):
+            for i, w in enumerate(self.worker):
+                w.register_callbacks({'sharedy': self.worker[:i] + self.worker[i+1:]})
+            for w in self.worker:
+                widgets.jslink((self.worker[0].if_yrange_auto, 'value'), (w.if_yrange_auto, 'value'))
+        elif str(sharey).lower() == 'row':
+            for i, w in enumerate(self.worker):
+                col, row = i % self.ncols, i // self.ncols
+                sel = self.worker[row * self.ncols : (row + 1) * self.ncols]
+                w.register_callbacks({'sharedy': sel[:col] + sel[col+1:]})
+            for i in range(self.nrows):
+                for j in range(1, self.ncols):
+                    widgets.jslink((self.worker[i*self.ncols].if_yrange_auto, 'value'), (self.worker[i*self.ncols+j].if_yrange_auto, 'value'))
         # adding the index in front to make sure all button names are unique (otherwise the selection wouldn't be highlighted properly)
         if len(data_namelist) > len(set(data_namelist)):
             data_namelist = [str(i+1)+'.'+s for i, s in enumerate(data_namelist)]
@@ -1687,13 +1851,6 @@ class MultiPanelCtrl(object):
         self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle, ', style={'description_width': 'initial'})
         self.time_in_phys_unit = widgets.Checkbox(value=False, description='time in physical unit', style={'description_width': 'initial'})
         self.suptitle = widgets.HBox([self.suptitle_wgt, self.time_in_suptitle, self.time_in_phys_unit])
-        #TODO: some axes setting should be shared (using widgets.jslink maybe) among different panels
-        # disable resize widgets to avoid bugs
-        if sharex or sharey:
-            for s in self.worker:
-                s.x_min_wgt.disabled, s.y_min_wgt.disabled, s.x_max_wgt.disabled, s.y_max_wgt.disabled, \
-                s.x_step_wgt.disabled, s.y_step_wgt.disabled = (True,) * 6
-        # link widget events
         self.tb.observe(self.show_corresponding_tab, 'index')
         self.suptitle_wgt.observe(self.update_suptitle, 'value')
         self.time_in_suptitle.observe(self.update_suptitle, 'value')

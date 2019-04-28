@@ -115,24 +115,36 @@ def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', use_grids
     return cb
 
 
-def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
-               colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, fig=None,
-               convert_tunit=False, wavelength=0.351, colorbar_kw=None, **kwpassthrough_plotting):
+def get_extent_and_unit(h5data, convert_xaxis=False, convert_yaxis=False, wavelength=0.351):
+    return (*get_x_extent_and_unit(h5data, convert_xaxis=convert_xaxis, wavelength=wavelength),
+            *get_y_extent_and_unit(h5data, convert_yaxis=convert_yaxis, wavelength=wavelength))
+
+
+def get_x_extent_and_unit(h5data, convert_xaxis=False, wavelength=0.351):
     if convert_xaxis:
-        axis = h5data.axes[1].to_phys_unit(wavelength=wavelength)
-        extx = axis[0].min(), axis[0].max()
-        xunit = axis[1]
+        axis, xunit = h5data.axes[1].to_phys_unit(wavelength=wavelength)
+        extx = axis.min(), axis.max()
     else:
         extx = h5data.axes[1].ax.min(), h5data.axes[1].ax.max()
         xunit = h5data.axes[1].attrs['UNITS']
+    return extx, xunit
 
+
+def get_y_extent_and_unit(h5data, convert_yaxis=False, wavelength=0.351):
     if convert_yaxis:
-        axis = h5data.axes[0].to_phys_unit(wavelength=wavelength)
-        exty = axis[0].min(), axis[0].max()
-        yunit = axis[1]
+        axis, yunit = h5data.axes[0].to_phys_unit(wavelength=wavelength)
+        exty = axis.min(), axis.max()
     else:
         exty = h5data.axes[0].ax.min(), h5data.axes[0].ax.max()
         yunit = h5data.axes[0].attrs['UNITS']
+    return exty, yunit
+
+
+def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, title=None, xlim=None, ylim=None, clim=None,
+               colorbar=True, ax=None, im=None, cb=None, convert_xaxis=False, convert_yaxis=False, fig=None,
+               convert_tunit=False, wavelength=0.351, colorbar_kw=None, **kwpassthrough_plotting):
+    extx, xunit = get_x_extent_and_unit(h5data, convert_xaxis=convert_xaxis, wavelength=wavelength)
+    exty, yunit = get_y_extent_and_unit(h5data, convert_yaxis=convert_yaxis, wavelength=wavelength)
     # not a very good idea, we should have a better way to do this
     if len(args) > 0 and type(h5data) == type(args[0]):  # it is a vector field we are plotting
         fld2, if_vector_field = args[0], True
@@ -172,9 +184,9 @@ def __set_axes_labels_and_title_2d(h5data, xunit, yunit, ax=None, convert_tunit=
             ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
 
     if xlim is not None:
-        set_xlim(xlim)
+        set_xlim(xlim, auto=True)
     if ylim is not None:
-        set_ylim(ylim)
+        set_ylim(ylim, auto=True)
     if xlabel is None:
         xlabel = axis_format(h5data.axes[1].attrs['LONG_NAME'], xunit)
     if ylabel is None:
