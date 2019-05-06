@@ -10,7 +10,16 @@ import osh5io
 import glob
 from scipy import signal
 from scipy import ndimage
+# use pyFFTW for fft if available
+try:
+    import pyfftw.interfaces.numpy_fft as fftmod
+    import pyfftw.interfaces.cache as fftcache
+except ImportError:
+    import numpy.fft as fftmod
+# import numpy.fft as fftmod
 
+
+utils_cache = {}
 
 def metasl(func=None, axes=None, unit=None):
     """save meta data before calling the function and restore them to output afterwards
@@ -272,7 +281,7 @@ def _update_fft_axes(axes, idx, shape, omitlast, ffunc):
     for i in idx[:-1]:
         __update_axes_label(axes, i)
         axes[i].attrs['shift'] = axes[i].min  # save lower bound. value of axes
-        axes[i].ax = np.fft.fftshift(np.fft.fftfreq(shape[i], d=axes[i].increment)) * 2 * np.pi
+        axes[i].ax = fftmod.fftshift(fftmod.fftfreq(shape[i], d=axes[i].increment)) * 2 * np.pi
     # the last dimension needs special care for rfft
     i = idx[-1]
     __update_axes_label(axes, i)
@@ -280,7 +289,7 @@ def _update_fft_axes(axes, idx, shape, omitlast, ffunc):
     if omitlast:
         axes[i].ax = ffunc(shape[i], d=axes[i].increment) * 2 * np.pi
     else:
-        axes[i].ax = np.fft.fftshift(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
+        axes[i].ax = fftmod.fftshift(ffunc(shape[i], d=axes[i].increment)) * 2 * np.pi
 
 
 @__try_update_axes
@@ -321,64 +330,64 @@ def _get_ifft_axis(n, d=1.0, min=0.0):
 
 def __ft_interface(ftfunc, forward, omitlast):
     @metasl
-    def ft_interface(a, s, axes, norm):
+    def ft_interface(a, s, axes, norm, **kwargs):
         # call fft and shift the result
         shftax = axes[:-1] if omitlast else axes
         if forward:
-            return np.fft.fftshift(ftfunc(a, s, axes, norm), shftax)
+            return fftmod.fftshift(ftfunc(a, s, axes, norm, **kwargs), shftax)
         else:
-            return ftfunc(np.fft.ifftshift(a, shftax), s, axes, norm)
+            return ftfunc(fftmod.ifftshift(a, shftax), s, axes, norm, **kwargs)
     return ft_interface
 
 
 def __shifted_ft_gen(ftfunc, forward, omitlast, ffunc, uafunc):
-    def shifted_fft(a, s=None, axes=None, norm=None):
+    def shifted_fft(a, s=None, axes=None, norm=None, **kwargs):
         shape = s if s is not None else a.shape
-        o = __ft_interface(ftfunc, forward=forward, omitlast=omitlast)(a, s=s, axes=axes, norm=norm)
+        o = __ft_interface(ftfunc, forward=forward, omitlast=omitlast)(a, s=s, axes=axes, norm=norm, **kwargs)
         uafunc(o, axes, shape, omitlast, ffunc=ffunc)
         return o
     return shifted_fft
 
 
 # # ========  Normal FFT  ==========
-__shifted_fft = partial(__shifted_ft_gen, forward=True, omitlast=False, ffunc=np.fft.fftfreq, uafunc=_update_fft_axes)
+__shifted_fft = partial(__shifted_ft_gen, forward=True, omitlast=False, ffunc=fftmod.fftfreq, uafunc=_update_fft_axes)
 __shifted_ifft = partial(__shifted_ft_gen, forward=False, omitlast=False, ffunc=_get_ifft_axis, uafunc=_update_ifft_axes)
 
 
 @enhence_num_indexing_kw('axes')
-def fftn(a, s=None, axes=None, norm=None):
-    return __shifted_fft(np.fft.fftn)(a, s=s, axes=axes, norm=norm)
+def fftn(a, s=None, axes=None, norm=None, **kwargs):
+    return __shifted_fft(fftmod.fftn)(a, s=s, axes=axes, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axes')
-def fft2(a, s=None, axes=(-2, -1), norm=None):
-    return __shifted_fft(np.fft.fft2)(a, s=s, axes=axes, norm=norm)
+def fft2(a, s=None, axes=(-2, -1), norm=None, **kwargs):
+    return __shifted_fft(fftmod.fft2)(a, s=s, axes=axes, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axis')
-def fft(a, n=None, axis=-1, norm=None):
-    return __shifted_fft(np.fft.fft)(a, s=n, axes=axis, norm=norm)
+def fft(a, n=None, axis=-1, norm=None, **kwargs):
+    return __shifted_fft(fftmod.fft)(a, s=n, axes=axis, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axes')
-def ifftn(a, s=None, axes=None, norm=None):
-    return __shifted_ifft(np.fft.ifftn)(a, s=s, axes=axes, norm=norm)
+def ifftn(a, s=None, axes=None, norm=None, **kwargs):
+    return __shifted_ifft(fftmod.ifftn)(a, s=s, axes=axes, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axes')
-def ifft2(a, s=None, axes=(-2, -1), norm=None):
-    return __shifted_ifft(np.fft.ifft2)(a, s=s, axes=axes, norm=norm)
+def ifft2(a, s=None, axes=(-2, -1), norm=None, **kwargs):
+    return __shifted_ifft(fftmod.ifft2)(a, s=s, axes=axes, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axis')
-def ifft(a, n=None, axis=-1, norm=None):
+def ifft(a, n=None, axis=-1, norm=None, **kwargs):
     # if axes is None:
     #     axes = -1
-    return __shifted_ifft(np.fft.ifft)(a, s=n, axes=axis, norm=norm)
+    return __shifted_ifft(fftmod.ifft)(a, s=n, axes=axis, norm=norm, **kwargs)
 
 
 # # ========  real FFT  ==========
-__shifted_rfft = partial(__shifted_ft_gen, forward=True, omitlast=True, ffunc=np.fft.rfftfreq, uafunc=_update_fft_axes)
+__shifted_rfft = partial(__shifted_ft_gen, forward=True, omitlast=True, ffunc=fftmod.rfftfreq, uafunc=_update_fft_axes)
 __shifted_irfft = partial(__shifted_ft_gen, forward=False, omitlast=True, ffunc=_get_ifft_axis, uafunc=_update_ifft_axes)
 
 
@@ -413,57 +422,57 @@ def __rss_nd(a, _s, axes):
 
 
 @enhence_num_indexing_kw('axes')
-def rfftn(a, s=None, axes=None, norm=None):
+def rfftn(a, s=None, axes=None, norm=None, **kwargs):
     __save_space_shape(a, s)
-    return __shifted_rfft(np.fft.rfftn)(a, s=s, axes=axes, norm=norm)
+    return __shifted_rfft(fftmod.rfftn)(a, s=s, axes=axes, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axes')
-def rfft2(a, s=None, axes=(-2, -1), norm=None):
+def rfft2(a, s=None, axes=(-2, -1), norm=None, **kwargs):
     __save_space_shape(a, s)
-    return __shifted_rfft(np.fft.rfft2)(a, s=s, axes=axes, norm=norm)
+    return __shifted_rfft(fftmod.rfft2)(a, s=s, axes=axes, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axis')
-def rfft(a, n=None, axis=-1, norm=None):
+def rfft(a, n=None, axis=-1, norm=None, **kwargs):
     __save_space_shape(a, n)
-    return __shifted_rfft(np.fft.rfft)(a, s=n, axes=axis, norm=norm)
+    return __shifted_rfft(fftmod.rfft)(a, s=n, axes=axis, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axes')
-def irfftn(a, s=None, axes=None, norm=None):
+def irfftn(a, s=None, axes=None, norm=None, **kwargs):
     s = __rss_nd(a, s, axes)
-    return __shifted_irfft(np.fft.irfftn)(a, s=s, axes=axes, norm=norm)
+    return __shifted_irfft(fftmod.irfftn)(a, s=s, axes=axes, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axes')
-def irfft2(a, s=None, axes=(-2, -1), norm=None):
+def irfft2(a, s=None, axes=(-2, -1), norm=None, **kwargs):
     s = __rss_2d(a, s, axes)
-    return __shifted_irfft(np.fft.irfft2)(a, s=s, axes=axes, norm=norm)
+    return __shifted_irfft(fftmod.irfft2)(a, s=s, axes=axes, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axis')
-def irfft(a, n=None, axis=-1, norm=None):
+def irfft(a, n=None, axis=-1, norm=None, **kwargs):
     n = __rss_1d(a, n, axis)
-    return __shifted_irfft(np.fft.irfft)(a, s=n, axes=axis, norm=norm)
+    return __shifted_irfft(fftmod.irfft)(a, s=n, axes=axis, norm=norm, **kwargs)
 
 
 # # ========  Hermitian FFT  ==========
-__shifted_hfft = partial(__shifted_ft_gen, forward=True, omitlast=False, ffunc=np.fft.fftfreq, uafunc=_update_fft_axes)
+__shifted_hfft = partial(__shifted_ft_gen, forward=True, omitlast=False, ffunc=fftmod.fftfreq, uafunc=_update_fft_axes)
 __shifted_ihfft = partial(__shifted_ft_gen, forward=False, omitlast=False, ffunc=_get_ihfft_axis, uafunc=_update_ifft_axes)
 
 
 @enhence_num_indexing_kw('axis')
-def hfft(a, n=None, axis=-1, norm=None):
+def hfft(a, n=None, axis=-1, norm=None, **kwargs):
     if n is None:
         n = a.shape[-1] if axis is None else a.shape[axis]
     nn = 2*n - 1 if n % 2 else 2*n - 2
-    return __shifted_hfft(np.fft.hfft)(a, s=nn, axes=axis, norm=norm)
+    return __shifted_hfft(fftmod.hfft)(a, s=nn, axes=axis, norm=norm, **kwargs)
 
 
 @enhence_num_indexing_kw('axis')
-def ihfft(a, n=None, axis=-1, norm=None):
-    return __shifted_ihfft(np.fft.ihfft)(a, s=n, axes=axis, norm=norm)
+def ihfft(a, n=None, axis=-1, norm=None, **kwargs):
+    return __shifted_ihfft(fftmod.ihfft)(a, s=n, axes=axis, norm=norm, **kwargs)
 # ----------------------------------- FFT Wrappers ----------------------------------------
 
 
@@ -524,7 +533,7 @@ def diff(x, n=1, axis=-1):
 
 # ---------------------------------- NumPy Wrappers ---------------------------------------
 
-def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False, iftf=ifftn, inplace=False):
+def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False, iftf=ifftn, inplace=False, **additional_fft_kwargs):
     """decompose a vector field into transverse and longitudinal direction
     fldarr: list of field components in the order of x, y, z
     ffted: If the input fields have been Fourier transformed
@@ -554,7 +563,7 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
 
     def wrap_up(data):
         if idim:
-            return iftf(data, axes=idim)
+            return iftf(data, axes=idim, **additional_fft_kwargs)
         else:
             return data
 
@@ -574,14 +583,14 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     else:
         if inplace:
             for i, fi in enumerate(fldarr):
-                fldarr[i] = ftf(fi)
+                fldarr[i] = ftf(fi, **additional_fft_kwargs)
             fftfld = fldarr
         else:
-            fftfld = [ftf(fi) for fi in fldarr]
+            fftfld = [ftf(fi, **additional_fft_kwargs) for fi in fldarr]
     kv = np.meshgrid(*reversed([x.ax for x in fftfld[0].axes]), sparse=True)
     k2 = sum(ki**2 for ki in kv)  # |k|^2
     k2[k2 == 0.0] = float('inf')
-    kdotfld = np.divide(sum(np.multiply(ki, fi) for ki, fi in zip(kv, fftfld)), k2)
+    kdotfld = np.divide(sum(np.multiply(fi, ki) for ki, fi in zip(kv, fftfld)), k2)
     fL, fT, ft, fl = 0, 0, [], []
     for i, fi in enumerate(fftfld):
         tmp = kdotfld * kv[i]
@@ -731,7 +740,7 @@ def log_Gabor_Filter_2d(w, w0, s0):
     return np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) )
 
 
-def monogenic_signal(data, *args, filter_func=log_Gabor_Filter_2d, ffted=True, ifft=True):
+def monogenic_signal(data, *args, filter_func=log_Gabor_Filter_2d, ffted=True, ifft=True, caching=False, **additional_fft_kwargs):
     """
     Get the monogenic signal of 2D data. This implementation is better suited for intrisically 1D signals.
     read the following articles for more details:
@@ -745,19 +754,36 @@ def monogenic_signal(data, *args, filter_func=log_Gabor_Filter_2d, ffted=True, i
     :return: mongenic signal as a tuple (f, f_R), where f is the filtered orginal signal and f_R is the
              Riesz transform of the filtered signal
     """
+    if data.ndim != 2:
+        raise ValueError('data must be two dimensional')
     ft_data = fft2(data) if not ffted else data
-    w = np.meshgrid(*reversed([x.ax for x in ft_data.axes]), sparse=True)
-    wamp = np.sqrt(np.sum(wi**2 for wi in w))
-    origin = np.where(wamp==0)
-    wamp[origin] = 1.
-    flt = filter_func(wamp, *args)
-    flt[origin] = 0.
-    goc = ft_data * (w[0] * flt * 1j - w[1] * flt) / wamp
+
+    def get_k_k2(_ft_data):
+        w = np.meshgrid(*reversed([x.ax for x in _ft_data.axes]), sparse=True)
+        wamp = np.sqrt(np.sum(wi**2 for wi in w))
+        origin = np.where(wamp==0)
+        wamp[origin] = 1.
+        flt = filter_func(wamp, *args)
+        flt[origin] = 0.
+        wamp = (w[0] * 1j - w[1]) / wamp
+        return wamp, flt
+
+    if caching:
+        k = ('monogenic_signal', ft_data.axes[0].ax[0], ft_data.axes[0].ax[-1], ft_data.axes[0].ax.size,
+             ft_data.axes[1].ax[0], ft_data.axes[1].ax[-1], ft_data.axes[1].ax.size, args)
+        wamp, flt = utils_cache.get(k, (None, None))
+        if wamp is None:
+            wamp, flt = get_k_k2(ft_data)
+            utils_cache[k] = wamp, flt
+    else:
+        wamp, flt = get_k_k2(ft_data)
+
     ge = flt * ft_data
+    goc = ge * wamp
     if ifft:
-        goc = ifft2(goc)
-        ge = ifft2(ge)
-    return np.real(ge), goc
+        goc = ifft2(goc, **additional_fft_kwargs)
+        ge = np.real(ifft2(ge, **additional_fft_kwargs))
+    return ge, goc
 
 
 def monogenic_local_phase(monogenic_signal, **kwargs):
@@ -818,7 +844,8 @@ def monogenic_local_k(monogenic_local_phase, axis=-1, denoise=False, kmax=None):
     r = diff(unwrap(monogenic_local_phase, axis=axis), axis=axis) / monogenic_local_phase.axes[axis].increment
     if denoise:
         if denoise == 'safe':
-            tmp = ndimage.filters.median_filter(r.values, size=3)
+#             tmp = ndimage.filters.median_filter(r.values, size=3)
+            tmp = scipy.signal.medfilt2d(r.values)
             mask = np.abs(r.values) > np.abs(tmp) * 2
             np.copyto(r.values, tmp, where=mask)
         else:
