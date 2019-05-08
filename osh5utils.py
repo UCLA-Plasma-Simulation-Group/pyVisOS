@@ -265,8 +265,7 @@ def __try_update_axes(updfunc):
 
 def __update_axes_label(axes, i):
     if axes[i].attrs['NAME'] == 't' or axes[i].attrs['LONG_NAME'] == 'time' or axes[i].attrs['UNITS'].is_time():
-        axes[i].attrs['LONG_NAME'] = '\omega'
-        axes[i].attrs['NAME'] == 'w'
+        axes[i].attrs['LONG_NAME'], axes[i].attrs['NAME'] = '\omega', 'w'
     else:
         axes[i].attrs['LONG_NAME'] = 'K(' + axes[i].attrs['LONG_NAME'] + ')'
         axes[i].attrs['NAME'] = 'k' + axes[i].attrs['NAME']
@@ -307,8 +306,7 @@ def _update_ifft_axes(axes, idx, shape, _unused, ffunc):
                 warned = True
         axes[i].ax = ffunc(shape[i], d=axes[i].increment, min=xmin)
         if axes[i].attrs['LONG_NAME'] == '\omega' or axes[i].attrs['UNITS'].is_frequency():
-            axes[i].attrs['LONG_NAME'] = 'time'
-            axes[i].attrs['NAME'] = 't'
+            axes[i].attrs['LONG_NAME'], axes[i].attrs['NAME'] = 'time', 't'
         else:
             axes[i].attrs['LONG_NAME'] = axes[i].attrs['LONG_NAME'][2:-1]
             axes[i].attrs['NAME'] = axes[i].attrs['NAME'][1:]
