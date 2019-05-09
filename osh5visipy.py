@@ -24,6 +24,8 @@ print("use `%matplotlib widget' if you are using newer version of matplotlib (3.
 
 
 do_nothing = lambda x : x
+_items_layout = Layout(flex='1 1 auto', width='auto')
+_get_delete_btn = lambda tp : widgets.Button(description='', tooltip='delete %s' % tp, icon='times', layout=Layout(width='32px'))
 
 
 __2dplot_param_doc = """
@@ -103,7 +105,7 @@ def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
             raise NotImplementedError('Unexpected data. Cannot process input parameters')
     else:
         wl = Slicer(data, *args, **kwargs).widgets_list
-    tab, slider = wl[0], widgets.HBox(wl[1:-1])
+    tab, slider = wl[0], widgets.HBox(wl[1:-1], layout=_items_layout)
     if show:
         if slider_only:
             display(slider, wl[-1])
@@ -162,10 +164,6 @@ class FigureManager(object):
     def delete(self, *_):
         plt.close(self.figures[self.selection.value])
         self.refresh_wgt()
-
-
-_items_layout = Layout(flex='1 1 auto', width='auto')
-_get_delete_btn = lambda tp : widgets.Button(description='', tooltip='delete %s' % tp, icon='times', layout=Layout(width='32px'))
 
 
 def _get_downloadable_url(filename):
@@ -1674,21 +1672,22 @@ class SaveMovieManager(object):
             return True
 
     def __encode(self):
-        if self.encoder:
-            try:
+        try:
+            if self.encoder:
                 subprocess.check_output(["ffmpeg", "-framerate", str(self.fps.value),
                                          "-start_number", str(self.frame_range.index[0]),
                                          "-i", self.figdir + '/' + self.basename + '-%06d.png',
                                          '-c:v', self.encoder, *self.known_encoders[self.encoder],
                                          '-y', self.filename.value], stderr=subprocess.STDOUT)
-            except subprocess.CalledProcessError as exc:
+            else:
+                subprocess.check_output(["tar", "-cvzf", self.filename.value] + glob.glob(self.figdir + '/' + self.basename + '-*.png'),
+                                        stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as exc:
                 self.__reset_save_button()
+                self.smm_output.clear_output()
                 with self.smm_output:
                     print(exc.output)
-                return True  # pretty sure this is not how it should work
-        else:
-            with self.smm_output:
-                subprocess.check_output(["tar", "-cvzf", self.filename.value, self.figdir + '/' + self.basename + '-*.png'])
+                return True
 
     def _plot_and_encode(self):
         for i in range(self.frame_range.index[0], self.frame_range.index[1] + 1):
@@ -1706,6 +1705,7 @@ class SaveMovieManager(object):
                     pass
             self.dlink.value, self.dlink.description = _get_downloadable_url(self.filename.value), 'Download:'
         self.__reset_save_button()
+        self.smm_output.clear_output()
 
     def generate_figures(self, *_):
         self.figdir = os.path.abspath(os.path.dirname(self.filename.value)) + '/' + self.basename
@@ -1720,8 +1720,6 @@ class SaveMovieManager(object):
             "Generating Frames", 'Use menu "Kernel --> interrput" to stop', 'info', True
             #TODO: matplotlib is not thread safe so we have to plot in the main thread (need further investigation)
             self._plot_and_encode()
-            with self.smm_output:
-                print(worker.is_alive())
 
         except PermissionError:
             self.savebtn.description, self.savebtn.tooltip, self.savebtn.button_style = \
