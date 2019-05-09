@@ -829,7 +829,11 @@ class Generic2DPlotCtrl(object):
                 thisclass.if_reset_ylabel.value = False
                 thisclass.if_reset_ylabel.value = True
 
+    def get_extent_and_unit(self):
+        return osh5vis.get_extent_and_unit(self._data[self._slcs], convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value)
+
     def _update_xconverter(self, change):
+        #TODO: In general handling share axes this way is combersome. Maybe we should shift all controls to MultiPanelCtrl.
         if change['new']:
             xconv, xunit = self._data.axes[1].punit_convert_factor()
         else:
@@ -839,16 +843,22 @@ class Generic2DPlotCtrl(object):
         else:
             self.xconv, xconv = xconv, self.xconv
             xconv = 1./xconv if self.xconv == 1.0 else self.xconv
-        data = self._data[self._slcs]
-        xmm, _, ymm, _ = osh5vis.get_extent_and_unit(data, convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value)
+        xmm, _, ymm, _ = self.get_extent_and_unit()
         xvmm, yvmm = self.ax.get_xbound(), self.ax.get_ybound()
         # set new extent, zoom out to full scale, update it as the "home view"
         #TODO: there might be finer control over the view if we dig deeper into matplotlib interactive backend
         #      but I don't know how stable those APIs are.
         Generic2DPlotCtrl.update_axis_units('x', self, (xmm[0], xmm[1], ymm[0], ymm[1]), xconv=self.xconv, xunit=xunit)
-        shared = self.callbacks.get('sharedx', tuple())
-        for w in shared:
-            Generic2DPlotCtrl.update_axis_units('x', w, (xmm[0], xmm[1], ymm[0], ymm[1]), xconv=self.xconv, xunit=xunit, xconv_now=self.xconv)
+        sharedx, sharedy, not_shared = self.callbacks.get('sharedx', tuple()), self.callbacks.get('sharedy', tuple()), []
+        for i, w in enumerate(sharedx):
+            _, _, oymm, _ = w.get_extent_and_unit()
+            if w not in sharedy:
+                not_shared.append((i, w.ax.get_ybound()))
+                w.ax.set_ybound(oymm)
+            Generic2DPlotCtrl.update_axis_units('x', w, (xmm[0], xmm[1], oymm[0], oymm[1]), xconv=self.xconv, xunit=xunit, xconv_now=self.xconv)
+            w.if_x_phys_unit.unobserve(w._update_xconverter, 'value')
+            w.if_x_phys_unit.value = change['new']
+            w.if_x_phys_unit.observe(w._update_xconverter, 'value')
         self.ax.set_xbound(xmm)
         self.ax.set_ybound(ymm)
         self.fig.canvas.toolbar.update()
@@ -856,6 +866,8 @@ class Generic2DPlotCtrl(object):
         # zoom-in, back to previous view
         self.ax.set_xbound((xvmm[0] * xconv, xvmm[1] * xconv))
         self.ax.set_ybound(yvmm)
+        for i, v in not_shared:
+            sharedx[i].ax.set_ybound(v)
 
     def _update_yconverter(self, change):
         if change['new']:
@@ -868,13 +880,19 @@ class Generic2DPlotCtrl(object):
             self.yconv, yconv = yconv, self.yconv
             yconv = 1./yconv if self.yconv == 1.0 else self.yconv
         data = self._data[self._slcs]
-        xmm, _ = osh5vis.get_x_extent_and_unit(data, convert_xaxis=self.if_x_phys_unit.value)
-        ymm, _ = osh5vis.get_y_extent_and_unit(data, convert_yaxis=self.if_y_phys_unit.value)
+        xmm, _, ymm, _ = self.get_extent_and_unit()
         xvmm, yvmm = self.ax.get_xbound(), self.ax.get_ybound()
         Generic2DPlotCtrl.update_axis_units('y', self, (xmm[0], xmm[1], ymm[0], ymm[1]), yconv=self.yconv, yunit=yunit)
-        shared = self.callbacks.get('sharedy', tuple())
-        for w in shared:
-            Generic2DPlotCtrl.update_axis_units('y', w, (xmm[0], xmm[1], ymm[0], ymm[1]), yconv=self.yconv, yunit=yunit, yconv_now=self.yconv)
+        sharedx, sharedy, not_shared = self.callbacks.get('sharedx', tuple()), self.callbacks.get('sharedy', tuple()), []
+        for i, w in enumerate(sharedy):
+            oxmm, _, _, _ = w.get_extent_and_unit()
+            if w not in sharedx:
+                not_shared.append((i, w.ax.get_xbound()))
+                w.ax.set_xbound(oxvmm)
+            Generic2DPlotCtrl.update_axis_units('y', w, (oxmm[0], oxmm[1], ymm[0], ymm[1]), yconv=self.yconv, yunit=yunit, yconv_now=self.yconv)
+            w.if_y_phys_unit.unobserve(w._update_yconverter, 'value')
+            w.if_y_phys_unit.value = change['new']
+            w.if_y_phys_unit.observe(w._update_yconverter, 'value')
         self.ax.set_xbound(xmm)
         self.ax.set_ybound(ymm)
         self.fig.canvas.toolbar.update()
@@ -882,8 +900,8 @@ class Generic2DPlotCtrl(object):
         # zoom-in, back to previous view
         self.ax.set_ybound((yvmm[0] * yconv, yvmm[1] * yconv))
         self.ax.set_xbound(xvmm)
-        self._update_xy_minmaxstep_wgt(d='y')
-        self.update_lineouts(dim='y', yconv=yconv)
+        for i, v in not_shared:
+            sharedy[i].ax.set_xbound(v)
 
     def _on_ct_auto_color_wgt_change(self, change):
         if change['new'] == 'colormap':
