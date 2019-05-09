@@ -478,10 +478,10 @@ class H5Data(np.ndarray):
                                               axis=axis, dtype=dtype, out=out, ddof=0, keepdims=keepdims)
 
     def argmax(self, axis=None, out=None):
-        return super(H5Data, self).argmax(axis=axis, out=out)
+        return np.argmax(self.view(np.ndarray), axis=axis, out=out)
 
     def argmin(self, axis=None, out=None):
-        return super(H5Data, self).argmin(axis=axis, out=out)
+        return np.argmin(self.view(np.ndarray), axis=axis, out=out)
 
     def ptp(self, axis=None, out=None):
         return self.__ufunc_with_axis_handled(super(H5Data, self).ptp, axis=axis, out=out)
@@ -641,7 +641,7 @@ class H5Data(np.ndarray):
 
         ind = [slice(None,)] * self.ndim
         for axn, bnd in bound.items():
-            ind[self.index_of(axn)] = bnd
+            ind[self.index_of(axn)] = bnd if isinstance(bnd, slice) else slice(*bnd)
         res = self.loc[tuple(ind)]
         if new:
             return res.copy() if res.base is self else res

@@ -239,6 +239,26 @@ def __parse_func_param(item):
     return item[0], args, kwargs
 
 
+@enhence_num_indexing_kw('axis')
+def argminloc(data, axis=None, out=None):
+    d = data.meta2dict()
+    ax = d['axes'].pop(axis)
+    out = data.argmin(axis=axis, out=out)
+    out = ax[out]
+    out = osh5def.H5Data(out, **d)
+    return out
+
+
+@enhence_num_indexing_kw('axis')
+def argmaxloc(data, axis=None, out=None):
+    d = data.meta2dict()
+    ax = d['axes'].pop(axis)
+    out = data.argmax(axis=axis, out=out)
+    out = ax[out]
+    out = osh5def.H5Data(out, **d)
+    return out
+
+
 # #----------------------------------- FFT Wrappers ----------------------------------------
 # sfunc: for shifting; ffunc: for calculating frequency; ftfunc: for fft the data; uafunc: for updating axes
 #
