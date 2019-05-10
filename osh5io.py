@@ -91,6 +91,7 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
                 run_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
             except IndexError:
                 run_attrs[key] = value.decode('utf-8') if isinstance(value, bytes) else value
+        run_attrs['TIME UNITS'] = OSUnits(run_attrs['TIME UNITS'])
         # attach attributes assigned to the data array to
         #    the H5Data.data_attrs object, remove trivial dimension before assignment
         for key, value in the_data_hdf_object.attrs.items():
@@ -159,7 +160,7 @@ def read_h5_openpmd(filename, path=None):
             meshPath = basePath + data_file.attrs['meshesPath'].decode('utf-8')
             run_attrs = {k.upper(): v for k, v in
                          data_file[basePath].attrs.items()}
-        run_attrs.setdefault('TIME UNITS', r'1 / \omega_p')
+        run_attrs.setdefault('TIME UNITS', OSUnits('1 / \omega_p'))
 
         # read field data
         lname_dict, fldl = {'E1': 'E_x', 'E2': 'E_y', 'E3': 'E_z',
@@ -293,7 +294,7 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
     h5file.attrs['MOVE C'] = [0]
     h5file.attrs['PERIODIC'] = [0]
     h5file.attrs['TIME'] = [0.0]
-    h5file.attrs['TIME UNITS'] = [b'']
+    h5file.attrs['TIME UNITS'] = [b'1 / \omega_p']
     h5file.attrs['TYPE'] = [b'grid']
     h5file.attrs['XMIN'] = [0.0]
     h5file.attrs['XMAX'] = [0.0]
@@ -396,7 +397,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
     h5file.attrs['MOVE C'] = [0]
     h5file.attrs['PERIODIC'] = [0]
     h5file.attrs['TIME'] = [0.0]
-    h5file.attrs['TIME UNITS'] = [b'']
+    h5file.attrs['TIME UNITS'] = [b'1 / \omega_p']
     h5file.attrs['TYPE'] = [b'grid']
     h5file.attrs['XMIN'] = [0.0]
     h5file.attrs['XMAX'] = [0.0]

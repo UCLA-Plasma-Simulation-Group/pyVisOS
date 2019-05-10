@@ -139,7 +139,8 @@ class DataAxis:
 
 
 class OSUnits:
-    name = ['m_e', 'c', '\omega_p', 'e', 'n_0']
+    name = ('m_e', 'c', '\omega_p', 'e', 'n_0')
+    disp_name = ['m_e', 'c', '\omega_p', 'e', 'n_0', 'a.u.']
     xtrnum = re.compile(r"(?<=\^)\d+|(?<=\^{).*?(?=})")
 
     def __init__(self, s):
@@ -174,7 +175,7 @@ class OSUnits:
                         raise KeyError('Unknown unit: ' + re.findall(r'\w+', ss)[0])
 
     def tex(self):
-        return '$' + self.__str__() + '$'
+        return '$' + self.__str__() + '$' if self.__str__() else self.__str__()
 
     def limit_denominator(self, max_denominator=64):
         """call fractions.Fraction.limit_denominator method for each base unit"""
@@ -218,14 +219,14 @@ class OSUnits:
 
     def __str__(self):
         disp = ''.join(['' if p == 0 else n + " " if p == 1 else n + '^{' + str(p) + '} '
-                        for n, p in zip(OSUnits.name, self.power)])
+                        for n, p in zip(OSUnits.disp_name[:-1], self.power)])
         if not disp:
-            return 'a.u.'
+            return OSUnits.disp_name[-1]
         return disp
 
     def __repr__(self):
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
-                        ': ', repr(self.name), '=[', ', '.join([str(fr) for fr in self.power]), ']'])
+                        ': ', repr(self.name), '=(', ', '.join([str(fr) for fr in self.power]), ')'])
 
 
 class _LocIndexer(object):

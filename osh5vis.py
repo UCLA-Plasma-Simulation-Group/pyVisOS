@@ -2,11 +2,21 @@
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 import numpy as np
+import osh5def
 # try:
 #     import osh5gui
 #     gui_fname = osh5gui.gui_fname
 # except ImportError:
 #     print('Fail to import GUI routines. Check your PyQT installation')
+
+
+def change_default_units(units):
+    osh5def.OSUnits.disp_name[0:len(units)] = units
+
+
+def default_units():
+    return osh5def.OSUnits.disp_name
+
 
 def time_format(time=0.0, unit=None, convert_tunit=False, wavelength=0.351, **kwargs):
     if convert_tunit:
