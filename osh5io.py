@@ -91,7 +91,10 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
                 run_attrs[key] = value[0].decode('utf-8') if isinstance(value[0], bytes) else value
             except IndexError:
                 run_attrs[key] = value.decode('utf-8') if isinstance(value, bytes) else value
-        run_attrs['TIME UNITS'] = OSUnits(run_attrs['TIME UNITS'])
+        try:
+            run_attrs['TIME UNITS'] = OSUnits(run_attrs['TIME UNITS'])
+        except:
+            run_attrs['TIME UNITS'] = OSUnits('1 / \omega_p')
         # attach attributes assigned to the data array to
         #    the H5Data.data_attrs object, remove trivial dimension before assignment
         for key, value in the_data_hdf_object.attrs.items():
@@ -300,7 +303,10 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
     h5file.attrs['XMAX'] = [0.0]
     # now make defaults/copy over the attributes in the root of the hdf5
     for key, value in data_object.run_attrs.items():
-        h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
+        if key == 'TIME UNITS':
+            h5file.attrs['TIME UNITS'] = np.array([str(data_object.run_attrs['TIME UNITS']).encode('utf-8')])
+        else:
+            h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
 
     number_axis_objects_we_need = len(data_object.axes)
     # now go through and set/create our axes HDF entries.
