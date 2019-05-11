@@ -135,11 +135,11 @@ class DataAxis:
             return wavelength / (2 * np.pi), '\mu m'
         if self.attrs['UNITS'].is_density():
             return density, 'cm^{-3}'
-        return 1.0, self.units
+        return 1.0, str(self.units)
 
 
 class OSUnits:
-    name = ('m_e', 'c', '\omega_p', 'e', 'n_0')
+    name = ('m_e', 'c', '\omega', 'e', 'n_0')
     disp_name = ['m_e', 'c', '\omega_p', 'e', 'n_0', 'a.u.']
     xtrnum = re.compile(r"(?<=\^)\d+|(?<=\^{).*?(?=})")
 

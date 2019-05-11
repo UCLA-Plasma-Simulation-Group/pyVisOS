@@ -106,7 +106,7 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         # convert unit string to osunit object
         try:
             data_attrs['UNITS'] = OSUnits(data_attrs['UNITS'])
-        except KeyError:
+        except:
             data_attrs['UNITS'] = OSUnits('a.u.')
         data_attrs['NAME'] = name
 
