@@ -233,12 +233,12 @@ def osspy(h5data, *args, ax=None, aspect='auto', origin='lower', xlabel=None,
     return plot_object
 
 
-def oscontour(h5data, *args, ax=None, cb=None, **kwpassthrough):
+def oscontour(h5data, *args, ax=None, cb=None, origin='lower', **kwpassthrough):
     contour = ax.contour if ax is not None else plt.contour
     return __osplot2d(contour, h5data, *args, ax=ax, cb=cb, **kwpassthrough)
 
 
-def oscontourf(h5data, *args, ax=None, cb=None, **kwpassthrough):
+def oscontourf(h5data, *args, ax=None, cb=None, origin='lower', **kwpassthrough):
     contourf = ax.contourf if ax is not None else plt.contourf
     return __osplot2d(contourf, h5data, *args, ax=ax, cb=cb, **kwpassthrough)
 

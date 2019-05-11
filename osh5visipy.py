@@ -680,8 +680,9 @@ class Generic2DPlotCtrl(object):
         # for now delete everything for simplicity
         self.__destroy_all_xlineout()
         self.__destroy_all_ylineout()
-        self._ct_destroy_all()
+#         self._ct_destroy_all()
         self.replot_axes()
+        self.update_contours()
 
     def refresh_tab_wgt(self, update_list):
         """
@@ -970,7 +971,6 @@ class Generic2DPlotCtrl(object):
                     else:
                         levels = list(set(levels))  # use dict to get rid of duplicates
                 kwargs['levels'] = sorted(levels)
-                print(levels)
                 if kwargs['colors'] is not None:
                     ii = sorted(range(len(levels)), key=lambda k: levels[k])
                     c = kwargs['colors']
@@ -983,6 +983,7 @@ class Generic2DPlotCtrl(object):
         return kwargs
 
     def _ct_plot(self, pltfunc, if_clabel, if_inline_clabel, kwargs):
+        vext = self.im.get_extent()
         if kwargs:  # this is called to replot for new data, kwargs contain all necessary info to generate the contour, kwargs will be altered
             pltfunc = kwargs.pop('method', 'contour')
             if_clabel = kwargs.pop('if_clabel', self.ct_if_clabel.value)
@@ -1007,6 +1008,7 @@ class Generic2DPlotCtrl(object):
         else:
             cl = tuple()
         self.im2.append((im2, cl))
+        self.im.set_extent(vext)
         return kwargs
 
     def _ct_clear_lvl_opts(self, *_):
