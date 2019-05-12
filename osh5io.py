@@ -107,7 +107,8 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         try:
             data_attrs['UNITS'] = OSUnits(data_attrs['UNITS'])
         except:
-            data_attrs['UNITS'] = OSUnits('a.u.')
+#             data_attrs['UNITS'] = OSUnits('a.u.')
+            pass
         data_attrs['NAME'] = name
 
         # data_bundle.data = the_data_hdf_object[()]
@@ -303,10 +304,10 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
     h5file.attrs['XMAX'] = [0.0]
     # now make defaults/copy over the attributes in the root of the hdf5
     for key, value in data_object.run_attrs.items():
-        if key == 'TIME UNITS':
-            h5file.attrs['TIME UNITS'] = np.array([str(data_object.run_attrs['TIME UNITS']).encode('utf-8')])
-        else:
-            h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
+#         if key == 'TIME UNITS':
+#             h5file.attrs['TIME UNITS'] = np.array([str(data_object.run_attrs['TIME UNITS']).encode('utf-8')])
+#         else:
+        h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, (str, OSUnits)) else value
 
     number_axis_objects_we_need = len(data_object.axes)
     # now go through and set/create our axes HDF entries.
@@ -325,13 +326,13 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
 
         # fill in any values we have stored in the Axis object
         for key, value in data_object.axes[i].attrs.items():
-            if key == 'UNITS':
-                try:
-                    axis_data.attrs['UNITS'] = np.array([str(data_object.axes[i].attrs['UNITS']).encode('utf-8')])
-                except:
-                    axis_data.attrs['UNITS'] = np.array([b'a.u.'])
-            else:
-                axis_data.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
+#             if key == 'UNITS':
+#                 try:
+#                     axis_data.attrs['UNITS'] = np.array([str(data_object.axes[i].attrs['UNITS']).encode('utf-8')])
+#                 except:
+#                     axis_data.attrs['UNITS'] = np.array([b'a.u.'])
+#             else:
+            axis_data.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, (str, OSUnits)) else value
     h5file.close()
 
 

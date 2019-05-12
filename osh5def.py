@@ -29,8 +29,12 @@ class DataAxis:
         if attrs is None:
             self.attrs = {'UNITS': OSUnits('a.u.'), 'LONG_NAME': "", 'NAME': ""}
         else:
-            self.attrs = {'UNITS': OSUnits(attrs.pop('UNITS', 'a.u.')),
-                          'LONG_NAME': attrs.pop('LONG_NAME', ""), 'NAME': attrs.pop('NAME', "")}
+            self.attrs = {'LONG_NAME': attrs.pop('LONG_NAME', ""), 'NAME': attrs.pop('NAME', "")}
+            try:
+                u = attrs.pop('UNITS', 'a.u.')
+                self.attrs['UNITS'] = OSUnits(u)
+            except ValueError:
+                self.attrs['UNITS'] = u
         # get other attributes for the AXIS
         if attrs:
             self.attrs.update(attrs)
@@ -127,14 +131,17 @@ class DataAxis:
                 wavelength = 1.98e10 * np.sqrt(1./density)
         elif not density:
             density = 3.93e20 * wavelength**2
-        if self.attrs['UNITS'].is_frequency():
-            return 2.998e2 / wavelength, 'THz'
-        if self.attrs['UNITS'].is_time():
-            return wavelength * 5.31e-4, 'ps'
-        if self.attrs['UNITS'].is_length():
-            return wavelength / (2 * np.pi), '\mu m'
-        if self.attrs['UNITS'].is_density():
-            return density, 'cm^{-3}'
+        try:
+            if self.attrs['UNITS'].is_frequency():
+                return 2.998e2 / wavelength, 'THz'
+            if self.attrs['UNITS'].is_time():
+                return wavelength * 5.31e-4, 'ps'
+            if self.attrs['UNITS'].is_length():
+                return wavelength / (2 * np.pi), '\mu m'
+            if self.attrs['UNITS'].is_density():
+                return density, 'cm^{-3}'
+        except AttributeError:  # self.attrs['UNITS'] is str?
+            pass
         return 1.0, str(self.units)
 
 
@@ -172,7 +179,7 @@ class OSUnits:
                         elif ss in ['1', '2', '\pi', '2\pi']:
                             break
                     else:
-                        raise KeyError('Unknown unit: ' + re.findall(r'\w+', ss)[0])
+                        raise ValueError('Unknown unit: ' + re.findall(r'\w+', ss)[0])
 
     def tex(self):
         return '$' + self.__str__() + '$' if self.__str__() else self.__str__()
@@ -228,6 +235,8 @@ class OSUnits:
         return ''.join([str(self.__class__.__module__), '.', str(self.__class__.__name__), ' at ', hex(id(self)),
                         ': ', repr(self.name), '=(', ', '.join([str(fr) for fr in self.power]), ')'])
 
+    def encode(self, *args, **kwargs):
+        return self.__str__().encode(*args, **kwargs)
 
 class _LocIndexer(object):
     def __init__(self, h5data):
