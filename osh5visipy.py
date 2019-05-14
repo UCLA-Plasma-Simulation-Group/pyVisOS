@@ -13,6 +13,7 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
 from matplotlib._pylab_helpers import Gcf as pylab_gcf
+import matplotlib.ticker as ticker
 import subprocess
 from datetime import datetime
 import time
@@ -361,10 +362,14 @@ class Generic2DPlotCtrl(object):
         widgets.jslink((self.anaxmax, 'step'), (self.y_step_wgt, 'value'))
         self.xana_add = widgets.Button(description='Add', tooltip='Add analysis as x line plot', layout={'width': 'initial'})
         xlinegroup = widgets.HBox([self.xananame, self.xanaopts, self.anaxmin, self.anaxmax, self.xana_add], layout=Layout(border='solid 1px'))
+        self.xlineout_fixedwidth_ticks = widgets.Checkbox(value=False, description='fixed width ticker;', layout=_items_layout, style={'description_width': 'initial'})
+        self.xlineout_ticker_format = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
+                                                   layout=_items_layout, style={'description_width': 'initial'})
+        xticks = widgets.HBox([self.xlineout_fixedwidth_ticks, self.xlineout_ticker_format], layout=Layout(border='solid 1px', flex='1 1 auto', width='auto'))
         # list of x lines plotted
         self.xlineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout, style={'description_width': 'initial'})
-        self.xlineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.xlineout_wgt, self.add_xlineout_btn],
-                                                                     layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
+        self.xlineout_tab = widgets.VBox([widgets.HBox([xticks, widgets.HBox([self.xlineout_wgt, self.add_xlineout_btn],
+                                                                             layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
                                                         xlinegroup]), self.xlineout_list_wgt])
         # y lineout
         self.ylineout_wgt = widgets.BoundedFloatText(value=xmin, min=xmin, max=xmax, style={'description_width': 'initial'},
@@ -393,10 +398,14 @@ class Generic2DPlotCtrl(object):
         self.yana_add = widgets.Button(description='Add', tooltip='Add analysis as y line plot', layout={'width': 'initial'})
         ylinegroup = widgets.HBox([self.yananame, self.yanaopts, self.anaymin, self.anaymax, self.yana_add],
                                   layout=Layout(width='initial', border='solid 1px'))
+        self.ylineout_fixedwidth_ticks = widgets.Checkbox(value=False, description='fixed width ticker;', layout=_items_layout, style={'description_width': 'initial'})
+        self.ylineout_ticker_format = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
+                                                   layout=_items_layout, style={'description_width': 'initial'})
+        yticks = widgets.HBox([self.ylineout_fixedwidth_ticks, self.ylineout_ticker_format], layout=Layout(border='solid 1px', flex='1 1 auto', width='auto'))
         # list of x lines plotted
         self.ylineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout)
-        self.ylineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.ylineout_wgt, self.add_ylineout_btn],
-                                                                     layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
+        self.ylineout_tab = widgets.VBox([widgets.HBox([yticks, widgets.HBox([self.ylineout_wgt, self.add_ylineout_btn],
+                                                                             layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
                                                         ylinegroup]), self.ylineout_list_wgt])
 #         self.ct_alpha = widgets.BoundedFloatText(value=1.0, min=0., max=1., step=0.01, layout={'width': 'initial'}, style={'description_width': 'initial'})
         self.ct_auto_color = widgets.ToggleButtons(options=['colormap', 'manual', 'same'], description='Color:', value='colormap',
@@ -448,9 +457,14 @@ class Generic2DPlotCtrl(object):
         self.if_reset_cbar = widgets.Checkbox(value=True, description='Auto', disabled=not show_colorbar)
         self.cbar = widgets.Text(value=data.units.tex(), placeholder='a.u.', continuous_update=False,
                                  description='Colorbar:', disabled=self.if_reset_cbar.value or not show_colorbar)
+        # colorbar ticker formatter
+        self.cbar_formatter = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
+                                           layout=_items_layout, style={'description_width': 'initial'})
+        self.cbar_fixedwidth = widgets.Checkbox(value=False, description='Fixed ticker width', style={'description_width': 'initial'})
         tab.append(widgets.VBox([self.colorbar,
                                  widgets.HBox([self.cmap_selector, self.cmap_reverse], layout=_items_layout),
-                                 widgets.HBox([self.cbar, self.if_reset_cbar])], layout=_items_layout))
+                                 widgets.HBox([self.cbar, self.if_reset_cbar]),
+                                 widgets.HBox([self.cbar_formatter, self.cbar_fixedwidth])], layout=_items_layout))
 
         # # # -------------------- Tab4 --------------------------
         self.saveas = widgets.Button(description='Save current plot', tooltip='save current plot', button_style='')
@@ -527,6 +541,9 @@ class Generic2DPlotCtrl(object):
         self.ct_method.observe(self._on_ct_method_change, 'value')
         self.if_xrange_auto.observe(self.reset_xrange_step, 'value')
         self.if_yrange_auto.observe(self.reset_yrange_step, 'value')
+        self.cbar_formatter.observe(self.update_cbar_formatter, 'value')
+        self.xlineout_ticker_format.observe(self.update_xlineout_ticks, 'value')
+        self.ylineout_ticker_format.observe(self.update_ylineout_ticks, 'value')
 
     @property
     def widgets_list(self):
@@ -620,6 +637,42 @@ class Generic2DPlotCtrl(object):
         self.im.set_cmap(cmap)
         self.cb.set_cmap(cmap)
 
+    def _set_linear_xline_formatter(self, fmt):
+        if fmt:
+            try:
+                ('%'+fmt) % 1
+                if self.xlineout_fixedwidth_ticks.value:
+                    self.axx.yaxis.set_major_formatter(osh5vis.FixedWidthFormatter(fformat='%'+fmt))
+                else:
+                    self.axx.yaxis.set_major_formatter(ticker.FormatStrFormatter('%'+fmt))
+            except ValueError:
+                pass
+        elif fmt is None or fmt == '':
+            self.axx.yaxis.set_major_formatter(ticker.ScalarFormatter())
+
+    def update_xlineout_ticks(self, change):
+        if self._xlineouts:
+            if self.__old_norm[0] == Normalize:
+                self._set_linear_xline_formatter(change['new'])
+
+    def _set_linear_yline_formatter(self, fmt):
+        if change['new']:
+            try:
+                ('%'+change['new']) % 1
+                if self.ylineout_fixedwidth_ticks.value:
+                    self.axy.xaxis.set_major_formatter(osh5vis.FixedWidthFormatter(fformat='%'+change['new']))
+                else:
+                    self.axy.xaxis.set_major_formatter(ticker.FormatStrFormatter('%'+change['new']))
+            except ValueError:
+                pass
+        elif change['new'] is None or change['new'] == '':
+            self.axy.xaxis.set_major_formatter(ticker.ScalarFormatter())
+
+    def update_ylineout_ticks(self, change):
+        if self._ylineouts:
+            if self.__old_norm[0] == Normalize:
+                self._set_linear_yline_formatter(change['new'])
+
 #     def update_time_label(self):
 #         self._time = osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'])
 
@@ -694,14 +747,14 @@ class Generic2DPlotCtrl(object):
         self.tab.children = tuple(newtab)
 
     def current_norm(self, vminmax_from_widget=False):
-        return self.norm_selector.value[0](**self.__get_norm(vminmax_from_widget=vminmax_from_widget))
+        return self.__old_norm[0](**self.__get_norm(vminmax_from_widget=vminmax_from_widget))
 
     def plot_data(self, vminmax_from_widget=False, **passthrough):
         ifcolorbar = passthrough.pop('colorbar', self.colorbar.value)
         return self.pltfunc(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
                             norm=self.current_norm(vminmax_from_widget), title=self.get_plot_title(),
                             xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
-                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar, 
+                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar,
                             convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value, **passthrough)
 
     def self_destruct(self, *_):
@@ -803,6 +856,19 @@ class Generic2DPlotCtrl(object):
 
     def _on_clabel_toggle(self, change):
         self.ct_if_inline_clabel.disabled = not change['new']
+
+    def update_cbar_formatter(self, change):
+        if self.__old_norm[0] == Normalize:
+            if change['new']:
+                try:
+                    ('%'+change['new']) % 1
+                    self.cb.remove()
+                    self.__add_colorbar()
+                except ValueError:
+                    pass
+        elif change['new'] is None or change['new'] == '':
+            self.cb.remove()
+            self.__add_colorbar()
 
     @staticmethod
     def update_axis_units(dim, thisclass, ext, xconv=None, yconv=None, xunit=None, yunit=None, xconv_now=None, yconv_now=None):
@@ -950,7 +1016,7 @@ class Generic2DPlotCtrl(object):
         if self.ct_auto_color.value == 'colormap':
             kwargs['colors'] = None
             kwargs['cmap'] = self.ct_cmap_selector.value + ('_r' if self.ct_cmap_reverse.value else '')
-            kwargs['norm'] = self.norm_selector.value[0](**self.__get_norm())
+            kwargs['norm'] = self.__old_norm[0](**self.__get_norm())
         elif self.ct_auto_color.value == 'manual':
             kwargs['colors'] = colors or None
         else:
@@ -1138,12 +1204,13 @@ class Generic2DPlotCtrl(object):
             self.__add_yline(data, posstr, tp, 240)
 
     def __update_twinx_scale(self):
-        if self.norm_selector.value[0] == LogNorm:
+        if self.__old_norm[0] == LogNorm:
             self.axx.set_yscale('log')
-        elif self.norm_selector.value[0] == SymLogNorm:
+        elif self.__old_norm[0] == SymLogNorm:
             self.axx.set_yscale('symlog')
         else:
             self.axx.set_yscale('linear')
+            self._set_linear_xline_formatter(self.xlineout_ticker_format.value)
 
     def __destroy_all_xlineout(self):
         if self._xlineouts:
@@ -1221,12 +1288,13 @@ class Generic2DPlotCtrl(object):
             self.axx.set_ylabel('')
 
     def __update_twiny_scale(self):
-        if self.norm_selector.value[0] == LogNorm:
+        if self.__old_norm[0] == LogNorm:
             self.axy.set_xscale('log')
-        elif self.norm_selector.value[0] == SymLogNorm:
+        elif self.__old_norm[0] == SymLogNorm:
             self.axy.set_xscale('symlog')
         else:
             self.axy.set_xscale('linear')
+            self._set_linear_yline_formatter(self.ylineout_ticker_format.value)
 
     def __destroy_all_ylineout(self):
         if self._ylineouts:
@@ -1340,11 +1408,11 @@ class Generic2DPlotCtrl(object):
 
     @property
     def current_vmin(self):
-        return self.norm_selector.value[1].children[1].children[0].value
+        return self.__old_norm[1].children[1].children[0].value
 
     @current_vmin.setter
     def current_vmin(self, val):
-        self.norm_selector.value[1].children[1].children[0].value = val
+        self.__old_norm[1].children[1].children[0].value = val
 
     def __get_vminmax(self, from_widgets=False):
         if from_widgets:
@@ -1374,16 +1442,16 @@ class Generic2DPlotCtrl(object):
             self.im.set_norm(self.current_norm())
             if self.colorbar.value:
                 #TODO: walkaround for an upstream bug: https://github.com/matplotlib/matplotlib/issues/5424
-                self.im.autoscale()
-                self.cb.update_bruteforce(self.im)
+                self.cb.remove()
+                self.__add_colorbar()
             self.update_contours()
 
     def __get_norm(self, vminmax_from_widget=False):
         vmin, vmax = self.__get_vminmax(from_widgets=vminmax_from_widget)
         param = {'vmin': vmin, 'vmax': vmax, 'clip': self.if_clip_cm.value}
-        if self.norm_selector.value[0] == PowerNorm:
+        if self.__old_norm[0] == PowerNorm:
             param['gamma'] = self.gamma.value
-        if self.norm_selector.value[0] == SymLogNorm:
+        if self.__old_norm[0] == SymLogNorm:
             param['linthresh'] = self.linthresh.value
             param['linscale'] = self.linscale.value
         return param
@@ -1399,7 +1467,13 @@ class Generic2DPlotCtrl(object):
 
     def __add_colorbar(self):
         clb = self.cbar.value
-        self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb)
+        if self.__old_norm[0] == Normalize:
+            if self.cbar_fixedwidth.value:
+                self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, format=osh5vis.FixedWidthFormatter(fformat='%'+self.cbar_formatter.value))
+            else:
+                self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, format='%'+self.cbar_formatter.value)
+        else:
+            self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb)
 
     def __toggle_colorbar(self, change):
         if change['new']:

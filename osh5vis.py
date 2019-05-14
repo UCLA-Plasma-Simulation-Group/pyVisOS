@@ -1,13 +1,33 @@
 # import osh5def
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 import numpy as np
 import osh5def
+import re
 # try:
 #     import osh5gui
 #     gui_fname = osh5gui.gui_fname
 # except ImportError:
 #     print('Fail to import GUI routines. Check your PyQT installation')
+
+class FixedWidthFormatter(matplotlib.ticker.ScalarFormatter):
+    def __init__(self, fformat="%1.1f", offset=True, mathText=True):
+        self.fformat = fformat
+        super().__init__(useOffset=offset, useMathText=mathText)
+        precision = fformat.split('.')
+        if len(precision) > 1:
+            precision = re.search(r'\d+', precision[1])
+            if precision is not None:
+                self._offset_threshold = max(int(precision.group()), 1)
+        self.set_powerlimits((0,0))
+
+    def _set_format(self, *args, **kwargs):
+        self.format = self.fformat
+        if self._usetex:
+            self.format = '$%s$' % self.format
+        elif self._useMathText:
+            self.format = '$%s$' % matplotlib.ticker._mathdefault(self.format)
 
 
 def change_default_units(units):
