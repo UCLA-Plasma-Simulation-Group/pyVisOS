@@ -1975,7 +1975,7 @@ class MPDirSlicer(MultiPanelCtrl):
     def __init__(self, filefilter_list, grid, interval=1000, processing=do_nothing, figsize=None, fig_ax=tuple(), output_widget=None,
                  sharex=False, sharey=False, worker_kw_list=None, **kwargs):
         if worker_kw_list is None:
-            worker_kw_list = [{},] * (grid[0] * grid[1])
+            worker_kw_list = [{} for _ in range(grid[0] * grid[1])]
         if isinstance(processing, (list, tuple)):
             if len(processing) != grid[0] * grid[1]:
                 raise ValueError('Expecting %d functions in processing, got %d' % (grid[0] * grid[1], len(processing)))
