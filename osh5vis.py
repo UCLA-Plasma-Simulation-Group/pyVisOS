@@ -20,7 +20,7 @@ def default_units():
 
 def time_format(time=0.0, unit=None, convert_tunit=False, wavelength=0.351, **kwargs):
     if convert_tunit:
-        t = wavelength * 5.31e-4 * time 
+        t = wavelength * 5.31e-4 * time
         unit = ' ps'
     else:
         t = time
@@ -98,7 +98,7 @@ def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, tit
 
 def osplot1d(h5data, *args, ax=None, **kwpassthrough):
     plot = plt.plot if ax is None else ax.plot
-    return __osplot1d(plot, h5data, *args, **kwpassthrough)
+    return __osplot1d(plot, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def ossemilogx(h5data, *args, ax=None, **kwpassthrough):
@@ -161,7 +161,7 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
         co = kwpassthrough.pop('color', np.sqrt(h5data.values**2 + fld2.values**2) if colorbar else None)
 #         vmin = kwpassthrough.pop('vmin', np.min(co))
 #         vmax = kwpassthrough.pop('vmax', np.max(co))
-        plot_object = func(h5data.axes[1].ax, h5data.axes[0].ax, h5data.values, 
+        plot_object = func(h5data.axes[1].ax, h5data.axes[0].ax, h5data.values,
                            fld2.values, *args[1:], color=co, **kwpassthrough_plotting)
     else:
         extent_stuff, if_vector_field = [extx[0], extx[1], exty[0], exty[1]], False
