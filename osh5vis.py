@@ -123,17 +123,17 @@ def osplot1d(h5data, *args, ax=None, **kwpassthrough):
 
 def ossemilogx(h5data, *args, ax=None, **kwpassthrough):
     semilogx = plt.semilogx if ax is None else ax.semilogx
-    return __osplot1d(semilogx, h5data, *args, **kwpassthrough)
+    return __osplot1d(semilogx, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def ossemilogy(h5data, *args, ax=None, **kwpassthrough):
     semilogy = plt.semilogy if ax is None else ax.semilogy
-    return __osplot1d(semilogy, h5data, *args, **kwpassthrough)
+    return __osplot1d(semilogy, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def osloglog(h5data, *args, ax=None, **kwpassthrough):
     loglog = plt.loglog if ax is None else ax.loglog
-    return __osplot1d(loglog, h5data, *args, **kwpassthrough)
+    return __osplot1d(loglog, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', use_gridspec=True, **kwargs):
