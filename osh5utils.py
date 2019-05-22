@@ -192,7 +192,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
      ...,
      (func2, arg1n, arg2n, ..., argnn, {'kwarg1n': val1n, 'kwarg2n': val2n, ..., 'kwargnn', valnn})] where
      any of the *args and/or **args can be omitted. see also __parse_func_param for limitations.
-        if preprocess=[(numpy.power, 2), (numpy.average, {axis=0}), numpy.sqrt], then the data to be stacked is
+        if preprocess=[(numpy.power, 2), (numpy.average, {'axis':0}), numpy.sqrt], then the data to be stacked is
         numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
     """
     prfx = str(prefix).strip() if prefix else ''
@@ -206,7 +206,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(fn)).view(np.ndarray) for fn in flist[1:-1]]
         # the first and last file should be H5data
         tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[0])))
-        tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[0])))
+        tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[-1])))
     else:
         tmp = [osh5io.read_h5(f).view(np.ndarray) for f in flist[1:-1]]
         # the first and last file should be H5data
