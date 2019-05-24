@@ -138,8 +138,8 @@ def osloglog(h5data, *args, ax=None, **kwpassthrough):
 
 def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', use_gridspec=True, **kwargs):
     if not cb:
-        cb = plt.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs) if fig is None \
-             else fig.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs)
+        cb = plt.colorbar(im, cax=cax, ax=ax, label=cblabel, use_gridspec=use_gridspec, **kwargs) if fig is None \
+             else fig.colorbar(im, cax=cax, ax=ax, label=cblabel, use_gridspec=use_gridspec, **kwargs)
     else:
         cb.set_label(cblabel)
     return cb

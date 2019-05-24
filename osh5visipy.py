@@ -179,7 +179,7 @@ class Generic2DPlotCtrl(object):
 
     def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), slice(None, )), title=None, norm='',
                  fig=None, figsize=None, time_in_title=True, phys_time=False, ax=None, output_widget=None,
-                 xlabel=None, ylabel=None, onDestruction=do_nothing,
+                 xlabel=None, ylabel=None, onDestruction=do_nothing, cbar_aspect=None, cblabel=None,
                  convert_xaxis=False, convert_yaxis=False, register_callbacks=None, **kwargs):
         self._data, self._slcs, self.im_xlt, self.time_in_title, self.pltfunc, self.onDestruction = \
         data, slcs, None, time_in_title, pltfunc, onDestruction
@@ -370,7 +370,7 @@ class Generic2DPlotCtrl(object):
         self.xlineout_ticker_format = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
                                                    layout=_items_layout, style={'description_width': 'initial'})
         self.xlineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout)
-        self.xline_auto_range = widgets.Checkbox(value=True, description='ranges as in Data tab;', layout=_items_layout, style={'description_width': 'initial'})
+        self.xline_auto_range = widgets.Checkbox(value=True, description='Auto plot range;', layout=_items_layout, style={'description_width': 'initial'})
         self.xline_style = widgets.Dropdown(options=['-', '--', '-.', ':'], value='-', description='linestyle:', layout=_items_layout, style={'description_width': 'initial'})
         self.xline_range_min = widgets.FloatText(value=self.vmin_wgt.value, description='min:', disabled=True, layout=_items_layout, style={'description_width': 'initial'})
         self.xline_range_max = widgets.FloatText(value=self.vmax_wgt.value, description='max:', disabled=True, layout=_items_layout, style={'description_width': 'initial'})
@@ -467,18 +467,19 @@ class Generic2DPlotCtrl(object):
 
         # # # -------------------- Tab3 --------------------------
         self.colorbar = widgets.Checkbox(value=show_colorbar, description='Show colorbar')
+        self.cb_aspect = widgets.BoundedIntText(value=cbar_aspect or 20, min=0, max=300, step=0.01, description='aspect ratio:')
         self.cmap_selector = widgets.Dropdown(options=self.colormaps_available, value=user_cmap,
                                               description='Colormap:', disabled=not show_colorbar)
         self.cmap_reverse = widgets.Checkbox(value=False, description='Reverse', disabled=not show_colorbar)
         # colorbar
         self.if_reset_cbar = widgets.Checkbox(value=True, description='Auto', disabled=not show_colorbar)
-        self.cbar = widgets.Text(value=data.units.tex(), placeholder='a.u.', continuous_update=False,
+        self.cbar = widgets.Text(value=cblabel if cblabel is not None else data.units.tex(), placeholder='a.u.', continuous_update=False,
                                  description='Colorbar:', disabled=self.if_reset_cbar.value or not show_colorbar)
         # colorbar ticker formatter
         self.cbar_formatter = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
                                            layout=_items_layout, style={'description_width': 'initial'})
         self.cbar_fixedwidth = widgets.Checkbox(value=False, description='Fixed ticker width', style={'description_width': 'initial'})
-        tab.append(widgets.VBox([self.colorbar,
+        tab.append(widgets.VBox([widgets.HBox([self.colorbar, self.cb_aspect], layout=_items_layout),
                                  widgets.HBox([self.cmap_selector, self.cmap_reverse], layout=_items_layout),
                                  widgets.HBox([self.cbar, self.if_reset_cbar]),
                                  widgets.HBox([self.cbar_formatter, self.cbar_fixedwidth])], layout=_items_layout))
@@ -772,7 +773,7 @@ class Generic2DPlotCtrl(object):
         return self.pltfunc(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
                             norm=self.current_norm(vminmax_from_widget), title=self.get_plot_title(),
                             xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
-                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar,
+                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar, colorbar_kw={'aspect': self.cb_aspect.value},
                             convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value, **passthrough)
 
     def self_destruct(self, *_):
@@ -1274,8 +1275,8 @@ class Generic2DPlotCtrl(object):
             self.axx = self.ax.twinx()
             self.__update_twinx_scale()
         # plot
-        xlim = self.ax.get_xlim()
-        xlineout = osh5vis.osplot1d(data, convert_xaxis=self.if_x_phys_unit.value, ax=self.axx, xlim=xlim,
+        xlim, ylim = self.ax.get_xlim(), None if self.xline_auto_range.value else [self.xline_range_min.value, self.xline_range_max.value]
+        xlineout = osh5vis.osplot1d(data, convert_xaxis=self.if_x_phys_unit.value, ax=self.axx, xlim=xlim, ylim=ylim,
                                     xlabel='', ylabel='', title='', linestyle=self.xline_style.value)[0]
         # add widgets (color picker + delete button)
         nw = _get_delete_btn(tp)
@@ -1358,8 +1359,8 @@ class Generic2DPlotCtrl(object):
             self.axy = self.ax.twiny()
             self.__update_twiny_scale()
         # plot
-        ylim = self.ax.get_ylim()
-        ylineout = osh5vis.osplot1d(data, convert_xaxis=self.if_y_phys_unit.value, ax=self.axy, xlim=ylim,
+        xlim, ylim = self.ax.get_ylim(), None if self.yline_auto_range.value else [self.yline_range_min.value, self.yline_range_max.value]
+        ylineout = osh5vis.osplot1d(data, convert_xaxis=self.if_y_phys_unit.value, ax=self.axy, xlim=xlim, ylim=ylim,
                                     xlabel='', ylabel='', title='', linestyle=self.yline_style.value, transpose=True)[0]
         # add widgets (color picker + delete button)
         nw = _get_delete_btn(tp)
@@ -1492,14 +1493,15 @@ class Generic2DPlotCtrl(object):
 #             self.vmin_wgt.value = np.min(a) if v is None else v
 
     def __add_colorbar(self):
-        clb = self.cbar.value
-        if self.__old_norm[0] == Normalize:
+        clb, aspect, cax = self.cbar.value, self.cb_aspect.value or 20, self.cb.ax if self.cb else None
+        if self.__old_norm[0] == Normalize and self.cbar_formatter.value:
             if self.cbar_fixedwidth.value:
-                self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, format=osh5vis.FixedWidthFormatter(fformat='%'+self.cbar_formatter.value))
+                self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, aspect=aspect,
+                                               format=osh5vis.FixedWidthFormatter(fformat='%'+self.cbar_formatter.value))
             else:
-                self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, format='%'+self.cbar_formatter.value)
+                self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, aspect=aspect, format='%'+self.cbar_formatter.value)
         else:
-            self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb)
+            self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, aspect=aspect)
 
     def __toggle_colorbar(self, change):
         if change['new']:
@@ -1966,8 +1968,8 @@ class MultiPanelCtrl(object):
                                                        width='%dpx' % (bwpadded * self.ncols)))
         self.ctrl = widgets.HBox([ctrl_pnl, self.tabd[self.tb.index]], layout=_items_layout)
         self.suptitle_wgt = widgets.Text(value=None, placeholder='None', continuous_update=False, description='Suptitle:')
-        self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle, ', style={'description_width': 'initial'})
-        self.time_in_phys_unit = widgets.Checkbox(value=False, description='time in physical unit', style={'description_width': 'initial'})
+        self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle, ', layout=_items_layout, style={'description_width': 'initial'})
+        self.time_in_phys_unit = widgets.Checkbox(value=False, description='time in physical unit', layout=_items_layout, style={'description_width': 'initial'})
         self.suptitle = widgets.HBox([self.suptitle_wgt, self.time_in_suptitle, self.time_in_phys_unit])
         self.tb.observe(self.show_corresponding_tab, 'index')
         self.suptitle_wgt.observe(self.update_suptitle, 'value')
