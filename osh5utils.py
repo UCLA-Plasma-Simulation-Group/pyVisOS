@@ -1,4 +1,8 @@
-"""Provide basic operations for H5Data"""
+"""
+osh5utils.py
+============
+Provide basic operations for H5Data.
+"""
 
 import osh5def
 import numpy as np
@@ -893,4 +897,3 @@ if __name__ == '__main__':
     print(repr(b))
     b = np.sqrt(b)
     # print(repr(b))
-

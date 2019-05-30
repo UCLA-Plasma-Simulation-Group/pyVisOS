@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
-"""osh5io.py: Disk IO for the OSIRIS HDF5 data."""
+"""
+osh5io.py
+=========
+Disk IO for the OSIRIS HDF5 data.
+"""
 
 __author__ = "Han Wen"
 __copyright__ = "Copyright 2018, PICKSC"
@@ -410,10 +414,10 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
     h5file.attrs['XMAX'] = [0.0]
     h5file.attrs['openPMD'] = '1.0.0'
     h5file.attrs['openPMDextension'] = 0
-    h5file.attrs['iterationEncoding'] = 'fileBased' 
+    h5file.attrs['iterationEncoding'] = 'fileBased'
     h5file.attrs['basePath']='/data/%T'
     h5file.attrs['meshesPath']='mesh/'
-    h5file.attrs['particlesPath']= 'particles/' 
+    h5file.attrs['particlesPath']= 'particles/'
     # now make defaults/copy over the attributes in the root of the hdf5
 
     baseid = h5file.create_group("data")
@@ -432,7 +436,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
 
 
     iterid.attrs['dt'] = data.run_attrs['DT'][0]
-    iterid.attrs['time'] = data.run_attrs['TIME'][0] 
+    iterid.attrs['time'] = data.run_attrs['TIME'][0]
     iterid.attrs['timeUnitSI'] = time_to_si
 
 
@@ -455,7 +459,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_globaloffset[0] = np.float32(0.0)
 
         local_offset[0]= np.float32(0.0)
- 
+
     elif (number_axis_objects_we_need == 2):
         local_axislabels=[b'x1', b'x2']
         deltax[0] = deltax[0]/data_object.shape[0]
@@ -490,7 +494,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[2]= np.float32(0.0)
 
 
-     
+
     datasetid.attrs['dataOrder'] = 'F'
     datasetid.attrs['geometry'] = 'cartesian'
     datasetid.attrs['geometryParameters'] =  'cartesian'
@@ -562,5 +566,3 @@ if __name__ == '__main__':
     rw **= 3
     print('unit of rw^3 is ', rw.data_attrs['UNITS'])
     print('contents of rw^3: \n', rw.view(np.ndarray))
-
-

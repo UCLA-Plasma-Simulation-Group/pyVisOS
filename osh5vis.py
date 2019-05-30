@@ -1,3 +1,9 @@
+"""
+osh5vis.py
+==========
+Vis tools for the OSIRIS HDF5 data.
+"""
+
 # import osh5def
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
@@ -249,4 +255,3 @@ def new_fig(h5data, *args, figsize=None, dpi=None, facecolor=None, edgecolor=Non
                tight_layout=tight_layout)
     osplot(h5data, *args, **kwpassthrough)
     plt.show()
-

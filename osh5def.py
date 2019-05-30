@@ -1,8 +1,12 @@
 #!/usr/bin/env python
 
-"""osh5def.py: Define the OSIRIS HDF5 data class and basic functions.
-    The basic idea is to make the data unit and axes consistent with the data itself. Therefore users should only modify
-    the unit and axes by modifying the data or by dedicated functions (unit conversion for example).
+"""
+osh5def.py
+==========
+Define the OSIRIS HDF5 data class and basic functions.
+    The basic idea is to make the data unit and axes consistent with the data
+    itself. Therefore users should only modify the unit and axes by modifying
+    the data or by dedicated functions (unit conversion for example).
 """
 
 import numpy as np
@@ -212,7 +216,7 @@ class OSUnits:
         res = OSUnits('a.u.')
         res.power = self.power - other.power
         return res
-    
+
     __floordiv__ = __truediv__
     __div__ = __truediv__
 
@@ -519,7 +523,7 @@ class H5Data(np.ndarray):
         """
         # the document says that __array_wrap__ could be deprecated in the future but this is the most direct way...
         div, mul = 1, 2
-        op, __ufunc_mapping = None, {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': '', 'divide': div, 
+        op, __ufunc_mapping = None, {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': '', 'divide': div,
                                      'true_divide': div, 'floor_divide': div, 'reciprocal': '-1', 'multiply': mul}
         if context:
             op = __ufunc_mapping.get(context[0].__name__)
