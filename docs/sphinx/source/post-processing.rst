@@ -1,0 +1,4 @@
+Post
+----
+
+Linked okay.

@@ -1,0 +1,355 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>osh5utils.py &#8212; pyVisOS 1.0 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="osh5vis.py" href="osh5vis.html" />
+    <link rel="prev" title="osh5gui.py" href="osh5gui.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <span class="target" id="module-osh5utils"></span><div class="section" id="osh5utils-py">
+<h1>osh5utils.py<a class="headerlink" href="#osh5utils-py" title="Permalink to this headline">¶</a></h1>
+<p>Provide basic operations for H5Data.</p>
+<dl class="function">
+<dt id="osh5utils.combine">
+<code class="descclassname">osh5utils.</code><code class="descname">combine</code><span class="sig-paren">(</span><em>dir_or_filelist</em>, <em>prefix=None</em>, <em>file_slice=slice(None</em>, <em>None</em>, <em>None)</em>, <em>preprocess=None</em>, <em>axesdata=None</em>, <em>save=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#combine"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.combine" title="Permalink to this definition">¶</a></dt>
+<dd><p>stack a directory of grid data and optionally save the result to a file
+:param dir_or_filelist: name of the directory
+:param prefix: string, match file names with specific prefix
+:param file_slice: a slice that applies to the file name list, useful for skipping every other files or start</p>
+<blockquote>
+<div>in the middle of the list for example</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>preprocess</strong> – a list of callable (and their args and kwargs if any) that will act on the data before stacking
+happens. It has to accept one H5Data objects as argument and return one H5Data objects.
+Note that it has to be a list, not tuple or any other type, aka if isinstance(preprocess, list)
+returns False then this parameter will be ignored entirely.</li>
+<li><strong>axesdata</strong> – user difined axes, see stack for more detail</li>
+<li><strong>save</strong> – name of the save file. user can also set it to true value and the output will use write_h5 defaults</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">combined grid data, one dimension more than the preprocessed original data</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p>Usage of preprocess:
+The functino list should look like:
+[(func1, arg11, arg21, …, argn1, {‘kwarg11’: val11, ‘kwarg21’: val21, …, ‘kwargn1’, valn1}),</p>
+<blockquote>
+<div><p>(func2, arg12, arg22, …, argn2, {‘kwarg12’: val12, ‘kwarg22’: val22, …, ‘kwargn2’, valn2}),
+…,
+(func2, arg1n, arg2n, …, argnn, {‘kwarg1n’: val1n, ‘kwarg2n’: val2n, …, ‘kwargnn’, valnn})] where
+any of the <a href="#id1"><span class="problematic" id="id2">*</span></a>args and/or <a href="#id3"><span class="problematic" id="id4">**</span></a>args can be omitted. see also __parse_func_param for limitations.</p>
+<blockquote>
+<div>if preprocess=[(numpy.power, 2), (numpy.average, {axis=0}), numpy.sqrt], then the data to be stacked is
+numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )</div></blockquote>
+</div></blockquote>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.enhence_num_indexing_kw">
+<code class="descclassname">osh5utils.</code><code class="descname">enhence_num_indexing_kw</code><span class="sig-paren">(</span><em>kw</em>, <em>h5data_pos=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#enhence_num_indexing_kw"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.enhence_num_indexing_kw" title="Permalink to this definition">¶</a></dt>
+<dd><blockquote>
+<div>kw (usually named ‘axis’ or ‘axes’) now should be able to handle both number and string
+index (but not mixing the two)</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>kw</strong> – str, name of the keyword to be overridden</li>
+<li><strong>h5data_pos</strong> – position of h5data in the args list</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">the decorator</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.field_decompose">
+<code class="descclassname">osh5utils.</code><code class="descname">field_decompose</code><span class="sig-paren">(</span><em>fldarr</em>, <em>ffted=True</em>, <em>idim=None</em>, <em>finalize=None</em>, <em>outquants=('L'</em>, <em>'t')</em>, <em>norft=False</em>, <em>iftf=&lt;function ifftn&gt;</em>, <em>inplace=False</em>, <em>**additional_fft_kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#field_decompose"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.field_decompose" title="Permalink to this definition">¶</a></dt>
+<dd><p>decompose a vector field into transverse and longitudinal direction
+fldarr: list of field components in the order of x, y, z
+ffted: If the input fields have been Fourier transformed
+finalize: what function to call after all transforms,</p>
+<blockquote>
+<div>for example finalize=abs will be converted the fields to amplitude</div></blockquote>
+<p>idim: inverse fourier transform in idim direction(s), None means keep FFT data as is
+outquants: output quantities: default=(‘L’,’t’)</p>
+<blockquote>
+<div>‘L’: total amplitude square of longitudinal components
+‘T’: total amplitude square of transverse components
+‘t’ or ‘t1’, ‘t2’, …: transverse components, ‘t’ means all transverse components
+‘l’ or ‘l1’, ‘l2’, …: longitudinal components, ‘l’ means all longitudinal components</div></blockquote>
+<p>norft: if set to true then use full fft instead of rfft (only relevant when the field data is of real numbers)
+iftf: the inverse fft method used if idim is not None
+inplace: perform field decomposition inplace, setting this to True will change fldarr
+return: list of field components in the following order (if some are not requested they will be simply omitted):</p>
+<blockquote>
+<div>[‘L’, ‘T’, ‘t’, ‘l’]</div></blockquote>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.log_Gabor_Filter_2d">
+<code class="descclassname">osh5utils.</code><code class="descname">log_Gabor_Filter_2d</code><span class="sig-paren">(</span><em>w</em>, <em>w0</em>, <em>s0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#log_Gabor_Filter_2d"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.log_Gabor_Filter_2d" title="Permalink to this definition">¶</a></dt>
+<dd><p>return np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) )
+w0: the position of the peak
+s0: the value of abs(s0-1) determines the width of the peak.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.metasl">
+<code class="descclassname">osh5utils.</code><code class="descname">metasl</code><span class="sig-paren">(</span><em>func=None</em>, <em>axes=None</em>, <em>unit=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#metasl"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.metasl" title="Permalink to this definition">¶</a></dt>
+<dd><p>save meta data before calling the function and restore them to output afterwards
+It has the following limitations:</p>
+<blockquote>
+<div>It saves the metadata of the first argument and only supports function that return one quantity</div></blockquote>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.monogenic_filtered_signal">
+<code class="descclassname">osh5utils.</code><code class="descname">monogenic_filtered_signal</code><span class="sig-paren">(</span><em>monogenic_signal</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#monogenic_filtered_signal"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.monogenic_filtered_signal" title="Permalink to this definition">¶</a></dt>
+<dd><p>get a filtered version of the original signal
+:param monogenic_signal: the output of the monogenic_signal function</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.monogenic_local_amplitude">
+<code class="descclassname">osh5utils.</code><code class="descname">monogenic_local_amplitude</code><span class="sig-paren">(</span><em>monogenic_signal</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#monogenic_local_amplitude"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.monogenic_local_amplitude" title="Permalink to this definition">¶</a></dt>
+<dd><p>get the local amplitude of a 2D monogenic signal
+:param monogenic_signal: the output of the monogenic_signal function</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.monogenic_local_k">
+<code class="descclassname">osh5utils.</code><code class="descname">monogenic_local_k</code><span class="sig-paren">(</span><em>monogenic_local_phase</em>, <em>axis=-1</em>, <em>denoise=False</em>, <em>kmax=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#monogenic_local_k"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.monogenic_local_k" title="Permalink to this definition">¶</a></dt>
+<dd><p>calculate the local wavevector of a 2D monogenic signal
+:param monogenic_local_phase: local phase obtained from monogenic_local_phase function
+:param axis: along which axis the wavevector is defined
+:param denoise: If denoise is not False then try to remove noisy signals from</p>
+<blockquote>
+<div>output (mainly one-pixel jumps in wavevector due to imperfect unwrapping);
+if denoise equals to ‘safe’ then additional step is taken to change only
+those pixels identified as artifects</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>kmax</strong> – replace wevevector whose absolute value is larger than kmax with kmax, keeping the original sign.</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.monogenic_local_orientation">
+<code class="descclassname">osh5utils.</code><code class="descname">monogenic_local_orientation</code><span class="sig-paren">(</span><em>monogenic_signal</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#monogenic_local_orientation"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.monogenic_local_orientation" title="Permalink to this definition">¶</a></dt>
+<dd><p>get the local orientation of a 2D monogenic signal
+:param monogenic_signal: the output (or the second elements of the output) of the monogenic_signal function</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.monogenic_local_phase">
+<code class="descclassname">osh5utils.</code><code class="descname">monogenic_local_phase</code><span class="sig-paren">(</span><em>monogenic_signal</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#monogenic_local_phase"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.monogenic_local_phase" title="Permalink to this definition">¶</a></dt>
+<dd><p>get the local phase of a 2D monogenic signal
+:param monogenic_signal: the output of the monogenic_signal function
+:param unwrap: if True then unwrap the output angle, default is False
+:param kwargs: keyword arguments that will be passthrough to the unwrap function
+:return: local phase in h5Data format</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.monogenic_signal">
+<code class="descclassname">osh5utils.</code><code class="descname">monogenic_signal</code><span class="sig-paren">(</span><em>data</em>, <em>*args</em>, <em>filter_func=&lt;function log_Gabor_Filter_2d&gt;</em>, <em>ffted=True</em>, <em>ifft=True</em>, <em>caching=False</em>, <em>**additional_fft_kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#monogenic_signal"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.monogenic_signal" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the monogenic signal of 2D data. This implementation is better suited for intrisically 1D signals.
+read the following articles for more details:
+[1] M. Felsberg and G. Sommer, IEEE Trans. Signal Process. 49, 3136 (2001).
+[2] C. P. Bridge, ArXiv:1703.09199 (2017).
+:param data: 2D H5Data
+:param <a href="#id5"><span class="problematic" id="id6">*</span></a>args: arguments which will be passthrough to the Filter function
+:param filter_func: filter function
+:param ffted: Set to True if the ft_data is the Fourier transform, default is False
+:param ifft: if True then inverse Fourier transform back to real space, default is True
+:return: mongenic signal as a tuple (f, f_R), where f is the filtered orginal signal and f_R is the</p>
+<blockquote>
+<div>Riesz transform of the filtered signal</div></blockquote>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.override_num_indexing_kw">
+<code class="descclassname">osh5utils.</code><code class="descname">override_num_indexing_kw</code><span class="sig-paren">(</span><em>kw</em>, <em>name</em>, <em>default_val=&lt;class 'osh5utils.__NameNotFound'&gt;</em>, <em>h5data_pos=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#override_num_indexing_kw"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.override_num_indexing_kw" title="Permalink to this definition">¶</a></dt>
+<dd><blockquote>
+<div>inject one more keyword to the wrapped function. If kw == name users are forced to use string indexing
+the value of kw (usually named ‘axis’ or ‘axes’) now would be replace by the value of H5Data.index_of(name).</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>kw</strong> – str, name of the keyword to be overridden</li>
+<li><strong>name</strong> – str, name of the new keyword accepting string as index</li>
+<li><strong>default_val</strong> – default value of parameter ‘name’. Using mutable such as string as default value is not adviced</li>
+<li><strong>h5data_pos</strong> – position of h5data in the args list</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">the decorator</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.rebin">
+<code class="descclassname">osh5utils.</code><code class="descname">rebin</code><span class="sig-paren">(</span><em>a</em>, <em>fac</em>, <em>method='sum'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#rebin"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.rebin" title="Permalink to this definition">¶</a></dt>
+<dd><p>rebin ndarray or H5Data into a smaller ndarray or H5Data of the same rank whose dimensions
+are factors of the original dimensions. If fac in some dimension is not whole divided by
+a.shape, the residual is trimmed from the last part of array.
+:param method: can be either sum or mean
+example usages:</p>
+<blockquote>
+<div>a=rand(6,4); b=rebin(a, fac=[3,2])
+a=rand(10); b=rebin(a, fac=[3])</div></blockquote>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.smooth">
+<code class="descclassname">osh5utils.</code><code class="descname">smooth</code><span class="sig-paren">(</span><em>x</em>, <em>window_len=11</em>, <em>window='hanning'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#smooth"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.smooth" title="Permalink to this definition">¶</a></dt>
+<dd><p>smooth the data using a window with requested size. Modified from scipy cookbook.</p>
+<p>This method is based on the convolution of a scaled window with the signal.
+The signal is prepared by introducing reflected copies of the signal
+(with the window size) in both ends so that transient parts are minimized
+in the begining and end part of the output signal.</p>
+<dl class="docutils">
+<dt>input:</dt>
+<dd><p class="first">a: the input signal
+window_len: the dimension of the smoothing window; should be an odd integer
+window: the type of window from ‘flat’, ‘hanning’, ‘hamming’, ‘bartlett’, ‘blackman’</p>
+<blockquote class="last">
+<div>flat window will produce a moving average smoothing.</div></blockquote>
+</dd>
+<dt>output:</dt>
+<dd>the smoothed signal</dd>
+</dl>
+<p>example:</p>
+<p>t=linspace(-2,2,0.1)
+x=sin(t)+randn(len(t))*0.1
+y=smooth(x)</p>
+<p>see also:</p>
+<p>numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
+scipy.signal.lfilter</p>
+<p>TODO: the window parameter could be the window itself if an array instead of a string
+NOTE: length(output) != length(input), to correct this: return y[(window_len/2-1):-(window_len/2)] instead of just y.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.spectrogram">
+<code class="descclassname">osh5utils.</code><code class="descname">spectrogram</code><span class="sig-paren">(</span><em>h5data</em>, <em>axis=-1</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#spectrogram"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.spectrogram" title="Permalink to this definition">¶</a></dt>
+<dd><p>A wrapper function of scipy.signal.spectrogram
+:param h5data:
+:param kwargs:
+:param axis:
+:return: h5data with one more dimension appended</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5utils.stack">
+<code class="descclassname">osh5utils.</code><code class="descname">stack</code><span class="sig-paren">(</span><em>arr</em>, <em>axis=0</em>, <em>axesdata=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5utils.html#stack"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5utils.stack" title="Permalink to this definition">¶</a></dt>
+<dd><p>Similar to numpy.stack. Arr is the list of H5Data to be stacked,
+or a filename filter (such as ‘./FLD/s1-line/s1-line-x2-01*.h5’) can be read into H5Data.
+By default the newly created dimension will be labeled as time axis.
+Other meta data will be copied from the last element of arr</p>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="osh5gui.html" title="previous chapter">osh5gui.py</a></li>
+      <li>Next: <a href="osh5vis.html" title="next chapter">osh5vis.py</a></li>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/osh5utils.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, PICKSC.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+      |
+      <a href="_sources/osh5utils.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
