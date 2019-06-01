@@ -1,0 +1,977 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>osh5utils &#8212; pyVisOS 1.0 documentation</title>
+    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for osh5utils</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">osh5utils.py</span>
+<span class="sd">============</span>
+<span class="sd">Provide basic operations for H5Data.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">osh5def</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">copy</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="k">import</span> <span class="n">wraps</span><span class="p">,</span> <span class="n">partial</span><span class="p">,</span> <span class="n">reduce</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">import</span> <span class="nn">osh5io</span>
+<span class="kn">import</span> <span class="nn">glob</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">signal</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">ndimage</span>
+<span class="c1"># use pyFFTW for fft if available</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">pyfftw.interfaces.numpy_fft</span> <span class="k">as</span> <span class="nn">fftmod</span>
+    <span class="kn">import</span> <span class="nn">pyfftw.interfaces.cache</span> <span class="k">as</span> <span class="nn">fftcache</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">numpy.fft</span> <span class="k">as</span> <span class="nn">fftmod</span>
+<span class="c1"># import numpy.fft as fftmod</span>
+
+
+<span class="n">utils_cache</span> <span class="o">=</span> <span class="p">{}</span>
+
+<div class="viewcode-block" id="metasl"><a class="viewcode-back" href="../osh5utils.html#osh5utils.metasl">[docs]</a><span class="k">def</span> <span class="nf">metasl</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;save meta data before calling the function and restore them to output afterwards</span>
+<span class="sd">    It has the following limitations:</span>
+<span class="sd">        It saves the metadata of the first argument and only supports function that return one quantity</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">func</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">partial</span><span class="p">(</span><span class="n">metasl</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="n">unit</span><span class="p">)</span>
+
+    <span class="nd">@wraps</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">sl</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># save meta data into a list</span>
+        <span class="n">saved</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">meta2dict</span><span class="p">()</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s1">&#39;meta2dict&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="c1"># execute user function</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">func</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">),</span> <span class="o">*</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="c1"># load saved meta data into specified positions</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">):</span>
+                <span class="n">out</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">saved</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">out</span> <span class="o">=</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="o">**</span><span class="n">saved</span><span class="p">)</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s1">&#39;Output is not/cannot convert to H5Data&#39;</span><span class="p">)</span>
+        <span class="c1"># Update unit if necessary</span>
+        <span class="k">if</span> <span class="n">unit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">out</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">OSUnits</span><span class="p">(</span><span class="n">unit</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">axes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">out</span><span class="o">.</span><span class="n">axes</span> <span class="o">=</span> <span class="n">axes</span>
+        <span class="k">return</span> <span class="n">out</span>
+    <span class="k">return</span> <span class="n">sl</span></div>
+
+
+<span class="k">class</span> <span class="nc">__NameNotFound</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+
+<div class="viewcode-block" id="override_num_indexing_kw"><a class="viewcode-back" href="../osh5utils.html#osh5utils.override_num_indexing_kw">[docs]</a><span class="k">def</span> <span class="nf">override_num_indexing_kw</span><span class="p">(</span><span class="n">kw</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">default_val</span><span class="o">=</span><span class="n">__NameNotFound</span><span class="p">,</span> <span class="n">h5data_pos</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        inject one more keyword to the wrapped function. If kw == name users are forced to use string indexing</span>
+<span class="sd">        the value of kw (usually named &#39;axis&#39; or &#39;axes&#39;) now would be replace by the value of H5Data.index_of(name).</span>
+<span class="sd">    :param kw: str, name of the keyword to be overridden</span>
+<span class="sd">    :param name: str, name of the new keyword accepting string as index</span>
+<span class="sd">    :param default_val: default value of parameter &#39;name&#39;. Using mutable such as string as default value is not adviced</span>
+<span class="sd">    :param h5data_pos: position of h5data in the args list</span>
+<span class="sd">    :return: the decorator</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">_decorator</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+        <span class="nd">@wraps</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">def</span> <span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">default_val</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">__NameNotFound</span><span class="p">:</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="n">kw</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="n">h5data_pos</span><span class="p">]</span><span class="o">.</span><span class="n">index_of</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">wrapper</span>
+    <span class="k">return</span> <span class="n">_decorator</span></div>
+
+
+<div class="viewcode-block" id="enhence_num_indexing_kw"><a class="viewcode-back" href="../osh5utils.html#osh5utils.enhence_num_indexing_kw">[docs]</a><span class="k">def</span> <span class="nf">enhence_num_indexing_kw</span><span class="p">(</span><span class="n">kw</span><span class="p">,</span> <span class="n">h5data_pos</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        kw (usually named &#39;axis&#39; or &#39;axes&#39;) now should be able to handle both number and string</span>
+<span class="sd">        index (but not mixing the two)</span>
+<span class="sd">    :param kw: str, name of the keyword to be overridden</span>
+<span class="sd">    :param h5data_pos: position of h5data in the args list</span>
+<span class="sd">    :return: the decorator</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">_decorator</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+        <span class="nd">@wraps</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">def</span> <span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">kw</span><span class="p">,</span> <span class="n">__NameNotFound</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">__NameNotFound</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">int</span><span class="p">)):</span>
+                    <span class="c1"># print(kwargs[kw])</span>
+                    <span class="n">kwargs</span><span class="p">[</span><span class="n">kw</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="n">h5data_pos</span><span class="p">]</span><span class="o">.</span><span class="n">index_of</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>  <span class="c1"># put the value back</span>
+                    <span class="c1"># kwargs.update({kw: val})</span>
+                    <span class="n">kwargs</span><span class="p">[</span><span class="n">kw</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+            <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">wrapper</span>
+    <span class="k">return</span> <span class="n">_decorator</span></div>
+
+
+<span class="k">def</span> <span class="nf">metasl_map</span><span class="p">(</span><span class="n">mapping</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)):</span>  <span class="c1"># not well tested</span>
+    <span class="k">def</span> <span class="nf">_my_decorator</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;save meta data before calling the function and restore them to output afterwards</span>
+<span class="sd">        The input to output mapping is specified in the keyword &quot;mapping&quot; where (i, o) is the</span>
+<span class="sd">        position of i-th input parameters for which meta data will be saved and the o-th output</span>
+<span class="sd">        return values that the meta data will be restored to. Multiple save/restore should be</span>
+<span class="sd">        written as ((i1,o1), (i2,o2), (i3,o3)) etc. The counting start from 0</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nd">@wraps</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+        <span class="k">def</span> <span class="nf">sl</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="c1"># search for all specified input arguments</span>
+            <span class="n">saved</span><span class="p">,</span> <span class="n">kl</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mapping</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">):</span>  <span class="c1"># multiple save/load</span>
+                <span class="n">kl</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">mapping</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>  <span class="c1"># sort by input param. pos.</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">kl</span> <span class="o">=</span> <span class="p">[</span><span class="n">mapping</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">kl</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]:</span>  <span class="c1"># TODO(1) they can be in the kwargs</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;Cannot find the &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">kl</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="o">+</span> <span class="s1">&#39;-th argument for meta data saving&#39;</span><span class="p">)</span>
+            <span class="c1"># save meta data into a list</span>
+            <span class="k">for</span> <span class="n">tp</span> <span class="ow">in</span> <span class="n">kl</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="n">tp</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="s1">&#39;meta2dict&#39;</span><span class="p">):</span>
+                    <span class="n">saved</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="n">tp</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span><span class="o">.</span><span class="n">meta2dict</span><span class="p">(),</span> <span class="n">tp</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">iter</span><span class="p">(</span><span class="n">saved</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Illegal mapping parameters&#39;</span><span class="p">)</span>
+            <span class="c1"># execute user function</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="c1"># load saved meta data into specified positions</span>
+            <span class="n">ol</span><span class="p">,</span> <span class="n">tl</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">out</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="k">else</span> <span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">tp</span> <span class="ow">in</span> <span class="n">saved</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tl</span><span class="p">[</span><span class="n">tp</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">):</span>
+                        <span class="n">ol</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">tp</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">aaa</span> <span class="o">=</span> <span class="n">tl</span><span class="p">[</span><span class="n">tp</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+                        <span class="n">ol</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">(</span><span class="n">aaa</span><span class="p">,</span> <span class="o">**</span><span class="n">tp</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+            <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s1">&#39;Output does not have &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">tp</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="s1">&#39; elements&#39;</span><span class="p">)</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s1">&#39;Output[&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">tp</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="s1">&#39;] is not/cannot convert to H5Data&#39;</span><span class="p">)</span>
+            <span class="n">tmp</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">ol</span><span class="p">)</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ol</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">ol</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">ol</span> <span class="k">else</span> <span class="n">out</span>
+            <span class="k">return</span> <span class="n">tmp</span>
+        <span class="k">return</span> <span class="n">sl</span>
+    <span class="k">return</span> <span class="n">_my_decorator</span>
+
+
+<div class="viewcode-block" id="stack"><a class="viewcode-back" href="../osh5utils.html#osh5utils.stack">[docs]</a><span class="k">def</span> <span class="nf">stack</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">axesdata</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Similar to numpy.stack. Arr is the list of H5Data to be stacked,</span>
+<span class="sd">    or a filename filter (such as &#39;./FLD/s1-line/s1-line-x2-01*.h5&#39;) can be read into H5Data.</span>
+<span class="sd">    By default the newly created dimension will be labeled as time axis.</span>
+<span class="sd">    Other meta data will be copied from the last element of arr</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s1">&#39;Input be list of H5Data or filenames of Osiris data (such as &quot;./FLD/e1/*.h5&quot;)&#39;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">IndexError</span><span class="p">):</span>   <span class="c1"># not an array or an empty array, just return what ever passed in</span>
+        <span class="k">return</span> <span class="n">arr</span>
+    <span class="n">md</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">md</span><span class="o">.</span><span class="n">axes</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">axesdata</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">axesdata</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Number of points in axesdata is different from the new dimension to be created&#39;</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">axis</span><span class="p">,</span> <span class="n">axesdata</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>  <span class="c1"># we assume the new dimension is time</span>
+        <span class="n">taxis_attrs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;UNITS&#39;</span><span class="p">:</span> <span class="s2">&quot;\omega_p^{-1}&quot;</span><span class="p">,</span> <span class="s1">&#39;LONG_NAME&#39;</span><span class="p">:</span> <span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s1">&#39;NAME&#39;</span><span class="p">:</span> <span class="s2">&quot;t&quot;</span><span class="p">}</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">axis</span><span class="p">,</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">DataAxis</span><span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;TIME&#39;</span><span class="p">],</span>
+                                         <span class="n">arr</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;TIME&#39;</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">),</span> <span class="n">attrs</span><span class="o">=</span><span class="n">taxis_attrs</span><span class="p">))</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">md</span><span class="o">.</span><span class="n">timestamp</span><span class="p">,</span> <span class="n">md</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">,</span> <span class="n">md</span><span class="o">.</span><span class="n">run_attrs</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="combine"><a class="viewcode-back" href="../osh5utils.html#osh5utils.combine">[docs]</a><span class="k">def</span> <span class="nf">combine</span><span class="p">(</span><span class="n">dir_or_filelist</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">file_slice</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="kc">None</span><span class="p">,),</span> <span class="n">preprocess</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axesdata</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">save</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    stack a directory of grid data and optionally save the result to a file</span>
+<span class="sd">    :param dir_or_filelist: name of the directory</span>
+<span class="sd">    :param prefix: string, match file names with specific prefix</span>
+<span class="sd">    :param file_slice: a slice that applies to the file name list, useful for skipping every other files or start</span>
+<span class="sd">                        in the middle of the list for example</span>
+<span class="sd">    :param preprocess: a list of callable (and their args and kwargs if any) that will act on the data before stacking</span>
+<span class="sd">                        happens. It has to accept one H5Data objects as argument and return one H5Data objects.</span>
+<span class="sd">                        Note that it has to be a list, not tuple or any other type, aka if isinstance(preprocess, list)</span>
+<span class="sd">                        returns False then this parameter will be ignored entirely.</span>
+<span class="sd">    :param axesdata: user difined axes, see stack for more detail</span>
+<span class="sd">    :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults</span>
+<span class="sd">    :return: combined grid data, one dimension more than the preprocessed original data</span>
+<span class="sd">    Usage of preprocess:</span>
+<span class="sd">    The functino list should look like:</span>
+<span class="sd">    [(func1, arg11, arg21, ..., argn1, {&#39;kwarg11&#39;: val11, &#39;kwarg21&#39;: val21, ..., &#39;kwargn1&#39;, valn1}),</span>
+<span class="sd">     (func2, arg12, arg22, ..., argn2, {&#39;kwarg12&#39;: val12, &#39;kwarg22&#39;: val22, ..., &#39;kwargn2&#39;, valn2}),</span>
+<span class="sd">     ...,</span>
+<span class="sd">     (func2, arg1n, arg2n, ..., argnn, {&#39;kwarg1n&#39;: val1n, &#39;kwarg2n&#39;: val2n, ..., &#39;kwargnn&#39;, valnn})] where</span>
+<span class="sd">     any of the *args and/or **args can be omitted. see also __parse_func_param for limitations.</span>
+<span class="sd">        if preprocess=[(numpy.power, 2), (numpy.average, {axis=0}), numpy.sqrt], then the data to be stacked is</span>
+<span class="sd">        numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">prfx</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">if</span> <span class="n">prefix</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dir_or_filelist</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">flist</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">dir_or_filelist</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span> <span class="o">+</span> <span class="n">prfx</span> <span class="o">+</span> <span class="s1">&#39;*.h5&#39;</span><span class="p">))[</span><span class="n">file_slice</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>  <span class="c1"># dir_or_filelist is a list of file names</span>
+        <span class="n">flist</span> <span class="o">=</span> <span class="n">dir_or_filelist</span><span class="p">[</span><span class="n">file_slice</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">preprocess</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="n">preprocess</span><span class="p">:</span>
+        <span class="n">func_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">__parse_func_param</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">preprocess</span><span class="p">]</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="p">[</span><span class="n">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">y</span><span class="p">[</span><span class="mi">0</span><span class="p">](</span><span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">y</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="o">**</span><span class="n">y</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span> <span class="n">func_list</span><span class="p">,</span> <span class="n">osh5io</span><span class="o">.</span><span class="n">read_h5</span><span class="p">(</span><span class="n">fn</span><span class="p">))</span> <span class="k">for</span> <span class="n">fn</span> <span class="ow">in</span> <span class="n">flist</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="p">[</span><span class="n">osh5io</span><span class="o">.</span><span class="n">read_h5</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">flist</span><span class="p">]</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">stack</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="n">axesdata</span><span class="o">=</span><span class="n">axesdata</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">save</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">save</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">save</span> <span class="o">=</span> <span class="n">dir_or_filelist</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dir_or_filelist</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="s1">&#39;./&#39;</span> <span class="o">+</span> <span class="n">res</span><span class="o">.</span><span class="n">name</span> <span class="o">+</span> <span class="s1">&#39;.h5&#39;</span>
+        <span class="n">osh5io</span><span class="o">.</span><span class="n">write_h5</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">save</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">res</span></div>
+
+
+<span class="k">def</span> <span class="nf">__parse_func_param</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The limitation here is that</span>
+<span class="sd">    1) (solvable by user defined functions) it can not handle a function with the following signature:</span>
+<span class="sd">        function f has only positional arguments, i.e. f(arg1, arg2, ..., argn), and argn is expecting a dict.</span>
+<span class="sd">        User can define a wrapper function to switch the argument positions or add a dummy argument at the end.</span>
+<span class="sd">    2) (solvable within our notation) user wants to pass a dict as the last positional argument to the</span>
+<span class="sd">        following function: g(arg1, arg2, ..., argn, kwarg1=val1, ..., kwargn=valn) where argn is expecting a</span>
+<span class="sd">        dict. The problem can be avoid by adding an empty dict to the end (g, arg1, ..., argn, {}).</span>
+<span class="sd">        It may confuse users though.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># we don&#39;t return functools.partial here because it will break the ufunc behavior</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="nb">iter</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+        <span class="c1"># assuming if last element is not a dictionary then it is one of the positional arguments</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="n">item</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">item</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="n">item</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="p">{}</span>
+    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+        <span class="c1"># unary function, nothing to do</span>
+        <span class="k">return</span> <span class="n">item</span><span class="p">,</span> <span class="p">(),</span> <span class="p">{}</span>
+    <span class="k">return</span> <span class="n">item</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">argminloc</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">meta2dict</span><span class="p">()</span>
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="s1">&#39;axes&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">axis</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="n">out</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">ax</span><span class="p">[</span><span class="n">out</span><span class="p">]</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="o">**</span><span class="n">d</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">argmaxloc</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">meta2dict</span><span class="p">()</span>
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="s1">&#39;axes&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">axis</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="n">out</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">ax</span><span class="p">[</span><span class="n">out</span><span class="p">]</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="o">**</span><span class="n">d</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="c1"># #----------------------------------- FFT Wrappers ----------------------------------------</span>
+<span class="c1"># sfunc: for shifting; ffunc: for calculating frequency; ftfunc: for fft the data; uafunc: for updating axes</span>
+<span class="c1">#</span>
+<span class="k">def</span> <span class="nf">__idle</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="o">*</span><span class="n">_args</span><span class="p">,</span> <span class="o">**</span><span class="n">_kwargs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">a</span>
+
+
+<span class="k">def</span> <span class="nf">__try_update_axes</span><span class="p">(</span><span class="n">updfunc</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">update_axes</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">sfunc</span><span class="o">=</span><span class="n">__idle</span><span class="p">,</span> <span class="n">ffunc</span><span class="o">=</span><span class="n">__idle</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="s1">&#39;axes&#39;</span><span class="p">):</span>  <span class="c1"># no axes found</span>
+            <span class="k">return</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="nb">iter</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">axes</span><span class="p">)))</span> <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">(</span><span class="n">idx</span><span class="p">,)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="nb">iter</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+            <span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">shape</span><span class="p">,)</span>
+        <span class="c1"># The data size can change due to the s (or n) keyword. We have to force axes update somehow.</span>
+        <span class="n">updfunc</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">axes</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">sfunc</span><span class="p">,</span> <span class="n">ffunc</span><span class="o">=</span><span class="n">ffunc</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">update_axes</span>
+
+
+<span class="k">def</span> <span class="nf">__update_axes_label</span><span class="p">(</span><span class="n">axes</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;NAME&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;t&#39;</span> <span class="ow">or</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;time&#39;</span> <span class="ow">or</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">is_time</span><span class="p">():</span>
+            <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">],</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;NAME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;\omega&#39;</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;K(&#39;</span> <span class="o">+</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="s1">&#39;)&#39;</span>
+            <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;NAME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;k&#39;</span> <span class="o">+</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;NAME&#39;</span><span class="p">]</span>
+        <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">**=</span> <span class="o">-</span><span class="mi">1</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+
+<span class="nd">@__try_update_axes</span>
+<span class="k">def</span> <span class="nf">_update_fft_axes</span><span class="p">(</span><span class="n">axes</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">omitlast</span><span class="p">,</span> <span class="n">ffunc</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idx</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="n">__update_axes_label</span><span class="p">(</span><span class="n">axes</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+        <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;shift&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">min</span>  <span class="c1"># save lower bound. value of axes</span>
+        <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span> <span class="o">=</span> <span class="n">fftmod</span><span class="o">.</span><span class="n">fftshift</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">fftfreq</span><span class="p">(</span><span class="n">shape</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">d</span><span class="o">=</span><span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">increment</span><span class="p">))</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>
+    <span class="c1"># the last dimension needs special care for rfft</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">__update_axes_label</span><span class="p">(</span><span class="n">axes</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+    <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;shift&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">min</span>  <span class="c1"># save lower bound. value of axes</span>
+    <span class="k">if</span> <span class="n">omitlast</span><span class="p">:</span>
+        <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span> <span class="o">=</span> <span class="n">ffunc</span><span class="p">(</span><span class="n">shape</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">d</span><span class="o">=</span><span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">increment</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span> <span class="o">=</span> <span class="n">fftmod</span><span class="o">.</span><span class="n">fftshift</span><span class="p">(</span><span class="n">ffunc</span><span class="p">(</span><span class="n">shape</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">d</span><span class="o">=</span><span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">increment</span><span class="p">))</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>
+
+
+<span class="nd">@__try_update_axes</span>
+<span class="k">def</span> <span class="nf">_update_ifft_axes</span><span class="p">(</span><span class="n">axes</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">_unused</span><span class="p">,</span> <span class="n">ffunc</span><span class="p">):</span>
+    <span class="n">warned</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idx</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">xmin</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;shift&#39;</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="n">xmin</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">warned</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">&#39;Maybe doing IFFT on non-FFT data. &#39;</span>
+                              <span class="s1">&#39;Make sure to use our FFT routine for forward FFT&#39;</span><span class="p">,</span>
+                              <span class="ne">RuntimeWarning</span><span class="p">)</span>
+                <span class="n">warned</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span> <span class="o">=</span> <span class="n">ffunc</span><span class="p">(</span><span class="n">shape</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">d</span><span class="o">=</span><span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">increment</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="n">xmin</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;\omega&#39;</span> <span class="ow">or</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">is_frequency</span><span class="p">():</span>
+                <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">],</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;NAME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;time&#39;</span><span class="p">,</span> <span class="s1">&#39;t&#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">][</span><span class="mi">2</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;NAME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;NAME&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">**=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+            <span class="k">pass</span>
+
+
+<span class="k">def</span> <span class="nf">_get_ihfft_axis</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+    <span class="n">length</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="n">d</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">min</span><span class="p">,</span> <span class="n">length</span> <span class="o">+</span> <span class="nb">min</span><span class="p">,</span> <span class="n">length</span> <span class="o">/</span> <span class="n">n</span><span class="p">)[</span><span class="mi">0</span><span class="p">:</span> <span class="n">n</span><span class="o">//</span><span class="mi">2</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">_get_ifft_axis</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+    <span class="n">length</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="n">d</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">min</span><span class="p">,</span> <span class="n">length</span> <span class="o">+</span> <span class="nb">min</span><span class="p">,</span> <span class="n">length</span> <span class="o">/</span> <span class="n">n</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">__ft_interface</span><span class="p">(</span><span class="n">ftfunc</span><span class="p">,</span> <span class="n">forward</span><span class="p">,</span> <span class="n">omitlast</span><span class="p">):</span>
+    <span class="nd">@metasl</span>
+    <span class="k">def</span> <span class="nf">ft_interface</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># call fft and shift the result</span>
+        <span class="n">shftax</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">omitlast</span> <span class="k">else</span> <span class="n">axes</span>
+        <span class="k">if</span> <span class="n">forward</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">fftmod</span><span class="o">.</span><span class="n">fftshift</span><span class="p">(</span><span class="n">ftfunc</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">),</span> <span class="n">shftax</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">ftfunc</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">ifftshift</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">shftax</span><span class="p">),</span> <span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ft_interface</span>
+
+
+<span class="k">def</span> <span class="nf">__shifted_ft_gen</span><span class="p">(</span><span class="n">ftfunc</span><span class="p">,</span> <span class="n">forward</span><span class="p">,</span> <span class="n">omitlast</span><span class="p">,</span> <span class="n">ffunc</span><span class="p">,</span> <span class="n">uafunc</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">shifted_fft</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="n">s</span> <span class="k">if</span> <span class="n">s</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">o</span> <span class="o">=</span> <span class="n">__ft_interface</span><span class="p">(</span><span class="n">ftfunc</span><span class="p">,</span> <span class="n">forward</span><span class="o">=</span><span class="n">forward</span><span class="p">,</span> <span class="n">omitlast</span><span class="o">=</span><span class="n">omitlast</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">uafunc</span><span class="p">(</span><span class="n">o</span><span class="p">,</span> <span class="n">axes</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">omitlast</span><span class="p">,</span> <span class="n">ffunc</span><span class="o">=</span><span class="n">ffunc</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">o</span>
+    <span class="k">return</span> <span class="n">shifted_fft</span>
+
+
+<span class="c1"># # ========  Normal FFT  ==========</span>
+<span class="n">__shifted_fft</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">__shifted_ft_gen</span><span class="p">,</span> <span class="n">forward</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">omitlast</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ffunc</span><span class="o">=</span><span class="n">fftmod</span><span class="o">.</span><span class="n">fftfreq</span><span class="p">,</span> <span class="n">uafunc</span><span class="o">=</span><span class="n">_update_fft_axes</span><span class="p">)</span>
+<span class="n">__shifted_ifft</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">__shifted_ft_gen</span><span class="p">,</span> <span class="n">forward</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">omitlast</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ffunc</span><span class="o">=</span><span class="n">_get_ifft_axis</span><span class="p">,</span> <span class="n">uafunc</span><span class="o">=</span><span class="n">_update_ifft_axes</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axes&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">fftn</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">__shifted_fft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">fftn</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axes&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">fft2</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">__shifted_fft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">fft2</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">fft</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">__shifted_fft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">fft</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axes&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">ifftn</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">__shifted_ifft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">ifftn</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axes&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">ifft2</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">__shifted_ifft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">ifft2</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">ifft</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="c1"># if axes is None:</span>
+    <span class="c1">#     axes = -1</span>
+    <span class="k">return</span> <span class="n">__shifted_ifft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">ifft</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="c1"># # ========  real FFT  ==========</span>
+<span class="n">__shifted_rfft</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">__shifted_ft_gen</span><span class="p">,</span> <span class="n">forward</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">omitlast</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ffunc</span><span class="o">=</span><span class="n">fftmod</span><span class="o">.</span><span class="n">rfftfreq</span><span class="p">,</span> <span class="n">uafunc</span><span class="o">=</span><span class="n">_update_fft_axes</span><span class="p">)</span>
+<span class="n">__shifted_irfft</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">__shifted_ft_gen</span><span class="p">,</span> <span class="n">forward</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">omitlast</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ffunc</span><span class="o">=</span><span class="n">_get_ifft_axis</span><span class="p">,</span> <span class="n">uafunc</span><span class="o">=</span><span class="n">_update_ifft_axes</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">__save_space_shape</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">):</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="n">s</span> <span class="k">if</span> <span class="n">s</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">a</span><span class="o">.</span><span class="n">data_attrs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;oshape&#39;</span><span class="p">,</span> <span class="n">shape</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">__restore_space_shape</span><span class="p">(</span><span class="n">xdfunc</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">get_shape</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">s</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">s</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">xdfunc</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">get_shape</span>
+
+
+<span class="nd">@__restore_space_shape</span>
+<span class="k">def</span> <span class="nf">__rss_1d</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">_s</span><span class="p">,</span> <span class="n">axes</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">a</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;oshape&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">axes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">a</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;oshape&#39;</span><span class="p">][</span><span class="n">axes</span><span class="p">]</span>
+
+
+<span class="nd">@__restore_space_shape</span>
+<span class="k">def</span> <span class="nf">__rss_2d</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">_s</span><span class="p">,</span> <span class="n">axes</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">a</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;oshape&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">2</span><span class="p">:]</span> <span class="k">if</span> <span class="n">axes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">([</span><span class="n">a</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;oshape&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">axes</span><span class="p">])</span>
+
+
+<span class="nd">@__restore_space_shape</span>
+<span class="k">def</span> <span class="nf">__rss_nd</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">_s</span><span class="p">,</span> <span class="n">axes</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">a</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;oshape&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="n">axes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">([</span><span class="n">a</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;oshape&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">axes</span><span class="p">])</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axes&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">rfftn</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">__save_space_shape</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">__shifted_rfft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">rfftn</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axes&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">rfft2</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">__save_space_shape</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">__shifted_rfft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">rfft2</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">rfft</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">__save_space_shape</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">__shifted_rfft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">rfft</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axes&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">irfftn</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">__rss_nd</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">__shifted_irfft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">irfftn</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axes&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">irfft2</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">__rss_2d</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">__shifted_irfft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">irfft2</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">irfft</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">__rss_1d</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">axis</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">__shifted_irfft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">irfft</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="c1"># # ========  Hermitian FFT  ==========</span>
+<span class="n">__shifted_hfft</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">__shifted_ft_gen</span><span class="p">,</span> <span class="n">forward</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">omitlast</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ffunc</span><span class="o">=</span><span class="n">fftmod</span><span class="o">.</span><span class="n">fftfreq</span><span class="p">,</span> <span class="n">uafunc</span><span class="o">=</span><span class="n">_update_fft_axes</span><span class="p">)</span>
+<span class="n">__shifted_ihfft</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">__shifted_ft_gen</span><span class="p">,</span> <span class="n">forward</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">omitlast</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ffunc</span><span class="o">=</span><span class="n">_get_ihfft_axis</span><span class="p">,</span> <span class="n">uafunc</span><span class="o">=</span><span class="n">_update_ifft_axes</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">hfft</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">axis</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span>
+    <span class="n">nn</span> <span class="o">=</span> <span class="mi">2</span><span class="o">*</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">n</span> <span class="o">%</span> <span class="mi">2</span> <span class="k">else</span> <span class="mi">2</span><span class="o">*</span><span class="n">n</span> <span class="o">-</span> <span class="mi">2</span>
+    <span class="k">return</span> <span class="n">__shifted_hfft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">hfft</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">nn</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">ihfft</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">__shifted_ihfft</span><span class="p">(</span><span class="n">fftmod</span><span class="o">.</span><span class="n">ihfft</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="c1"># ----------------------------------- FFT Wrappers ----------------------------------------</span>
+
+
+<span class="c1"># ---------------------------------- SciPy Wrappers ---------------------------------------</span>
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="nd">@metasl</span>
+<span class="k">def</span> <span class="nf">hilbert</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">signal</span><span class="o">.</span><span class="n">hilbert</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="n">N</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)</span>
+
+
+<span class="nd">@metasl</span>
+<span class="k">def</span> <span class="nf">hilbert2</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">signal</span><span class="o">.</span><span class="n">hilbert2</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="n">N</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="spectrogram"><a class="viewcode-back" href="../osh5utils.html#osh5utils.spectrogram">[docs]</a><span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">spectrogram</span><span class="p">(</span><span class="n">h5data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A wrapper function of scipy.signal.spectrogram</span>
+<span class="sd">    :param h5data:</span>
+<span class="sd">    :param kwargs:</span>
+<span class="sd">    :param axis:</span>
+<span class="sd">    :return: h5data with one more dimension appended</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">meta</span> <span class="o">=</span> <span class="n">h5data</span><span class="o">.</span><span class="n">meta2dict</span><span class="p">()</span>
+    <span class="n">k</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">Sxx</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">spectrogram</span><span class="p">(</span><span class="n">h5data</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">fs</span><span class="o">=</span><span class="mi">1</span><span class="o">/</span><span class="n">h5data</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">increment</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">meta</span><span class="p">[</span><span class="s1">&#39;axes&#39;</span><span class="p">][</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">h5data</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">min</span>
+    <span class="n">meta</span><span class="p">[</span><span class="s1">&#39;axes&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">axis</span><span class="p">,</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">DataAxis</span><span class="p">(</span><span class="n">attrs</span><span class="o">=</span><span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">meta</span><span class="p">[</span><span class="s1">&#39;axes&#39;</span><span class="p">][</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">),</span> <span class="n">data</span><span class="o">=</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">k</span><span class="p">))</span>
+    <span class="n">__update_axes_label</span><span class="p">(</span><span class="n">meta</span><span class="p">[</span><span class="s1">&#39;axes&#39;</span><span class="p">],</span> <span class="n">axis</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">axis</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">axis</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">(</span><span class="n">Sxx</span><span class="p">,</span> <span class="o">**</span><span class="n">meta</span><span class="p">)</span></div>
+<span class="c1"># ---------------------------------- SciPy Wrappers ---------------------------------------</span>
+
+
+<span class="c1"># ---------------------------------- NumPy Wrappers ---------------------------------------</span>
+<span class="nd">@metasl</span><span class="p">(</span><span class="n">unit</span><span class="o">=</span><span class="s1">&#39;a.u.&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">angle</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">deg</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">angle</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">deg</span><span class="o">=</span><span class="n">deg</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="nd">@metasl</span>
+<span class="k">def</span> <span class="nf">unwrap</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">discont</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">unwrap</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">discont</span><span class="o">=</span><span class="n">discont</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)</span>
+
+
+<span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">diff</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
+    <span class="n">dx_2</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">x</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">increment</span>
+
+    <span class="nd">@metasl</span>
+    <span class="k">def</span> <span class="nf">__diff</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ax</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+
+    <span class="n">r</span> <span class="o">=</span> <span class="n">__diff</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">axis</span><span class="p">)</span>
+    <span class="n">r</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">=</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">DataAxis</span><span class="p">(</span><span class="n">axis_min</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="o">+</span><span class="n">n</span><span class="o">*</span><span class="n">dx_2</span><span class="p">,</span> <span class="n">axis_max</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="o">-</span><span class="n">n</span><span class="o">*</span><span class="n">dx_2</span><span class="p">,</span>
+                                    <span class="n">axis_npoints</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">size</span><span class="o">-</span><span class="n">n</span><span class="p">,</span> <span class="n">attrs</span><span class="o">=</span><span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">r</span>
+
+<span class="c1"># ---------------------------------- NumPy Wrappers ---------------------------------------</span>
+
+<div class="viewcode-block" id="field_decompose"><a class="viewcode-back" href="../osh5utils.html#osh5utils.field_decompose">[docs]</a><span class="k">def</span> <span class="nf">field_decompose</span><span class="p">(</span><span class="n">fldarr</span><span class="p">,</span> <span class="n">ffted</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">idim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">finalize</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">outquants</span><span class="o">=</span><span class="p">(</span><span class="s1">&#39;L&#39;</span><span class="p">,</span> <span class="s1">&#39;t&#39;</span><span class="p">),</span> <span class="n">norft</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">iftf</span><span class="o">=</span><span class="n">ifftn</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">additional_fft_kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;decompose a vector field into transverse and longitudinal direction</span>
+<span class="sd">    fldarr: list of field components in the order of x, y, z</span>
+<span class="sd">    ffted: If the input fields have been Fourier transformed</span>
+<span class="sd">    finalize: what function to call after all transforms,</span>
+<span class="sd">        for example finalize=abs will be converted the fields to amplitude</span>
+<span class="sd">    idim: inverse fourier transform in idim direction(s), None means keep FFT data as is</span>
+<span class="sd">    outquants: output quantities: default=(&#39;L&#39;,&#39;t&#39;)</span>
+<span class="sd">        &#39;L&#39;: total amplitude square of longitudinal components</span>
+<span class="sd">        &#39;T&#39;: total amplitude square of transverse components</span>
+<span class="sd">        &#39;t&#39; or &#39;t1&#39;, &#39;t2&#39;, ...: transverse components, &#39;t&#39; means all transverse components</span>
+<span class="sd">        &#39;l&#39; or &#39;l1&#39;, &#39;l2&#39;, ...: longitudinal components, &#39;l&#39; means all longitudinal components</span>
+<span class="sd">    norft: if set to true then use full fft instead of rfft (only relevant when the field data is of real numbers)</span>
+<span class="sd">    iftf: the inverse fft method used if idim is not None</span>
+<span class="sd">    inplace: perform field decomposition inplace, setting this to True will change fldarr</span>
+<span class="sd">    return: list of field components in the following order (if some are not requested they will be simply omitted):</span>
+<span class="sd">        [&#39;L&#39;, &#39;T&#39;, &#39;t&#39;, &#39;l&#39;]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dim</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fldarr</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">dim</span> <span class="o">!=</span> <span class="n">fldarr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">ndim</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s1">&#39;Not enough field components for decomposition&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">fldarr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">fldarr</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">finalize</span><span class="p">:</span>
+        <span class="n">finalize</span> <span class="o">=</span> <span class="n">__idle</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">fldarr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">floating</span><span class="p">):</span>
+        <span class="n">ftf</span><span class="p">,</span> <span class="n">iftf</span> <span class="o">=</span> <span class="n">fftn</span><span class="p">,</span> <span class="n">ifftn</span> <span class="k">if</span> <span class="n">norft</span> <span class="k">else</span> <span class="n">rfftn</span><span class="p">,</span> <span class="n">irfftn</span>
+
+    <span class="k">def</span> <span class="nf">wrap_up</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">idim</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">iftf</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">idim</span><span class="p">,</span> <span class="o">**</span><span class="n">additional_fft_kwargs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">data</span>
+
+    <span class="k">def</span> <span class="nf">rename</span><span class="p">(</span><span class="n">fld</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">longname</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fld</span><span class="p">,</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">):</span>
+            <span class="c1"># replace numbers in the string</span>
+            <span class="n">fld</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s2">&quot;\d+&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">fld</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+<span class="c1">#             fld.data_attrs[&#39;NAME&#39;] = re.sub(&quot;\d+&quot;, name, fld.data_attrs.get(&#39;NAME&#39;, fld.name))</span>
+            <span class="n">fld</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s2">&quot;\d+&quot;</span><span class="p">,</span> <span class="n">longname</span><span class="p">,</span> <span class="n">fld</span><span class="o">.</span><span class="n">data_attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">fld</span>
+
+    <span class="k">if</span> <span class="n">ffted</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">inplace</span><span class="p">:</span>
+            <span class="n">fftfld</span> <span class="o">=</span> <span class="n">fldarr</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fftfld</span> <span class="o">=</span> <span class="p">[</span><span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">fi</span><span class="p">)</span> <span class="k">for</span> <span class="n">fi</span> <span class="ow">in</span> <span class="n">fldarr</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">inplace</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fi</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">fldarr</span><span class="p">):</span>
+                <span class="n">fldarr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">ftf</span><span class="p">(</span><span class="n">fi</span><span class="p">,</span> <span class="o">**</span><span class="n">additional_fft_kwargs</span><span class="p">)</span>
+            <span class="n">fftfld</span> <span class="o">=</span> <span class="n">fldarr</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fftfld</span> <span class="o">=</span> <span class="p">[</span><span class="n">ftf</span><span class="p">(</span><span class="n">fi</span><span class="p">,</span> <span class="o">**</span><span class="n">additional_fft_kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">fi</span> <span class="ow">in</span> <span class="n">fldarr</span><span class="p">]</span>
+    <span class="n">kv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="o">*</span><span class="nb">reversed</span><span class="p">([</span><span class="n">x</span><span class="o">.</span><span class="n">ax</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">fftfld</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">axes</span><span class="p">]),</span> <span class="n">sparse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">k2</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">ki</span><span class="o">**</span><span class="mi">2</span> <span class="k">for</span> <span class="n">ki</span> <span class="ow">in</span> <span class="n">kv</span><span class="p">)</span>  <span class="c1"># |k|^2</span>
+    <span class="n">k2</span><span class="p">[</span><span class="n">k2</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;inf&#39;</span><span class="p">)</span>
+    <span class="n">kdotfld</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">divide</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">multiply</span><span class="p">(</span><span class="n">fi</span><span class="p">,</span> <span class="n">ki</span><span class="p">)</span> <span class="k">for</span> <span class="n">ki</span><span class="p">,</span> <span class="n">fi</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">kv</span><span class="p">,</span> <span class="n">fftfld</span><span class="p">)),</span> <span class="n">k2</span><span class="p">)</span>
+    <span class="n">fL</span><span class="p">,</span> <span class="n">fT</span><span class="p">,</span> <span class="n">ft</span><span class="p">,</span> <span class="n">fl</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">[],</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fi</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">fftfld</span><span class="p">):</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">kdotfld</span> <span class="o">*</span> <span class="n">kv</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="k">if</span> <span class="s1">&#39;t&#39;</span> <span class="ow">in</span> <span class="n">outquants</span> <span class="ow">or</span> <span class="s1">&#39;t&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">in</span> <span class="n">outquants</span><span class="p">:</span>
+            <span class="n">ft</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">finalize</span><span class="p">(</span><span class="n">wrap_up</span><span class="p">(</span><span class="n">fftfld</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">tmp</span><span class="p">)),</span> <span class="s1">&#39;t&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)))</span>
+            <span class="k">if</span> <span class="s1">&#39;T&#39;</span> <span class="ow">in</span> <span class="n">outquants</span><span class="p">:</span>
+                <span class="n">fT</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">ft</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span><span class="o">**</span><span class="mi">2</span>
+        <span class="k">elif</span> <span class="s1">&#39;T&#39;</span> <span class="ow">in</span> <span class="n">outquants</span><span class="p">:</span>
+            <span class="n">fT</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">wrap_up</span><span class="p">(</span><span class="n">fftfld</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">tmp</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="k">if</span> <span class="s1">&#39;l&#39;</span> <span class="ow">in</span> <span class="n">outquants</span> <span class="ow">or</span> <span class="s1">&#39;l&#39;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span> <span class="ow">in</span> <span class="n">outquants</span><span class="p">:</span>
+            <span class="n">fl</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">finalize</span><span class="p">(</span><span class="n">wrap_up</span><span class="p">(</span><span class="n">tmp</span><span class="p">)),</span> <span class="s1">&#39;l&#39;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)))</span>
+            <span class="k">if</span> <span class="s1">&#39;L&#39;</span> <span class="ow">in</span> <span class="n">outquants</span><span class="p">:</span>
+                <span class="n">fL</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">fl</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span><span class="o">**</span><span class="mi">2</span>
+        <span class="k">elif</span> <span class="s1">&#39;L&#39;</span> <span class="ow">in</span> <span class="n">outquants</span><span class="p">:</span>
+            <span class="n">fL</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">wrap_up</span><span class="p">(</span><span class="n">tmp</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span>
+
+    <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fL</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rename</span><span class="p">(</span><span class="n">fL</span><span class="p">,</span> <span class="s1">&#39;L&#39;</span><span class="p">,</span> <span class="s1">&#39;L^2&#39;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fT</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rename</span><span class="p">(</span><span class="n">fT</span><span class="p">,</span> <span class="s1">&#39;T&#39;</span><span class="p">,</span> <span class="s1">&#39;T^2&#39;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">ft</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">fi</span> <span class="ow">in</span> <span class="n">ft</span><span class="p">:</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rename</span><span class="p">(</span><span class="n">fi</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">fi</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s1">&#39;{&#39;</span> <span class="o">+</span> <span class="n">fi</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="s1">&#39;}&#39;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">fl</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">fi</span> <span class="ow">in</span> <span class="n">fl</span><span class="p">:</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rename</span><span class="p">(</span><span class="n">fi</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">fi</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s1">&#39;{&#39;</span> <span class="o">+</span> <span class="n">fi</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="s1">&#39;}&#39;</span><span class="p">))</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">res</span><span class="p">)</span></div>
+
+
+<span class="c1"># modified from SciPy cookbook</span>
+<div class="viewcode-block" id="rebin"><a class="viewcode-back" href="../osh5utils.html#osh5utils.rebin">[docs]</a><span class="k">def</span> <span class="nf">rebin</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">fac</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;sum&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    rebin ndarray or H5Data into a smaller ndarray or H5Data of the same rank whose dimensions</span>
+<span class="sd">    are factors of the original dimensions. If fac in some dimension is not whole divided by</span>
+<span class="sd">    a.shape, the residual is trimmed from the last part of array.</span>
+<span class="sd">    :param method: can be either sum or mean</span>
+<span class="sd">    example usages:</span>
+<span class="sd">     a=rand(6,4); b=rebin(a, fac=[3,2])</span>
+<span class="sd">     a=rand(10); b=rebin(a, fac=[3])</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">u</span> <span class="o">-</span> <span class="n">u</span> <span class="o">%</span> <span class="n">fac</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="k">if</span> <span class="n">u</span> <span class="o">%</span> <span class="n">fac</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">else</span> <span class="nb">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">u</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">u</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+    <span class="c1"># update axes first</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">H5Data</span><span class="p">):</span>
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">axes</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ax</span><span class="p">):</span>
+            <span class="n">x</span><span class="o">.</span><span class="n">ax</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">ax</span><span class="p">[::</span><span class="n">fac</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+    <span class="n">mthd</span> <span class="o">=</span> <span class="s1">&#39;mean&#39;</span> <span class="k">if</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;mean&#39;</span> <span class="k">else</span> <span class="s1">&#39;sum&#39;</span>
+
+    <span class="nd">@metasl</span><span class="p">(</span><span class="n">axes</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">__rebin</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">fac</span><span class="p">):</span>
+        <span class="c1"># have to convert to ndarray otherwise sum will fail</span>
+<span class="c1">#         h = h.view(np.ndarray)</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="n">h</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">lenShape</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">newshape</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">floor_divide</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">fac</span><span class="p">))</span>
+        <span class="n">evList</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;h.reshape(&#39;</span><span class="p">]</span> <span class="o">+</span> \
+                 <span class="p">[</span><span class="s1">&#39;newshape[</span><span class="si">%d</span><span class="s1">],fac[</span><span class="si">%d</span><span class="s1">],&#39;</span><span class="o">%</span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">lenShape</span><span class="p">)]</span> <span class="o">+</span> \
+                 <span class="p">[</span><span class="s1">&#39;)&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="s1">&#39;.&#39;</span> <span class="o">+</span> <span class="n">mthd</span> <span class="o">+</span> <span class="s1">&#39;(</span><span class="si">%d</span><span class="s1">)&#39;</span><span class="o">%</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">lenShape</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="nb">eval</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">evList</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">__rebin</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">fac</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">rolling</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">window</span><span class="p">,</span> <span class="n">center</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">axes</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">center</span><span class="p">:</span>
+        <span class="n">ax</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span> <span class="o">=</span> <span class="n">ax</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span><span class="p">[</span><span class="n">window</span><span class="o">-</span><span class="mi">1</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">ax</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">increment</span> <span class="o">*</span> <span class="p">(</span><span class="n">window</span> <span class="o">//</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ax</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span> <span class="o">=</span> <span class="n">ax</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span><span class="p">[</span><span class="n">window</span><span class="o">-</span><span class="mi">1</span> <span class="p">:]</span>
+    <span class="nd">@metasl</span><span class="p">(</span><span class="n">axes</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">rolling_average</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">window</span><span class="p">):</span>
+<span class="c1">#         x = arr.view(np.ndarray)</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">window</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">window</span><span class="p">)</span>
+        <span class="n">strides</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">strides</span> <span class="o">+</span> <span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">strides</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">lib</span><span class="o">.</span><span class="n">stride_tricks</span><span class="o">.</span><span class="n">as_strided</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="n">shape</span><span class="p">,</span> <span class="n">strides</span><span class="o">=</span><span class="n">strides</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">rolling_average</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">window</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="smooth"><a class="viewcode-back" href="../osh5utils.html#osh5utils.smooth">[docs]</a><span class="nd">@metasl</span>
+<span class="k">def</span> <span class="nf">smooth</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">window_len</span><span class="o">=</span><span class="mi">11</span><span class="p">,</span><span class="n">window</span><span class="o">=</span><span class="s1">&#39;hanning&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;smooth the data using a window with requested size. Modified from scipy cookbook.</span>
+
+<span class="sd">    This method is based on the convolution of a scaled window with the signal.</span>
+<span class="sd">    The signal is prepared by introducing reflected copies of the signal</span>
+<span class="sd">    (with the window size) in both ends so that transient parts are minimized</span>
+<span class="sd">    in the begining and end part of the output signal.</span>
+
+<span class="sd">    input:</span>
+<span class="sd">        a: the input signal</span>
+<span class="sd">        window_len: the dimension of the smoothing window; should be an odd integer</span>
+<span class="sd">        window: the type of window from &#39;flat&#39;, &#39;hanning&#39;, &#39;hamming&#39;, &#39;bartlett&#39;, &#39;blackman&#39;</span>
+<span class="sd">            flat window will produce a moving average smoothing.</span>
+
+<span class="sd">    output:</span>
+<span class="sd">        the smoothed signal</span>
+
+<span class="sd">    example:</span>
+
+<span class="sd">    t=linspace(-2,2,0.1)</span>
+<span class="sd">    x=sin(t)+randn(len(t))*0.1</span>
+<span class="sd">    y=smooth(x)</span>
+
+<span class="sd">    see also:</span>
+
+<span class="sd">    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve</span>
+<span class="sd">    scipy.signal.lfilter</span>
+
+<span class="sd">    TODO: the window parameter could be the window itself if an array instead of a string</span>
+<span class="sd">    NOTE: length(output) != length(input), to correct this: return y[(window_len/2-1):-(window_len/2)] instead of just y.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<span class="c1">#     x = a.view(np.ndarray)</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;smooth only accepts 1 dimension arrays.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">size</span> <span class="o">&lt;</span> <span class="n">window_len</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input vector needs to be bigger than window size.&quot;</span><span class="p">)</span>
+
+
+    <span class="k">if</span> <span class="n">window_len</span><span class="o">&lt;</span><span class="mi">3</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">x</span>
+
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">window</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;flat&#39;</span><span class="p">,</span> <span class="s1">&#39;hanning&#39;</span><span class="p">,</span> <span class="s1">&#39;hamming&#39;</span><span class="p">,</span> <span class="s1">&#39;bartlett&#39;</span><span class="p">,</span> <span class="s1">&#39;blackman&#39;</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Window is on of &#39;flat&#39;, &#39;hanning&#39;, &#39;hamming&#39;, &#39;bartlett&#39;, &#39;blackman&#39;&quot;</span><span class="p">)</span>
+
+
+    <span class="n">s</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="n">window_len</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span><span class="n">x</span><span class="p">,</span><span class="n">x</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:</span><span class="o">-</span><span class="n">window_len</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+    <span class="c1">#print(len(s))</span>
+    <span class="k">if</span> <span class="n">window</span> <span class="o">==</span> <span class="s1">&#39;flat&#39;</span><span class="p">:</span> <span class="c1">#moving average</span>
+        <span class="n">w</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">window_len</span><span class="p">,</span><span class="s1">&#39;d&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">w</span><span class="o">=</span><span class="nb">eval</span><span class="p">(</span><span class="s1">&#39;np.&#39;</span><span class="o">+</span><span class="n">window</span><span class="o">+</span><span class="s1">&#39;(window_len)&#39;</span><span class="p">)</span>
+
+    <span class="n">y</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">w</span><span class="o">/</span><span class="n">w</span><span class="o">.</span><span class="n">sum</span><span class="p">(),</span><span class="n">s</span><span class="p">,</span><span class="n">mode</span><span class="o">=</span><span class="s1">&#39;valid&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">y</span><span class="p">[(</span><span class="n">window_len</span><span class="o">//</span><span class="mi">2</span><span class="o">-</span><span class="mi">1</span><span class="p">):</span><span class="o">-</span><span class="p">(</span><span class="n">window_len</span><span class="o">//</span><span class="mi">2</span><span class="p">)]</span></div>
+
+
+<div class="viewcode-block" id="log_Gabor_Filter_2d"><a class="viewcode-back" href="../osh5utils.html#osh5utils.log_Gabor_Filter_2d">[docs]</a><span class="k">def</span> <span class="nf">log_Gabor_Filter_2d</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">w0</span><span class="p">,</span> <span class="n">s0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    return np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) )</span>
+<span class="sd">    w0: the position of the peak</span>
+<span class="sd">    s0: the value of abs(s0-1) determines the width of the peak.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">w</span><span class="o">/</span><span class="n">w0</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">s0</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="monogenic_signal"><a class="viewcode-back" href="../osh5utils.html#osh5utils.monogenic_signal">[docs]</a><span class="k">def</span> <span class="nf">monogenic_signal</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">filter_func</span><span class="o">=</span><span class="n">log_Gabor_Filter_2d</span><span class="p">,</span> <span class="n">ffted</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ifft</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">caching</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">additional_fft_kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the monogenic signal of 2D data. This implementation is better suited for intrisically 1D signals.</span>
+<span class="sd">    read the following articles for more details:</span>
+<span class="sd">    [1] M. Felsberg and G. Sommer, IEEE Trans. Signal Process. 49, 3136 (2001).</span>
+<span class="sd">    [2] C. P. Bridge, ArXiv:1703.09199 (2017).</span>
+<span class="sd">    :param data: 2D H5Data</span>
+<span class="sd">    :param *args: arguments which will be passthrough to the Filter function</span>
+<span class="sd">    :param filter_func: filter function</span>
+<span class="sd">    :param ffted: Set to True if the ft_data is the Fourier transform, default is False</span>
+<span class="sd">    :param ifft: if True then inverse Fourier transform back to real space, default is True</span>
+<span class="sd">    :return: mongenic signal as a tuple (f, f_R), where f is the filtered orginal signal and f_R is the</span>
+<span class="sd">             Riesz transform of the filtered signal</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">data</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;data must be two dimensional&#39;</span><span class="p">)</span>
+    <span class="n">ft_data</span> <span class="o">=</span> <span class="n">fft2</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">ffted</span> <span class="k">else</span> <span class="n">data</span>
+
+    <span class="k">def</span> <span class="nf">get_k_k2</span><span class="p">(</span><span class="n">_ft_data</span><span class="p">):</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="o">*</span><span class="nb">reversed</span><span class="p">([</span><span class="n">x</span><span class="o">.</span><span class="n">ax</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">_ft_data</span><span class="o">.</span><span class="n">axes</span><span class="p">]),</span> <span class="n">sparse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">wamp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">wi</span><span class="o">**</span><span class="mi">2</span> <span class="k">for</span> <span class="n">wi</span> <span class="ow">in</span> <span class="n">w</span><span class="p">))</span>
+        <span class="n">origin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">wamp</span><span class="o">==</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">wamp</span><span class="p">[</span><span class="n">origin</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.</span>
+        <span class="n">flt</span> <span class="o">=</span> <span class="n">filter_func</span><span class="p">(</span><span class="n">wamp</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+        <span class="n">flt</span><span class="p">[</span><span class="n">origin</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="n">wamp</span> <span class="o">=</span> <span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">1</span><span class="n">j</span> <span class="o">-</span> <span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="n">wamp</span>
+        <span class="k">return</span> <span class="n">wamp</span><span class="p">,</span> <span class="n">flt</span>
+
+    <span class="k">if</span> <span class="n">caching</span><span class="p">:</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;monogenic_signal&#39;</span><span class="p">,</span> <span class="n">ft_data</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ft_data</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">ft_data</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span><span class="o">.</span><span class="n">size</span><span class="p">,</span>
+             <span class="n">ft_data</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ft_data</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">ft_data</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">ax</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+        <span class="n">wamp</span><span class="p">,</span> <span class="n">flt</span> <span class="o">=</span> <span class="n">utils_cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">wamp</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">wamp</span><span class="p">,</span> <span class="n">flt</span> <span class="o">=</span> <span class="n">get_k_k2</span><span class="p">(</span><span class="n">ft_data</span><span class="p">)</span>
+            <span class="n">utils_cache</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">wamp</span><span class="p">,</span> <span class="n">flt</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">wamp</span><span class="p">,</span> <span class="n">flt</span> <span class="o">=</span> <span class="n">get_k_k2</span><span class="p">(</span><span class="n">ft_data</span><span class="p">)</span>
+
+    <span class="n">ge</span> <span class="o">=</span> <span class="n">flt</span> <span class="o">*</span> <span class="n">ft_data</span>
+    <span class="n">goc</span> <span class="o">=</span> <span class="n">ge</span> <span class="o">*</span> <span class="n">wamp</span>
+    <span class="k">if</span> <span class="n">ifft</span><span class="p">:</span>
+        <span class="n">goc</span> <span class="o">=</span> <span class="n">ifft2</span><span class="p">(</span><span class="n">goc</span><span class="p">,</span> <span class="o">**</span><span class="n">additional_fft_kwargs</span><span class="p">)</span>
+        <span class="n">ge</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">ifft2</span><span class="p">(</span><span class="n">ge</span><span class="p">,</span> <span class="o">**</span><span class="n">additional_fft_kwargs</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">ge</span><span class="p">,</span> <span class="n">goc</span></div>
+
+
+<div class="viewcode-block" id="monogenic_local_phase"><a class="viewcode-back" href="../osh5utils.html#osh5utils.monogenic_local_phase">[docs]</a><span class="k">def</span> <span class="nf">monogenic_local_phase</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    get the local phase of a 2D monogenic signal</span>
+<span class="sd">    :param monogenic_signal: the output of the monogenic_signal function</span>
+<span class="sd">    :param unwrap: if True then unwrap the output angle, default is False</span>
+<span class="sd">    :param kwargs: keyword arguments that will be passthrough to the unwrap function</span>
+<span class="sd">    :return: local phase in h5Data format</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">theta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arctan2</span><span class="p">(</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">[</span><span class="mi">1</span><span class="p">])),</span> <span class="n">monogenic_signal</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">unwrap_output</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;unwrap&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">unwrap_output</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">unwrap</span><span class="p">(</span><span class="n">theta</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">theta</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">osh5def</span><span class="o">.</span><span class="n">OSUnits</span><span class="p">(</span><span class="s1">&#39;a.u.&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">theta</span></div>
+
+
+<div class="viewcode-block" id="monogenic_local_orientation"><a class="viewcode-back" href="../osh5utils.html#osh5utils.monogenic_local_orientation">[docs]</a><span class="k">def</span> <span class="nf">monogenic_local_orientation</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    get the local orientation of a 2D monogenic signal</span>
+<span class="sd">    :param monogenic_signal: the output (or the second elements of the output) of the monogenic_signal function</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">arctan</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">arctan</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">)</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="monogenic_local_amplitude"><a class="viewcode-back" href="../osh5utils.html#osh5utils.monogenic_local_amplitude">[docs]</a><span class="k">def</span> <span class="nf">monogenic_local_amplitude</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    get the local amplitude of a 2D monogenic signal</span>
+<span class="sd">    :param monogenic_signal: the output of the monogenic_signal function</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="monogenic_filtered_signal"><a class="viewcode-back" href="../osh5utils.html#osh5utils.monogenic_filtered_signal">[docs]</a><span class="k">def</span> <span class="nf">monogenic_filtered_signal</span><span class="p">(</span><span class="n">monogenic_signal</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    get a filtered version of the original signal</span>
+<span class="sd">    :param monogenic_signal: the output of the monogenic_signal function</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">monogenic_signal</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="monogenic_local_k"><a class="viewcode-back" href="../osh5utils.html#osh5utils.monogenic_local_k">[docs]</a><span class="nd">@enhence_num_indexing_kw</span><span class="p">(</span><span class="s1">&#39;axis&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">monogenic_local_k</span><span class="p">(</span><span class="n">monogenic_local_phase</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">denoise</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">kmax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    calculate the local wavevector of a 2D monogenic signal</span>
+<span class="sd">    :param monogenic_local_phase: local phase obtained from monogenic_local_phase function</span>
+<span class="sd">    :param axis: along which axis the wavevector is defined</span>
+<span class="sd">    :param denoise: If denoise is not False then try to remove noisy signals from</span>
+<span class="sd">                    output (mainly one-pixel jumps in wavevector due to imperfect unwrapping);</span>
+<span class="sd">                    if denoise equals to &#39;safe&#39; then additional step is taken to change only</span>
+<span class="sd">                    those pixels identified as artifects</span>
+<span class="sd">    :param kmax: replace wevevector whose absolute value is larger than kmax with kmax, keeping the original sign.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">diff</span><span class="p">(</span><span class="n">unwrap</span><span class="p">(</span><span class="n">monogenic_local_phase</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)</span> <span class="o">/</span> <span class="n">monogenic_local_phase</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">increment</span>
+    <span class="k">if</span> <span class="n">denoise</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">denoise</span> <span class="o">==</span> <span class="s1">&#39;safe&#39;</span><span class="p">:</span>
+<span class="c1">#             tmp = ndimage.filters.median_filter(r.values, size=3)</span>
+            <span class="n">tmp</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">signal</span><span class="o">.</span><span class="n">medfilt2d</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">values</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">copyto</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">tmp</span><span class="p">,</span> <span class="n">where</span><span class="o">=</span><span class="n">mask</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">r</span><span class="o">.</span><span class="n">values</span> <span class="o">=</span> <span class="n">ndimage</span><span class="o">.</span><span class="n">filters</span><span class="o">.</span><span class="n">median_filter</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">kmax</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">r</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="n">r</span><span class="o">.</span><span class="n">values</span> <span class="o">&gt;</span> <span class="n">kmax</span><span class="p">]</span> <span class="o">=</span> <span class="n">kmax</span>
+        <span class="n">r</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="n">r</span><span class="o">.</span><span class="n">values</span> <span class="o">&lt;</span> <span class="o">-</span><span class="n">kmax</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span> <span class="n">kmax</span>
+    <span class="n">r</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">monogenic_local_phase</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span><span class="o">.</span><span class="n">units</span><span class="o">**-</span><span class="mi">1</span>
+    <span class="k">return</span> <span class="n">r</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">fn</span> <span class="o">=</span> <span class="s1">&#39;n0-123456.h5&#39;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">osh5io</span><span class="o">.</span><span class="n">read_h5</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+    <span class="c1"># d = subrange(d, ((0, 35.5), (0, 166)))</span>
+    <span class="c1"># d = np.ones((7, 20))</span>
+    <span class="c1"># d = rebin(d, fac=[3, 3])</span>
+    <span class="c1"># d = d.subrange(bound=[None, (None, 23., -10.)])</span>
+    <span class="n">d</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="n">bound</span><span class="o">=</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="mf">140.</span><span class="p">,</span> <span class="mf">10.</span><span class="p">)),</span> <span class="n">val</span><span class="o">=</span><span class="mf">2.</span><span class="p">,</span> <span class="n">inverse_select</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">multiply</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)))</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="n">hfft</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;c = &#39;</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">c</span><span class="p">))</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">ihfft</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;b is d? &#39;</span><span class="p">,</span> <span class="n">b</span> <span class="ow">is</span> <span class="n">d</span><span class="p">)</span>
+    <span class="n">diff</span> <span class="o">=</span> <span class="n">d</span> <span class="o">-</span> <span class="n">b</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;b - d = &#39;</span><span class="p">,</span> <span class="n">diff</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">b</span><span class="p">))</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+    <span class="c1"># print(repr(b))</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, PICKSC.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

@@ -1,3 +1,9 @@
+"""
+osh5visipy.py
+=============
+Vis tools for the OSIRIS HDF5 data.
+"""
+
 from __future__ import print_function
 from functools import partial
 from ipywidgets import interact, Layout, Output
@@ -701,7 +707,7 @@ class Generic2DPlotCtrl(object):
         return self.pltfunc(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
                             norm=self.current_norm(vminmax_from_widget), title=self.get_plot_title(),
                             xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
-                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar, 
+                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar,
                             convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value, **passthrough)
 
     def self_destruct(self, *_):
