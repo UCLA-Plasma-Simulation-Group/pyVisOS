@@ -1466,7 +1466,7 @@ class Generic2DPlotCtrl(object):
                 self.im.set_data(self.__pp(self._data[self._slcs]).view(np.ndarray))
             self.__update_xlineout()
             self.__update_ylineout()
-            self.im.set_norm(self.current_norm())
+            self.im.set_norm(self.current_norm(vminmax_from_widget=True))
             if self.colorbar.value:
                 #TODO: walkaround for an upstream bug: https://github.com/matplotlib/matplotlib/issues/5424
                 self.cb.remove()
