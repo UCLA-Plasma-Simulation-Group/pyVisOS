@@ -103,6 +103,10 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
             except IndexError:
                 data_attrs[key] = value.decode('utf-8') if isinstance(value, bytes) else value
 
+        # check if new data format is in use
+        if not data_attrs and 'SIMULATION' in data_file:
+            data_attrs['LONG_NAME'], data_attrs['UNITS'] = run_attrs.pop('LABEL', 'data'), run_attrs.pop('UNITS', OSUnits('a.u.'))
+            run_attrs['SIMULATION'] = {k:v for k,v in data_file['/SIMULATION'].attrs.items()}
         # convert unit string to osunit object
         try:
             data_attrs['UNITS'] = OSUnits(data_attrs['UNITS'])
@@ -278,36 +282,48 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
                 c += 1
             fname = fname[:-3]+'.copy'+str(c)+'.h5'
     h5file = h5py.File(fname)
+    run_attrs = data_object.run_attrs.copy()
 
     # now put the data in a group called this...
     h5dataset = h5file.create_dataset(current_name_attr, data_object.shape, data=data_object.view(np.ndarray))
-    # these are required.. so make defaults ones...
-    h5dataset.attrs['UNITS'], h5dataset.attrs['LONG_NAME'] = np.array([b'']), np.array([b''])
+
+    # these are required so we make defaults..
+    h5file.attrs['ITER'] = [0]
+    h5file.attrs['TIME'] = [0.0]
+    h5file.attrs['TIME UNITS'] = [b'1 / \omega_p']
+    h5file.attrs['TYPE'] = [b'grid']
     # convert osunit class back to ascii
     data_attrs = data_object.data_attrs.copy()
     try:
         data_attrs['UNITS'] = np.array([str(data_object.data_attrs['UNITS']).encode('utf-8')])
     except:
         data_attrs['UNITS'] = np.array([b'a.u.'])
-    # copy over any values we have in the 'H5Data' object;
-    for key, value in data_attrs.items():
-        h5dataset.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
-    # these are required so we make defaults..
-    h5file.attrs['DT'] = [1.0]
-    h5file.attrs['ITER'] = [0]
-    h5file.attrs['MOVE C'] = [0]
-    h5file.attrs['PERIODIC'] = [0]
-    h5file.attrs['TIME'] = [0.0]
-    h5file.attrs['TIME UNITS'] = [b'1 / \omega_p']
-    h5file.attrs['TYPE'] = [b'grid']
-    h5file.attrs['XMIN'] = [0.0]
-    h5file.attrs['XMAX'] = [0.0]
-    # now make defaults/copy over the attributes in the root of the hdf5
-    for key, value in data_object.run_attrs.items():
-#         if key == 'TIME UNITS':
-#             h5file.attrs['TIME UNITS'] = np.array([str(data_object.run_attrs['TIME UNITS']).encode('utf-8')])
-#         else:
-        h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, (str, OSUnits)) else value
+
+    # check if the data is read from a new format file
+    new_format = run_attrs.pop('SIMULATION', False)
+    if new_format:
+        # now make defaults/copy over the attributes in the root of the hdf5
+        for key, value in run_attrs.items():
+            h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, (str, OSUnits)) else value
+        h5file.attrs['LABEL'], h5file.attrs['UNITS'] = np.array([data_attrs['LONG_NAME'].encode('utf-8')]), data_attrs['UNITS']
+        simgroup = h5file.create_group('SIMULATION')
+        for k, v in new_format.items():
+            simgroup.attrs[k] = v
+    else:
+        # complete the list of required defaults
+        h5file.attrs['DT'] = [1.0]
+        h5file.attrs['MOVE C'] = [0]
+        h5file.attrs['PERIODIC'] = [0]
+        h5file.attrs['XMIN'] = [0.0]
+        h5file.attrs['XMAX'] = [0.0]
+        # these are required.. so make defaults ones...
+        h5dataset.attrs['UNITS'], h5dataset.attrs['LONG_NAME'] = np.array([b'']), np.array([b''])
+        # copy over any values we have in the 'H5Data' object;
+        for key, value in data_attrs.items():
+            h5dataset.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
+        # now make defaults/copy over the attributes in the root of the hdf5
+        for key, value in run_attrs.items():
+            h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, (str, OSUnits)) else value
 
     number_axis_objects_we_need = len(data_object.axes)
     # now go through and set/create our axes HDF entries.
