@@ -194,7 +194,15 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
         plot_object.set_clim(clim)
 
     if colorbar:
-        clb = cblabel if cblabel is not None else h5data.data_attrs['UNITS'].tex()
+        if cblabel is not None:
+            clb = cblabel
+        else:
+            try:
+                clb = h5data.data_attrs['UNITS'].tex()
+            except KeyError:
+                clb = ''
+            except AttributeError:
+                clb = '$' + str(h5data.data_attrs['UNITS']) + '$'
         if colorbar_kw is None:
             colorbar_kw = {}
         ncb = add_colorbar(plot_object, fig=fig, ax=ax, cb=cb, cblabel=clb, **colorbar_kw)

@@ -188,8 +188,10 @@ class Generic2DPlotCtrl(object):
         tab = []
         # # # -------------------- Tab0 --------------------------
         # title
-        if not title:
+        if title is None or title == True:
             title = osh5vis.default_title(data, show_time=False)
+        elif title == False:
+            title = ''
         t_in_axis = data.has_axis('t')
         self.if_reset_title = widgets.Checkbox(value=True, description='Auto', layout=_items_layout)
         self.datalabel = widgets.Text(value=title, placeholder='data', continuous_update=False,
