@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 import numpy as np
 import osh5def
+import subprocess
 # try:
 #     import osh5gui
 #     gui_fname = osh5gui.gui_fname
@@ -250,3 +251,23 @@ def new_fig(h5data, *args, figsize=None, dpi=None, facecolor=None, edgecolor=Non
     osplot(h5data, *args, **kwpassthrough)
     plt.show()
 
+
+def movie( scan_dir, fname, fps=50, fig_size=[50,20], dpi=120 ):
+    """
+    make a mp4 movie out of a bunch of .png files
+    :scan_dir is directory containing .png files
+    :fps = frames per second
+    :dpi = image resolution
+    :fig_size = fig_size
+    """
+    f = scan_dir + fname
+
+    x = dpi * fig_size[0]
+    y = dpi * fig_size[1]
+    if(x*y > 4000 * 2000):
+        x = x/2
+        y = y/2
+
+    subprocess.call(["ffmpeg", "-framerate",str(fps),"-pattern_type","glob","-i", \
+        f+'*.png','-c:v','libx264','-vf','scale=' + str(x) +':' + str(y)+', \
+        format=yuv420p',f+'.mp4'])
