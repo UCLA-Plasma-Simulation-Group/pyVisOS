@@ -1,14 +1,34 @@
 # import osh5def
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 import numpy as np
 import osh5def
 import subprocess
+import re
 # try:
 #     import osh5gui
 #     gui_fname = osh5gui.gui_fname
 # except ImportError:
 #     print('Fail to import GUI routines. Check your PyQT installation')
+
+class FixedWidthFormatter(matplotlib.ticker.ScalarFormatter):
+    def __init__(self, fformat="%1.1f", offset=True, mathText=True):
+        self.fformat = fformat
+        super().__init__(useOffset=offset, useMathText=mathText)
+        precision = fformat.split('.')
+        if len(precision) > 1:
+            precision = re.search(r'\d+', precision[1])
+            if precision is not None:
+                self._offset_threshold = max(int(precision.group()), 1)
+        self.set_powerlimits((0,0))
+
+    def _set_format(self, *args, **kwargs):
+        self.format = self.fformat
+        if self._usetex:
+            self.format = '$%s$' % self.format
+        elif self._useMathText:
+            self.format = '$%s$' % matplotlib.ticker._mathdefault(self.format)
 
 
 def change_default_units(units):
@@ -104,23 +124,23 @@ def osplot1d(h5data, *args, ax=None, **kwpassthrough):
 
 def ossemilogx(h5data, *args, ax=None, **kwpassthrough):
     semilogx = plt.semilogx if ax is None else ax.semilogx
-    return __osplot1d(semilogx, h5data, *args, **kwpassthrough)
+    return __osplot1d(semilogx, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def ossemilogy(h5data, *args, ax=None, **kwpassthrough):
     semilogy = plt.semilogy if ax is None else ax.semilogy
-    return __osplot1d(semilogy, h5data, *args, **kwpassthrough)
+    return __osplot1d(semilogy, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def osloglog(h5data, *args, ax=None, **kwpassthrough):
     loglog = plt.loglog if ax is None else ax.loglog
-    return __osplot1d(loglog, h5data, *args, **kwpassthrough)
+    return __osplot1d(loglog, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', use_gridspec=True, **kwargs):
     if not cb:
-        cb = plt.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs) if fig is None \
-             else fig.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs)
+        cb = plt.colorbar(im, cax=cax, ax=ax, label=cblabel, use_gridspec=use_gridspec, **kwargs) if fig is None \
+             else fig.colorbar(im, cax=cax, ax=ax, label=cblabel, use_gridspec=use_gridspec, **kwargs)
     else:
         cb.set_label(cblabel)
     return cb
@@ -175,7 +195,15 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
         plot_object.set_clim(clim)
 
     if colorbar:
-        clb = cblabel if cblabel is not None else h5data.data_attrs['UNITS'].tex()
+        if cblabel is not None:
+            clb = cblabel
+        else:
+            try:
+                clb = h5data.data_attrs['UNITS'].tex()
+            except KeyError:
+                clb = ''
+            except AttributeError:
+                clb = '$' + str(h5data.data_attrs['UNITS']) + '$'
         if colorbar_kw is None:
             colorbar_kw = {}
         ncb = add_colorbar(plot_object, fig=fig, ax=ax, cb=cb, cblabel=clb, **colorbar_kw)

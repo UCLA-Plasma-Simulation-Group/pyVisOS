@@ -13,6 +13,7 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, PowerNorm, SymLogNorm
 from matplotlib._pylab_helpers import Gcf as pylab_gcf
+import matplotlib.ticker as ticker
 import subprocess
 from datetime import datetime
 import time
@@ -178,7 +179,7 @@ class Generic2DPlotCtrl(object):
 
     def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), slice(None, )), title=None, norm='',
                  fig=None, figsize=None, time_in_title=True, phys_time=False, ax=None, output_widget=None,
-                 xlabel=None, ylabel=None, onDestruction=do_nothing,
+                 xlabel=None, ylabel=None, onDestruction=do_nothing, cbar_aspect=None, cblabel=None,
                  convert_xaxis=False, convert_yaxis=False, register_callbacks=None, **kwargs):
         self._data, self._slcs, self.im_xlt, self.time_in_title, self.pltfunc, self.onDestruction = \
         data, slcs, None, time_in_title, pltfunc, onDestruction
@@ -187,8 +188,10 @@ class Generic2DPlotCtrl(object):
         tab = []
         # # # -------------------- Tab0 --------------------------
         # title
-        if not title:
+        if title is None or title == True:
             title = osh5vis.default_title(data, show_time=False)
+        elif title == False:
+            title = ''
         t_in_axis = data.has_axis('t')
         self.if_reset_title = widgets.Checkbox(value=True, description='Auto', layout=_items_layout)
         self.datalabel = widgets.Text(value=title, placeholder='data', continuous_update=False,
@@ -266,9 +269,11 @@ class Generic2DPlotCtrl(object):
             self.xconv, xunit = data.axes[1].punit_convert_factor()
         else:
             self.xconv, xunit = 1.0, data.axes[1].units
-        self.x_min_wgt = widgets.BoundedFloatText(value=xmin * self.xconv, min=xmin * self.xconv, max=xmax * self.xconv, step=xinc * self.xconv/2, description='xmin:',
+        xmin *= self.xconv
+        xmax *= self.xconv
+        self.x_min_wgt = widgets.BoundedFloatText(value=xmin, min=xmin, max=xmax, step=xinc * self.xconv/2, description='xmin:',
                                                   disabled=True, layout=_items_layout, style={'description_width': 'initial'})
-        self.x_max_wgt = widgets.BoundedFloatText(value=xmax * self.xconv, min=xmin * self.xconv, max=xmax * self.xconv, step=xinc * self.xconv/2, description='xmax:',
+        self.x_max_wgt = widgets.BoundedFloatText(value=xmax, min=xmin, max=xmax, step=xinc * self.xconv/2, description='xmax:',
                                                   disabled=True, layout=_items_layout, style={'description_width': 'initial'})
         self.x_step_wgt = widgets.BoundedFloatText(value=xinc * self.xconv, step=xinc * self.xconv, disabled=True,
                                                    description='$\Delta x$:', layout=_items_layout, style={'description_width': 'initial'})
@@ -298,9 +303,11 @@ class Generic2DPlotCtrl(object):
             self.yconv, yunit = data.axes[0].punit_convert_factor()
         else:
             self.yconv, yunit = 1.0, data.axes[0].units
-        self.y_min_wgt = widgets.BoundedFloatText(value=ymin * self.yconv, min=ymin * self.yconv, max=ymax * self.yconv, step=yinc * self.yconv/2, description='ymin:',
+        ymin *= self.yconv
+        ymax *= self.yconv
+        self.y_min_wgt = widgets.BoundedFloatText(value=ymin, min=ymin, max=ymax, step=yinc * self.yconv/2, description='ymin:',
                                                   disabled=True, layout=_items_layout, style={'description_width': 'initial'})
-        self.y_max_wgt = widgets.BoundedFloatText(value=ymax * self.yconv, min=ymin * self.yconv, max=ymax * self.yconv, step=yinc * self.yconv/2, description='ymax:',
+        self.y_max_wgt = widgets.BoundedFloatText(value=ymax, min=ymin, max=ymax, step=yinc * self.yconv/2, description='ymax:',
                                                   disabled=True, layout=_items_layout, style={'description_width': 'initial'})
         self.y_step_wgt = widgets.BoundedFloatText(value=yinc * self.yconv, step=yinc * self.yconv, disabled=True, description='$\Delta y$:',
                                                    layout=_items_layout, style={'description_width': 'initial'})
@@ -308,7 +315,7 @@ class Generic2DPlotCtrl(object):
         widgets.jslink((self.y_max_wgt, 'min'), (self.y_min_wgt, 'value'))
         widgets.jslink((self.y_min_wgt, 'disabled'), (self.if_yrange_auto, 'value'))
         widgets.jslink((self.y_max_wgt, 'disabled'), (self.if_yrange_auto, 'value'))
-        widgets.jslink((self.y_step_wgt, 'disabled'), (self.if_xrange_auto, 'value'))
+        widgets.jslink((self.y_step_wgt, 'disabled'), (self.if_yrange_auto, 'value'))
         # y label
         self.if_reset_ylabel = widgets.Checkbox(value=True, description='Auto', layout=_items_layout, style={'description_width': 'initial'})
         self.if_y_phys_unit = widgets.Checkbox(value=convert_yaxis, description='phys unit;  ', layout={'width': 'initial'}, style={'description_width': 'initial'})
@@ -337,7 +344,7 @@ class Generic2DPlotCtrl(object):
         analist = [k for k in self.__analysis_def.keys()]
         # x lineout
         self.xlineout_wgt = widgets.BoundedFloatText(value=ymin, min=ymin, max=ymax, style={'description_width': 'initial'},
-                                                     step=yinc, description=self.ylabel.value, layout={'width': 'initial'})
+                                                     step=yinc, description=self.ylabel.value, layout=_items_layout)
         widgets.jslink((self.xlineout_wgt, 'description'), (self.ylabel, 'value'))
         widgets.jslink((self.xlineout_wgt, 'min'), (self.y_min_wgt, 'value'))
         widgets.jslink((self.xlineout_wgt, 'max'), (self.y_max_wgt, 'value'))
@@ -361,14 +368,25 @@ class Generic2DPlotCtrl(object):
         widgets.jslink((self.anaxmax, 'step'), (self.y_step_wgt, 'value'))
         self.xana_add = widgets.Button(description='Add', tooltip='Add analysis as x line plot', layout={'width': 'initial'})
         xlinegroup = widgets.HBox([self.xananame, self.xanaopts, self.anaxmin, self.anaxmax, self.xana_add], layout=Layout(border='solid 1px'))
+        self.xlineout_fixedwidth_ticks = widgets.Checkbox(value=False, description='fixed width ticker;', layout=_items_layout, style={'description_width': 'initial'})
+        self.xlineout_ticker_format = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
+                                                   layout=_items_layout, style={'description_width': 'initial'})
+        self.xlineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout)
+        self.xline_auto_range = widgets.Checkbox(value=True, description='Auto plot range;', layout=_items_layout, style={'description_width': 'initial'})
+        self.xline_style = widgets.Dropdown(options=['-', '--', '-.', ':'], value='-', description='linestyle:', layout=_items_layout, style={'description_width': 'initial'})
+        self.xline_range_min = widgets.FloatText(value=self.vmin_wgt.value, description='min:', disabled=True, layout=_items_layout, style={'description_width': 'initial'})
+        self.xline_range_max = widgets.FloatText(value=self.vmax_wgt.value, description='max:', disabled=True, layout=_items_layout, style={'description_width': 'initial'})
+        widgets.jslink((self.xline_range_min, 'disabled'), (self.xline_auto_range, 'value'))
+        widgets.jslink((self.xline_range_max, 'disabled'), (self.xline_auto_range, 'value'))
+        xticks = widgets.HBox([self.xlineout_fixedwidth_ticks, self.xlineout_ticker_format, self.xline_auto_range,
+                               self.xline_range_min, self.xline_range_max, self.xline_style], layout=Layout(flex='1 1 auto', width='auto'))
         # list of x lines plotted
-        self.xlineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout, style={'description_width': 'initial'})
-        self.xlineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.xlineout_wgt, self.add_xlineout_btn],
-                                                                     layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
+        self.xlineout_tab = widgets.VBox([xticks, widgets.HBox([widgets.HBox([self.xlineout_wgt, self.add_xlineout_btn],
+                                                                             layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
                                                         xlinegroup]), self.xlineout_list_wgt])
         # y lineout
         self.ylineout_wgt = widgets.BoundedFloatText(value=xmin, min=xmin, max=xmax, style={'description_width': 'initial'},
-                                                     step=xinc, description=self.xlabel.value, layout={'width': 'initial'})
+                                                     step=xinc, description=self.xlabel.value, layout=_items_layout)
         widgets.jslink((self.ylineout_wgt, 'description'), (self.xlabel, 'value'))
         widgets.jslink((self.ylineout_wgt, 'min'), (self.x_min_wgt, 'value'))
         widgets.jslink((self.ylineout_wgt, 'max'), (self.x_max_wgt, 'value'))
@@ -391,12 +409,22 @@ class Generic2DPlotCtrl(object):
         widgets.jslink((self.anaymax, 'max'), (self.x_max_wgt, 'value'))
         widgets.jslink((self.anaymax, 'step'), (self.x_step_wgt, 'value'))
         self.yana_add = widgets.Button(description='Add', tooltip='Add analysis as y line plot', layout={'width': 'initial'})
-        ylinegroup = widgets.HBox([self.yananame, self.yanaopts, self.anaymin, self.anaymax, self.yana_add],
-                                  layout=Layout(width='initial', border='solid 1px'))
-        # list of x lines plotted
+        ylinegroup = widgets.HBox([self.yananame, self.yanaopts, self.anaymin, self.anaymax, self.yana_add], layout=Layout(border='solid 1px'))
+        self.ylineout_fixedwidth_ticks = widgets.Checkbox(value=False, description='fixed width ticker;', layout=_items_layout, style={'description_width': 'initial'})
+        self.ylineout_ticker_format = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
+                                                   layout=_items_layout, style={'description_width': 'initial'})
         self.ylineout_list_wgt = widgets.Box(children=[], layout=overlay_item_layout)
-        self.ylineout_tab = widgets.VBox([widgets.HBox([widgets.HBox([self.ylineout_wgt, self.add_ylineout_btn],
-                                                                     layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
+        self.yline_auto_range = widgets.Checkbox(value=True, description='ranges follow Data tab settings', layout=_items_layout, style={'description_width': 'initial'})
+        self.yline_style = widgets.Dropdown(options=['-', '--', '-.', ':'], value='-', description='linestyle:', layout=_items_layout, style={'description_width': 'initial'})
+        self.yline_range_min = widgets.FloatText(value=self.vmin_wgt.value, description='min:', disabled=True, layout=_items_layout, style={'description_width': 'initial'})
+        self.yline_range_max = widgets.FloatText(value=self.vmax_wgt.value, description='max:', disabled=True, layout=_items_layout, style={'description_width': 'initial'})
+        widgets.jslink((self.yline_range_min, 'disabled'), (self.yline_auto_range, 'value'))
+        widgets.jslink((self.yline_range_max, 'disabled'), (self.yline_auto_range, 'value'))
+        yticks = widgets.HBox([self.ylineout_fixedwidth_ticks, self.ylineout_ticker_format, self.yline_auto_range,
+                               self.yline_range_min, self.yline_range_max, self.yline_style], layout=Layout(flex='1 1 auto', width='auto'))
+        # list of x lines plotted
+        self.ylineout_tab = widgets.VBox([yticks, widgets.HBox([widgets.HBox([self.ylineout_wgt, self.add_ylineout_btn],
+                                                                             layout=Layout(border='solid 1px', flex='1 1 auto', width='auto')),
                                                         ylinegroup]), self.ylineout_list_wgt])
 #         self.ct_alpha = widgets.BoundedFloatText(value=1.0, min=0., max=1., step=0.01, layout={'width': 'initial'}, style={'description_width': 'initial'})
         self.ct_auto_color = widgets.ToggleButtons(options=['colormap', 'manual', 'same'], description='Color:', value='colormap',
@@ -441,16 +469,22 @@ class Generic2DPlotCtrl(object):
 
         # # # -------------------- Tab3 --------------------------
         self.colorbar = widgets.Checkbox(value=show_colorbar, description='Show colorbar')
+        self.cb_aspect = widgets.BoundedIntText(value=cbar_aspect or 20, min=0, max=300, step=0.01, description='aspect ratio:')
         self.cmap_selector = widgets.Dropdown(options=self.colormaps_available, value=user_cmap,
                                               description='Colormap:', disabled=not show_colorbar)
         self.cmap_reverse = widgets.Checkbox(value=False, description='Reverse', disabled=not show_colorbar)
         # colorbar
         self.if_reset_cbar = widgets.Checkbox(value=True, description='Auto', disabled=not show_colorbar)
-        self.cbar = widgets.Text(value=data.units.tex(), placeholder='a.u.', continuous_update=False,
+        self.cbar = widgets.Text(value=cblabel if cblabel is not None else data.units.tex(), placeholder='a.u.', continuous_update=False,
                                  description='Colorbar:', disabled=self.if_reset_cbar.value or not show_colorbar)
-        tab.append(widgets.VBox([self.colorbar,
+        # colorbar ticker formatter
+        self.cbar_formatter = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
+                                           layout=_items_layout, style={'description_width': 'initial'})
+        self.cbar_fixedwidth = widgets.Checkbox(value=False, description='Fixed ticker width', style={'description_width': 'initial'})
+        tab.append(widgets.VBox([widgets.HBox([self.colorbar, self.cb_aspect], layout=_items_layout),
                                  widgets.HBox([self.cmap_selector, self.cmap_reverse], layout=_items_layout),
-                                 widgets.HBox([self.cbar, self.if_reset_cbar])], layout=_items_layout))
+                                 widgets.HBox([self.cbar, self.if_reset_cbar]),
+                                 widgets.HBox([self.cbar_formatter, self.cbar_fixedwidth])], layout=_items_layout))
 
         # # # -------------------- Tab4 --------------------------
         self.saveas = widgets.Button(description='Save current plot', tooltip='save current plot', button_style='')
@@ -527,6 +561,9 @@ class Generic2DPlotCtrl(object):
         self.ct_method.observe(self._on_ct_method_change, 'value')
         self.if_xrange_auto.observe(self.reset_xrange_step, 'value')
         self.if_yrange_auto.observe(self.reset_yrange_step, 'value')
+        self.cbar_formatter.observe(self.update_cbar_formatter, 'value')
+        self.xlineout_ticker_format.observe(self.update_xlineout_ticks, 'value')
+        self.ylineout_ticker_format.observe(self.update_ylineout_ticks, 'value')
 
     @property
     def widgets_list(self):
@@ -551,11 +588,12 @@ class Generic2DPlotCtrl(object):
         self.__update_ylabel({'new': True})
 
     def reset_plot_area(self):
-        self.x_min_wgt.min, self.x_max_wgt.max, xstep, \
-        self.y_min_wgt.min, self.y_max_wgt.max, ystep = self.__get_xy_minmax_delta()
+        xmin, xmax, xstep, ymin, ymax, ystep = self.__get_xy_minmax_delta()
+        self.x_min_wgt.min, self.x_max_wgt.max, self.y_min_wgt.min, self.y_max_wgt.max = \
+        xmin * self.xconv, xmax * self.xconv, ymin * self.yconv, ymax * self.yconv
         self.x_min_wgt.value, self.x_max_wgt.value, self.y_min_wgt.value, self.y_max_wgt.value = \
         self.x_min_wgt.min, self.x_max_wgt.max, self.y_min_wgt.min, self.y_max_wgt.max
-        self.x_step_wgt.value, self.y_step_wgt.value = xstep / 2, ystep / 2
+        self.x_step_wgt.value, self.y_step_wgt.value = xstep * self.xconv / 2, ystep * self.yconv / 2
         self.__destroy_all_xlineout()
         self.__destroy_all_ylineout()
         self._ct_destroy_all()
@@ -619,6 +657,42 @@ class Generic2DPlotCtrl(object):
         cmap = self.cmap_selector.value if not self.cmap_reverse.value else self.cmap_selector.value + '_r'
         self.im.set_cmap(cmap)
         self.cb.set_cmap(cmap)
+
+    def _set_linear_xline_formatter(self, fmt):
+        if fmt:
+            try:
+                ('%'+fmt) % 1
+                if self.xlineout_fixedwidth_ticks.value:
+                    self.axx.yaxis.set_major_formatter(osh5vis.FixedWidthFormatter(fformat='%'+fmt))
+                else:
+                    self.axx.yaxis.set_major_formatter(ticker.FormatStrFormatter('%'+fmt))
+            except ValueError:
+                pass
+        elif fmt is None or fmt == '':
+            self.axx.yaxis.set_major_formatter(ticker.ScalarFormatter())
+
+    def update_xlineout_ticks(self, change):
+        if self._xlineouts:
+            if self.__old_norm[0] == Normalize:
+                self._set_linear_xline_formatter(change['new'])
+
+    def _set_linear_yline_formatter(self, fmt):
+        if fmt:
+            try:
+                ('%'+fmt) % 1
+                if self.ylineout_fixedwidth_ticks.value:
+                    self.axy.xaxis.set_major_formatter(osh5vis.FixedWidthFormatter(fformat='%'+fmt))
+                else:
+                    self.axy.xaxis.set_major_formatter(ticker.FormatStrFormatter('%'+fmt))
+            except ValueError:
+                pass
+        elif fmt is None or fmt == '':
+            self.axy.xaxis.set_major_formatter(ticker.ScalarFormatter())
+
+    def update_ylineout_ticks(self, change):
+        if self._ylineouts:
+            if self.__old_norm[0] == Normalize:
+                self._set_linear_yline_formatter(change['new'])
 
 #     def update_time_label(self):
 #         self._time = osh5vis.time_format(self._data.run_attrs['TIME'][0], self._data.run_attrs['TIME UNITS'])
@@ -694,14 +768,14 @@ class Generic2DPlotCtrl(object):
         self.tab.children = tuple(newtab)
 
     def current_norm(self, vminmax_from_widget=False):
-        return self.norm_selector.value[0](**self.__get_norm(vminmax_from_widget=vminmax_from_widget))
+        return self.__old_norm[0](**self.__get_norm(vminmax_from_widget=vminmax_from_widget))
 
     def plot_data(self, vminmax_from_widget=False, **passthrough):
         ifcolorbar = passthrough.pop('colorbar', self.colorbar.value)
         return self.pltfunc(self.__pp(self._data[self._slcs]), cmap=self.cmap_selector.value,
                             norm=self.current_norm(vminmax_from_widget), title=self.get_plot_title(),
                             xlabel=self.xlabel.value, ylabel=self.ylabel.value, cblabel=self.cbar.value,
-                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar, 
+                            ax=self.ax, fig=self.fig, colorbar=ifcolorbar, colorbar_kw={'aspect': self.cb_aspect.value},
                             convert_xaxis=self.if_x_phys_unit.value, convert_yaxis=self.if_y_phys_unit.value, **passthrough)
 
     def self_destruct(self, *_):
@@ -754,11 +828,14 @@ class Generic2DPlotCtrl(object):
                 if xconv is not None:
                     self._xlineouts[cpk].set_xdata(xconv * xaxis)
             if (not description_only) and len(self.xlineout_list_wgt.children) != 0:
-                vmin, vmax = self.__get_vminmax()
-                vmin, vmax = vmin if vmin else np.min(vminl), vmax if vmax else np.max(vmaxl)
-                padding = 0.05 * (vmax - vmin)
-                args = {'bottom': vmin - padding, 'top': vmax + padding}
-                self.axx.set_ylim(**args)
+                if self.xline_auto_range.value:
+                    vmin, vmax = self.__get_vminmax()
+                    vmin, vmax = vmin if vmin else np.min(vminl), vmax if vmax else np.max(vmaxl)
+                    padding = 0.05 * (vmax - vmin)
+                    args = {'bottom': vmin - padding, 'top': vmax + padding}
+                    self.axx.set_ylim(**args)
+                else:
+                    self.axx.set_ylim(bottom=self.xline_range_min.value, top=self.xline_range_max.value)
         # update y lineouts/analysis
         if 'y' in dim:
             vminl, vmaxl = [], []
@@ -779,11 +856,14 @@ class Generic2DPlotCtrl(object):
                 if yconv is not None:
                     self._ylineouts[cpk].set_ydata(yconv * yaxis)
             if (not description_only) and len(self.ylineout_list_wgt.children) != 0:
-                vmin, vmax = self.__get_vminmax()
-                vmin, vmax = vmin if vmin else np.min(vminl), vmax if vmax else np.max(vmaxl)
-                padding = 0.05 * (vmax - vmin)
-                args = {'left': vmin - padding, 'right': vmax + padding}
-                self.axy.set_xlim(**args)
+                if self.yline_auto_range.value:
+                    vmin, vmax = self.__get_vminmax()
+                    vmin, vmax = vmin if vmin else np.min(vminl), vmax if vmax else np.max(vmaxl)
+                    padding = 0.05 * (vmax - vmin)
+                    args = {'left': vmin - padding, 'right': vmax + padding}
+                    self.axy.set_xlim(**args)
+                else:
+                    self.axy.set_xlim(left=self.yline_range_min.value, right=self.yline_range_ax.value)
 
     def update_contours(self):
         for wgt in self.ct_wgt_list.children:
@@ -803,6 +883,19 @@ class Generic2DPlotCtrl(object):
 
     def _on_clabel_toggle(self, change):
         self.ct_if_inline_clabel.disabled = not change['new']
+
+    def update_cbar_formatter(self, change):
+        if self.__old_norm[0] == Normalize:
+            if change['new']:
+                try:
+                    ('%'+change['new']) % 1
+                    self.cb.remove()
+                    self.__add_colorbar()
+                except ValueError:
+                    pass
+        elif change['new'] is None or change['new'] == '':
+            self.cb.remove()
+            self.__add_colorbar()
 
     @staticmethod
     def update_axis_units(dim, thisclass, ext, xconv=None, yconv=None, xunit=None, yunit=None, xconv_now=None, yconv_now=None):
@@ -950,7 +1043,7 @@ class Generic2DPlotCtrl(object):
         if self.ct_auto_color.value == 'colormap':
             kwargs['colors'] = None
             kwargs['cmap'] = self.ct_cmap_selector.value + ('_r' if self.ct_cmap_reverse.value else '')
-            kwargs['norm'] = self.norm_selector.value[0](**self.__get_norm())
+            kwargs['norm'] = self.__old_norm[0](**self.__get_norm())
         elif self.ct_auto_color.value == 'manual':
             kwargs['colors'] = colors or None
         else:
@@ -1138,12 +1231,13 @@ class Generic2DPlotCtrl(object):
             self.__add_yline(data, posstr, tp, 240)
 
     def __update_twinx_scale(self):
-        if self.norm_selector.value[0] == LogNorm:
+        if self.__old_norm[0] == LogNorm:
             self.axx.set_yscale('log')
-        elif self.norm_selector.value[0] == SymLogNorm:
+        elif self.__old_norm[0] == SymLogNorm:
             self.axx.set_yscale('symlog')
         else:
             self.axx.set_yscale('linear')
+            self._set_linear_xline_formatter(self.xlineout_ticker_format.value)
 
     def __destroy_all_xlineout(self):
         if self._xlineouts:
@@ -1183,8 +1277,9 @@ class Generic2DPlotCtrl(object):
             self.axx = self.ax.twinx()
             self.__update_twinx_scale()
         # plot
-        xlim = self.ax.get_xlim()
-        xlineout = osh5vis.osplot1d(data, convert_xaxis=self.if_x_phys_unit.value, ax=self.axx, xlim=xlim, xlabel='', ylabel='', title='')[0]
+        xlim, ylim = self.ax.get_xlim(), None if self.xline_auto_range.value else [self.xline_range_min.value, self.xline_range_max.value]
+        xlineout = osh5vis.osplot1d(data, convert_xaxis=self.if_x_phys_unit.value, ax=self.axx, xlim=xlim, ylim=ylim,
+                                    xlabel='', ylabel='', title='', linestyle=self.xline_style.value)[0]
         # add widgets (color picker + delete button)
         nw = _get_delete_btn(tp)
         nw.on_click(self.__remove_xlineout)
@@ -1221,12 +1316,13 @@ class Generic2DPlotCtrl(object):
             self.axx.set_ylabel('')
 
     def __update_twiny_scale(self):
-        if self.norm_selector.value[0] == LogNorm:
+        if self.__old_norm[0] == LogNorm:
             self.axy.set_xscale('log')
-        elif self.norm_selector.value[0] == SymLogNorm:
+        elif self.__old_norm[0] == SymLogNorm:
             self.axy.set_xscale('symlog')
         else:
             self.axy.set_xscale('linear')
+            self._set_linear_yline_formatter(self.ylineout_ticker_format.value)
 
     def __destroy_all_ylineout(self):
         if self._ylineouts:
@@ -1265,8 +1361,9 @@ class Generic2DPlotCtrl(object):
             self.axy = self.ax.twiny()
             self.__update_twiny_scale()
         # plot
-        ylim = self.ax.get_ylim()
-        ylineout = osh5vis.osplot1d(data, convert_xaxis=self.if_y_phys_unit.value, ax=self.axy, xlim=ylim, xlabel='', ylabel='', title='', transpose=True)[0]
+        xlim, ylim = self.ax.get_ylim(), None if self.yline_auto_range.value else [self.yline_range_min.value, self.yline_range_max.value]
+        ylineout = osh5vis.osplot1d(data, convert_xaxis=self.if_y_phys_unit.value, ax=self.axy, xlim=xlim, ylim=ylim,
+                                    xlabel='', ylabel='', title='', linestyle=self.yline_style.value, transpose=True)[0]
         # add widgets (color picker + delete button)
         nw = _get_delete_btn(tp)
         nw.on_click(self.__remove_ylineout)
@@ -1340,11 +1437,11 @@ class Generic2DPlotCtrl(object):
 
     @property
     def current_vmin(self):
-        return self.norm_selector.value[1].children[1].children[0].value
+        return self.__old_norm[1].children[1].children[0].value
 
     @current_vmin.setter
     def current_vmin(self, val):
-        self.norm_selector.value[1].children[1].children[0].value = val
+        self.__old_norm[1].children[1].children[0].value = val
 
     def __get_vminmax(self, from_widgets=False):
         if from_widgets:
@@ -1371,19 +1468,19 @@ class Generic2DPlotCtrl(object):
                 self.im.set_data(self.__pp(self._data[self._slcs]).view(np.ndarray))
             self.__update_xlineout()
             self.__update_ylineout()
-            self.im.set_norm(self.current_norm())
+            self.im.set_norm(self.current_norm(vminmax_from_widget=True))
             if self.colorbar.value:
                 #TODO: walkaround for an upstream bug: https://github.com/matplotlib/matplotlib/issues/5424
-                self.im.autoscale()
-                self.cb.update_bruteforce(self.im)
+                self.cb.remove()
+                self.__add_colorbar()
             self.update_contours()
 
     def __get_norm(self, vminmax_from_widget=False):
         vmin, vmax = self.__get_vminmax(from_widgets=vminmax_from_widget)
         param = {'vmin': vmin, 'vmax': vmax, 'clip': self.if_clip_cm.value}
-        if self.norm_selector.value[0] == PowerNorm:
+        if self.__old_norm[0] == PowerNorm:
             param['gamma'] = self.gamma.value
-        if self.norm_selector.value[0] == SymLogNorm:
+        if self.__old_norm[0] == SymLogNorm:
             param['linthresh'] = self.linthresh.value
             param['linscale'] = self.linscale.value
         return param
@@ -1398,8 +1495,15 @@ class Generic2DPlotCtrl(object):
 #             self.vmin_wgt.value = np.min(a) if v is None else v
 
     def __add_colorbar(self):
-        clb = self.cbar.value
-        self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb)
+        clb, aspect, cax = self.cbar.value, self.cb_aspect.value or 20, self.cb.ax if self.cb else None
+        if self.__old_norm[0] == Normalize and self.cbar_formatter.value:
+            if self.cbar_fixedwidth.value:
+                self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, aspect=aspect,
+                                               format=osh5vis.FixedWidthFormatter(fformat='%'+self.cbar_formatter.value))
+            else:
+                self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, aspect=aspect, format='%'+self.cbar_formatter.value)
+        else:
+            self.cb = osh5vis.add_colorbar(self.im, fig=self.fig, ax=self.ax, cblabel=clb, aspect=aspect)
 
     def __toggle_colorbar(self, change):
         if change['new']:
@@ -1866,8 +1970,8 @@ class MultiPanelCtrl(object):
                                                        width='%dpx' % (bwpadded * self.ncols)))
         self.ctrl = widgets.HBox([ctrl_pnl, self.tabd[self.tb.index]], layout=_items_layout)
         self.suptitle_wgt = widgets.Text(value=None, placeholder='None', continuous_update=False, description='Suptitle:')
-        self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle, ', style={'description_width': 'initial'})
-        self.time_in_phys_unit = widgets.Checkbox(value=False, description='time in physical unit', style={'description_width': 'initial'})
+        self.time_in_suptitle = widgets.Checkbox(value=False, description='Time in suptitle, ', layout=_items_layout, style={'description_width': 'initial'})
+        self.time_in_phys_unit = widgets.Checkbox(value=False, description='time in physical unit', layout=_items_layout, style={'description_width': 'initial'})
         self.suptitle = widgets.HBox([self.suptitle_wgt, self.time_in_suptitle, self.time_in_phys_unit])
         self.tb.observe(self.show_corresponding_tab, 'index')
         self.suptitle_wgt.observe(self.update_suptitle, 'value')
@@ -1901,7 +2005,7 @@ class MPDirSlicer(MultiPanelCtrl):
     def __init__(self, filefilter_list, grid, interval=1000, processing=do_nothing, figsize=None, fig_ax=tuple(), output_widget=None,
                  sharex=False, sharey=False, worker_kw_list=None, **kwargs):
         if worker_kw_list is None:
-            worker_kw_list = [{},] * (grid[0] * grid[1])
+            worker_kw_list = [{} for _ in range(grid[0] * grid[1])]
         if isinstance(processing, (list, tuple)):
             if len(processing) != grid[0] * grid[1]:
                 raise ValueError('Expecting %d functions in processing, got %d' % (grid[0] * grid[1], len(processing)))
