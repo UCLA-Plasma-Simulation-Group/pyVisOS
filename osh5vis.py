@@ -294,8 +294,9 @@ def movie( scan_dir, fname, fps=50, fig_size=(50,20), dpi=120 ):
     x = dpi * fig_size[0]
     y = dpi * fig_size[1]
     if(x*y > 4000 * 2000):
-        x = x//2*2
-        y = y//2*2
+        x, y = x//2, y//2
+
+    x, y = x//2*2, y//2*2
 
     subprocess.call(["ffmpeg", "-framerate",str(fps),"-pattern_type","glob","-i", \
         f+'*.png','-c:v','libx264','-vf','scale=' + str(x) +':' + str(y)+', \
