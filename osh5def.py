@@ -22,7 +22,7 @@ class DataAxis:
         if data is None:
             if axis_min > axis_max:
                 raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
-            self.ax = np.linspace(axis_min, axis_max, axis_npoints)
+            self.ax = np.linspace(axis_min, axis_max - (axis_max - axis_min) / axis_npoints, axis_npoints)
         else:
             self.ax = data
         # now make attributes for axis that are required..
