@@ -280,10 +280,11 @@ def new_fig(h5data, *args, figsize=None, dpi=None, facecolor=None, edgecolor=Non
     plt.show()
 
 
-def movie( scan_dir, fname, fps=50, fig_size=[50,20], dpi=120 ):
+def movie( scan_dir, fname, fps=50, fig_size=(50,20), dpi=120 ):
     """
     make a mp4 movie out of a bunch of .png files
     :scan_dir is directory containing .png files
+    :fname must be base name of .png files
     :fps = frames per second
     :dpi = image resolution
     :fig_size = fig_size
@@ -293,8 +294,8 @@ def movie( scan_dir, fname, fps=50, fig_size=[50,20], dpi=120 ):
     x = dpi * fig_size[0]
     y = dpi * fig_size[1]
     if(x*y > 4000 * 2000):
-        x = x/2
-        y = y/2
+        x = x//2*2
+        y = y//2*2
 
     subprocess.call(["ffmpeg", "-framerate",str(fps),"-pattern_type","glob","-i", \
         f+'*.png','-c:v','libx264','-vf','scale=' + str(x) +':' + str(y)+', \
