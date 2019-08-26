@@ -15,7 +15,7 @@ __status__ = "Development"
 import h5py
 import os
 import numpy as np
-from osh5def import H5Data, fn_rule, DataAxis, OSUnits
+from osh5def import H5Data, PartData, fn_rule, DataAxis, OSUnits
 
 
 def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
@@ -123,6 +123,52 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         return data_bundle[0]
     else:
         return data_bundle
+
+
+def read_raw(filename, path=None):
+    """
+    Read particle raw data into a numpy sturctured array.
+    See numpy documents for detailed usage examples of the structured array.
+    The only modification is that the meta data of the particles are stored in .attrs attributes.
+    
+    Usage:
+            part = read_raw("raw-electron-000000.h5")   # part is a subclass of numpy.ndarray with extra attributes
+            
+            print(part.shape)                           # should be a 1D array with # of particles
+            print(part.attrs)                           # print all the meta data
+            print(part.attrs['TIME'])                   # prints the simulation time associated with the hdf5 file
+    """
+    fname = filename if not path else path + '/' + filename
+    try:
+        timestamp = fn_rule.findall(os.path.basename(filename))[0]
+    except IndexError:
+        timestamp = '000000'
+    with h5py.File(fname, 'r') as data:
+        quants = [k for k in data.keys()]
+        new_ver = 'SIMULATION' in quants
+        if new_ver:
+            quants.remove('SIMULATION')
+
+        # read in meta data
+        d = {k:v for k,v in data.attrs.items()}
+        # in the old version label and units are stored inside each quantity dataset
+        if not new_ver:
+            d['LABELS'] = [data[q].attrs['LONG_NAME'][0].decode() for q in quants]
+            d['UNITS'] = [data[q].attrs['UNITS'][0].decode() for q in quants]
+        else:
+            d.update({k:v for k, v in data['SIMULATION'].attrs.items()})
+            d['LABELS'] = [n.decode() for n in d['LABELS']]
+            d['UNITS'] = [n.decode() for n in d['UNITS']]
+        d['QUANTS'] = quants
+        #TODO: TIMESTAMP is not set in HDF5 file as of now (Aug 2019) so we make one up, check back when file format changes
+        d['TIMESTAMP'] = timestamp
+
+        dtype = [(q, data[q].dtype) for q in quants]
+        r = PartData(data[dtype[0][0]].shape, dtype=dtype, attrs=d)
+        for dt in dtype:
+            r[dt[0]] = data[dt[0]]
+
+    return r
 
 
 def read_h5_openpmd(filename, path=None):
