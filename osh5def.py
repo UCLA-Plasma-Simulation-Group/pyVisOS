@@ -655,7 +655,7 @@ class H5Data(np.ndarray):
 
         ind = [slice(None,)] * self.ndim
         for axn, bnd in bound.items():
-            ind[self.index_of(axn)] = bnd if isinstance(bnd, slice) else slice(*bnd)
+            ind[self.index_of(axn)] = bnd if isinstance(bnd, (slice, int, float)) else slice(*bnd)
         res = self.loc[tuple(ind)]
         if new:
             return res.copy() if res.base is self else res
