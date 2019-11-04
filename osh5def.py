@@ -726,6 +726,7 @@ class H5Data(np.ndarray):
             if symmetric:
                 index.append(H5Data.__get_symmetric_bound(self.axes, index[0]))
             for idx in index:
+                idx = tuple(idx)
                 if inverse_select:  # record original data for later use
                     if method:
                         rec.append((idx, cp.deepcopy(method(v[idx], val[i % vallen]))))
