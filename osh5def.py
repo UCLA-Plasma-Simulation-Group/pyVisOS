@@ -440,6 +440,11 @@ class H5Data(np.ndarray):
             return v.view(np.ndarray)
         return v
 
+    def __getattr__(self, label):
+        ind = self.index_of(label)
+        axes = np.meshgrid(*reversed([x.ax for x in self.axes]), sparse=True)
+        return axes[self.ndim-1-ind].copy()
+
     def meta2dict(self):
         """return a deep copy of the meta data as a dictionary"""
         return cp.deepcopy(self.__dict__)
