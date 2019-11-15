@@ -764,6 +764,19 @@ def log_Gabor_Filter_2d(w, w0, s0):
     return np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) )
 
 
+def retangular_Bandpass_Filter(k, center, hwidth):
+    """
+    return array with the same shape as k.
+    The array returned is 1 where center-width < k < center+width, 0 otherwise
+    center: center of the bandpass filter
+    hwidth: half width of the bandpass filter
+    """
+    r = np.ones(k.shape)
+    r[k<center-hwidth] = 0
+    r[k>center+hwidth] = 0
+    return r
+
+
 def monogenic_signal(data, *args, filter_func=log_Gabor_Filter_2d, ffted=True, ifft=True, caching=False, **additional_fft_kwargs):
     """
     Get the monogenic signal of 2D data. This implementation is better suited for intrisically 1D signals.
