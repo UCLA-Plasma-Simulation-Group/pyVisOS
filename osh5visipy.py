@@ -1916,7 +1916,8 @@ class MultiPanelCtrl(object):
         width, height = figsize or plt.rcParams.get('figure.figsize')
         self.out = output_widget or widgets.Output()
         nplots = self.nrows * self.ncols
-        xlabel, ylabel = [None,] * nplots, [None,] * nplots
+        xlabel, ylabel = kwargs.pop('xlabel', None), kwargs.pop('ylabel', None)
+        xlabel, ylabel = [xlabel,] * nplots, [ylabel,] * nplots
         if str(sharex).lower() in ('true', 'all', 'col'):
             for i in range(nplots - self.ncols):
                 xlabel[i] = False
