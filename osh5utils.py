@@ -18,7 +18,6 @@ except ImportError:
     import numpy.fft as fftmod
 # import numpy.fft as fftmod
 from joblib import Parallel, delayed
-import time
 
 
 utils_cache = {}
@@ -173,8 +172,7 @@ def stack(arr, axis=0, axesdata=None):
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
-def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None):
-    t0=time.time()
+def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, cpu_count=None):
     """
     stack a directory of grid data and optionally save the result to a file
     :param dir_or_filelist: name of the directory
@@ -187,6 +185,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
                         returns False then this parameter will be ignored entirely.
     :param axesdata: user difined axes, see stack for more detail
     :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
+    :param cpu_count: Number of CPU's to spread job over for parallel computation
     :return: combined grid data, one dimension more than the preprocessed original data
     Usage of preprocess:
     The functino list should look like:
@@ -198,7 +197,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         if preprocess=[(numpy.power, 2), (numpy.average, {'axis':0}), numpy.sqrt], then the data to be stacked is
         numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
     """
-
+    # need this in one function to be able to feed it into jobilb parallel
     def read_and_ndarray(f):
         return osh5io.read_h5(f).view(np.ndarray)
 
@@ -215,36 +214,18 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[0])))
         tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[-1])))
     else:
-        start = time.time()
-
-        # print('running in serial')
-        # tmp = [osh5io.read_h5(f).view(np.ndarray) for f in flist[1:-1]]
-
-        # # parallel option 1
-        # print('running in parallel')
-        # tmp = Parallel(n_jobs=32)(delayed(osh5io.read_h5)(f) for f in flist[1:-1])
-        # tmp = [tmp[ii].view(np.ndarray) for ii in range(len(tmp))]
-
-        # paralllel option 2
-        print('running in parallel')
-        tmp = Parallel(n_jobs=32)(delayed(read_and_ndarray)(f) for f in flist[1:-1])
-
-        end = time.time()
-        print('    time',end - start)
-
+        if cpu_count:
+            tmp = Parallel(n_jobs=32)(delayed(read_and_ndarray)(f) for f in flist[1:-1])
+        else:
+            tmp = [osh5io.read_h5(f).view(np.ndarray) for f in flist[1:-1]]
         # the first and last file should be H5data
-        print('putting first and last files on')
         tmp.insert(0, osh5io.read_h5(flist[0]))
         tmp.append(osh5io.read_h5(flist[-1]))
-    print('stacking')
     res = stack(tmp, axis=0, axesdata=axesdata)
     if save:
-        print('saving')
         if not isinstance(save, str):
             save = dir_or_filelist if isinstance(dir_or_filelist, str) else './' + res.name + '.h5'
         osh5io.write_h5(res, save)
-    t1=time.time()
-    print('total time',t1-t0)
     return res
 
 
