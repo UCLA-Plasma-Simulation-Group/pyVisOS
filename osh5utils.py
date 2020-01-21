@@ -17,8 +17,6 @@ try:
 except ImportError:
     import numpy.fft as fftmod
 # import numpy.fft as fftmod
-from joblib import Parallel, delayed
-import time
 from multiprocessing import Pool
 
 
@@ -174,9 +172,9 @@ def stack(arr, axis=0, axesdata=None):
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
-# need this in one function to be able to feed it into jobilb parallel
 def read_and_ndarray(f):
     return osh5io.read_h5(f).view(np.ndarray)
+
 
 def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, cpu_count=1):
     """
@@ -203,8 +201,6 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         if preprocess=[(numpy.power, 2), (numpy.average, {'axis':0}), numpy.sqrt], then the data to be stacked is
         numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
     """
-
-
     prfx = str(prefix).strip() if prefix else ''
 
     if isinstance(dir_or_filelist, str):
@@ -219,23 +215,9 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[-1])))
     else:
         if cpu_count>1:
-            print('running in parllel')
-            t0 = time.time()
-            tmp = Parallel(n_jobs=cpu_count)(delayed(read_and_ndarray)(f) for f in flist[1:-1])
-            # pool = Pool(cpu_count)
-            # tasks = [f for f in flist[1:-1]]
-            # print(type(tasks))
-            # print(type(read_and_ndarray))
-            # # tmp = pool.map( delayed(read_and_ndarray), [f for f in flist[1:-1]] )
-            # tmp = pool.map( read_and_ndarray, tasks )
-            t1 = time.time()
-            print('time',t1-t0)
+            tmp = Pool(cpu_count).map( read_and_ndarray, [f for f in flist[1:-1]] )
         else:
-            print('running in serial')
-            t0 = time.time()
             tmp = [osh5io.read_h5(f).view(np.ndarray) for f in flist[1:-1]]
-            t1 = time.time()
-            print('time',t1-t0)
         # the first and last file should be H5data
         tmp.insert(0, osh5io.read_h5(flist[0]))
         tmp.append(osh5io.read_h5(flist[-1]))
