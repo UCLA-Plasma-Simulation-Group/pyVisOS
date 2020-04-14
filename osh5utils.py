@@ -356,7 +356,13 @@ def __ft_interface(ftfunc, forward, omitlast):
     @metasl
     def ft_interface(a, s, axes, norm, **kwargs):
         # call fft and shift the result
-        shftax = axes[:-1] if omitlast else axes
+        if omitlast:
+            if isinstance(axes, int):  # no fftshift in the case of rfft
+                return ftfunc(a, s, axes, norm, **kwargs)
+            else:
+                shftax = axes[:-1]
+        else:
+            shftax = axes
         if forward:
             return fftmod.fftshift(ftfunc(a, s, axes, norm, **kwargs), shftax)
         else:
@@ -891,6 +897,105 @@ def monogenic_local_k(monogenic_local_phase, axis=-1, denoise=False, kmax=None):
         r.values[r.values > kmax] = kmax
         r.values[r.values < -kmax] = - kmax
     r.data_attrs['UNITS'] = monogenic_local_phase.axes[axis].units**-1
+    return r
+
+
+def _find_lineout_extent(h5data, point, slope, vardim, valdim):
+    """
+    this helper function finds the points crossing the array boundary for the lineout
+
+    vardim: the index of the independent _variable_
+    valdim: the index of the dependent variable (aka _value_), valdim = 1 - vardim
+    point: the coordinate of the point the line passing through, in the axes units.
+    slope: the equation of the line is (in 2D assuming the other axis's name is oax)
+           slope=(h5data.axes[valdim]-point[valdim])/(h5data.axes[vardim]-point[vardim])
+    """
+    y = [(h5data.axes[vardim].min - point[vardim]) * slope + point[valdim],
+         (h5data.axes[vardim].max - point[vardim]) * slope + point[valdim]]
+    x = [h5data.axes[vardim].min, h5data.axes[vardim].max]
+    for i in range(2):
+        if y[i] > h5data.axes[valdim].max:
+            x[i] = (h5data.axes[valdim].max - point[valdim]) / slope + point[vardim]
+            y[i] = h5data.axes[valdim].max
+        elif y[i] < h5data.axes[valdim].min:
+            x[i] = (h5data.axes[valdim].min - point[valdim]) / slope + point[vardim]
+            y[i] = h5data.axes[valdim].min
+    if vardim == 0:
+        return (x[0], y[0]), (x[1], y[1])
+    else:
+        return (y[0], x[0]), (y[1], x[1])
+
+
+def lineout(h5data, point, slope, variable='x1', linewidth=0, extent_fill=None, average='simple'):
+    """
+    This function return an 1D lineout of the data. Different from simple array indexing, this function
+    allows oblique slicing of the array and averaging over the "thickness" of the line.
+    (support only 2D data)
+
+    point: the coordinate of the point the line passing through, in the axes units.
+    slope: the equation of the line is (in 2D assuming the other axis's name is oax)
+           slope=(h5data.oax-point[h5data.index_of(oax)])/(h5data.variable-point[h5data.index_of(variable)])
+    linewidth: the thickness of the line in the non-variable direction. 0 means nearest grid points
+    extent_fill: the value to fill in when the lineout does not extent to the full '_variable_' axis,
+                 if None then only valid range in the '_variable_' axis will be returned
+    average: what average method to use when the line has thickness. valid options are:
+             'simple', 'abs', 'rms'
+    """
+    axes = np.meshgrid(*reversed([x.ax for x in h5data.axes]), sparse=True)
+    axes = {h5data.axes[i].name: axes[1-i] for i in range(2)}
+    vardim = h5data.index_of(variable)
+    valdim = 1 - vardim
+    if not linewidth:
+        sp, ep = _find_lineout_extent(h5data, list(point), slope, vardim, valdim)
+        bound = min(sp[vardim], ep[vardim]), max(sp[vardim], ep[vardim])
+        if vardim == 0:
+            tmp = h5data.loc[bound[0]:bound[1], :]
+            tmp = np.array([h5data.loc[v, (v-point[0])*slope+point[1]] for v in tmp.axes[0]])
+            r = copy.deepcopy(h5data[:,0])
+            if extent_fill is None:
+                r = r.loc[sp[0]:ep[0]]
+                r.values[:] = tmp
+            else:
+                r.values[:] = extent_fill
+                r.loc[sp[0]:ep[0]].values[:] = tmp
+        else:
+            tmp = h5data.loc[:, bound[0]:bound[1]]
+            tmp = np.array([h5data.loc[(v-point[1])*slope+point[0], v] for v in tmp.axes[1]])
+            r = copy.deepcopy(h5data[0,:])
+            if extent_fill is None:
+                r = r.loc[sp[1]:ep[1]]
+                r.values[:] = tmp
+            else:
+                r.values[:] = extent_fill
+                r.loc[sp[1]:ep[1]].values[:] = tmp
+    else:
+        p_tmp, vb = list(point), [0, 0]
+        vb[0] = point[valdim] - 0.5 * linewidth
+        p_tmp[valdim] = vb[0]
+        spL, epL = _find_lineout_extent(h5data, p_tmp, slope, vardim, valdim)
+        vb[1] = point[valdim] + 0.5 * linewidth
+        p_tmp[valdim] = vb[1]
+        spH, epH = _find_lineout_extent(h5data, p_tmp, slope, vardim, valdim)
+
+        x12b = ((min(spL[0], epL[0], spH[0], epH[0]), max(spL[0], epL[0], spH[0], epH[0])),
+                (min(spL[1], epL[1], spH[1], epH[1]), max(spL[1], epL[1], spH[1], epH[1])))
+
+        tmp = h5data.loc[x12b[0][0]:x12b[0][1], x12b[1][0]:x12b[1][1]].copy()
+        vara, vala = getattr(tmp, variable), getattr(tmp, tmp.axes[valdim].name)
+        fac = (vara.max() - vara.min()) / linewidth
+        tmp[np.logical_or(vala<vara*slope+vb[0], vala>vara*slope+vb[1])] = 0
+        if average == 'simple':
+            r = np.mean(tmp, axis=valdim) * fac
+        elif average == 'rms':
+            r = np.sqrt(np.mean(tmp*tmp, axis=valdim) * fac)
+        else:
+            r = np.mean(np.abs(tmp), axis=valdim) * fac
+
+        if extent_fill is not None:
+            tmp = h5data[:,0].copy() if vardim == 0 else h5data[0,:].copy()
+            tmp[:] = extent_fill
+            tmp.loc[x12b[vardim][0]:x12b[vardim][1]] = r
+            r = tmp
     return r
 
 
