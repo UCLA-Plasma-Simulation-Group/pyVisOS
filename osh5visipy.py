@@ -1,6 +1,6 @@
 from __future__ import print_function
 from functools import partial
-from ipywidgets import interact, Layout, Output
+from ipywidgets import Layout, Output
 import ipywidgets as widgets
 from IPython.display import display, FileLink, clear_output
 
@@ -475,7 +475,7 @@ class Generic2DPlotCtrl(object):
         self.cmap_reverse = widgets.Checkbox(value=False, description='Reverse', disabled=not show_colorbar)
         # colorbar
         self.if_reset_cbar = widgets.Checkbox(value=True, description='Auto', disabled=not show_colorbar)
-        self.cbar = widgets.Text(value=cblabel if cblabel is not None else data.units.tex(), placeholder='a.u.', continuous_update=False,
+        self.cbar = widgets.Text(value=cblabel if cblabel is not None else osh5vis.tex(str(data.units)), placeholder='a.u.', continuous_update=False,
                                  description='Colorbar:', disabled=self.if_reset_cbar.value or not show_colorbar)
         # colorbar ticker formatter
         self.cbar_formatter = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
@@ -1213,7 +1213,7 @@ class Generic2DPlotCtrl(object):
 
     def __update_yanaopts(self, change):
         opts = self.__analysis_def[change['new']]
-        optlist = [k for k in opts[1].keys()]
+        optlist = [k for k in opts.keys()]
         self.yanaopts.options, self.yanaopts.value = optlist, optlist[0]
 
     def _get_yana_data_descr(self, start, end, opts, name, description_only=False):
