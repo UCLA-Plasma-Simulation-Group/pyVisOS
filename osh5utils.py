@@ -361,7 +361,7 @@ def __ft_interface(ftfunc, forward, omitlast):
     def ft_interface(a, s, axes, norm, **kwargs):
         # call fft and shift the result
         if omitlast:
-            if isinstance(axes, int):  # no fftshift in the case of rfft
+            if isinstance(axes, int) or len(axes) < 2:  # no fftshift in the case of rfft
                 return ftfunc(a, s, axes, norm, **kwargs)
             else:
                 shftax = axes[:-1]
@@ -376,9 +376,9 @@ def __ft_interface(ftfunc, forward, omitlast):
 
 def __shifted_ft_gen(ftfunc, forward, omitlast, ffunc, uafunc):
     def shifted_fft(a, s=None, axes=None, norm=None, **kwargs):
-        shape = s if s is not None else a.shape
+#         shape = s if s is not None else a.shape
         o = __ft_interface(ftfunc, forward=forward, omitlast=omitlast)(a, s=s, axes=axes, norm=norm, **kwargs)
-        uafunc(o, axes, shape, omitlast, ffunc=ffunc)
+        uafunc(o, axes, a.shape, omitlast, ffunc=ffunc)
         return o
     return shifted_fft
 
