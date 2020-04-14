@@ -26,7 +26,7 @@ class DataAxis:
         if data is None:
             if axis_min > axis_max:
                 raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
-            self.ax = np.arange(axis_min, axis_max, (axis_max - axis_min) / axis_npoints)
+            self.ax = np.linspace(axis_min, axis_max - (axis_max - axis_min) / axis_npoints, axis_npoints)
         else:
             self.ax = data
         # now make attributes for axis that are required..
@@ -347,10 +347,22 @@ class H5Data(np.ndarray):
 
     @property
     def long_name(self):
+        warnings.warn(".long_name will be removed from future version. "
+                      "Please use .label instead", DeprecationWarning)
         return self.data_attrs.get('LONG_NAME', '')
 
     @long_name.setter
     def long_name(self, s):
+        warnings.warn(".long_name will be removed from future version. "
+                      "Please use .label instead", DeprecationWarning)
+        self.data_attrs['LONG_NAME'] = str(s)
+
+    @property
+    def label(self):
+        return self.data_attrs.get('LONG_NAME', '')
+
+    @label.setter
+    def label(self, s):
         self.data_attrs['LONG_NAME'] = str(s)
 
     @property
@@ -431,6 +443,11 @@ class H5Data(np.ndarray):
         except:
             return v.view(np.ndarray)
         return v
+
+    def __getattr__(self, label):
+        ind = self.index_of(label)
+        axes = np.meshgrid(*reversed([x.ax for x in self.axes]), sparse=True)
+        return axes[self.ndim-1-ind].copy()
 
     def meta2dict(self):
         """return a deep copy of the meta data as a dictionary"""
@@ -718,6 +735,7 @@ class H5Data(np.ndarray):
             if symmetric:
                 index.append(H5Data.__get_symmetric_bound(self.axes, index[0]))
             for idx in index:
+                idx = tuple(idx)
                 if inverse_select:  # record original data for later use
                     if method:
                         rec.append((idx, cp.deepcopy(method(v[idx], val[i % vallen]))))
@@ -762,3 +780,54 @@ class H5Data(np.ndarray):
             data_dict = {'coords': dim_dict, 'attrs': data_attrs_dict,
                          'dims': dims_name, 'data': data.view(np.ndarray), 'name': data.name}
             return xr.DataArray.from_dict(data_dict)
+
+
+# basically a copy of the numpy array subclassing tutorial
+class PartData(np.ndarray):
+    """
+    A modified numpy structured array storing particles raw data. See numpy documents on structured array for detailed examples.
+    The only modification is that the meta data of the particles are stored in .attrs attributes.
+    
+    Simple indexing examples (assuming part is the PartData instance):
+    part[123]: return the raw data (coordinates, momenta, charge etc) of particle 123.
+    part['x1']: return the 'x1' coordinate of all particles.
+    """
+    def __new__(subtype, shape, dtype=float, buffer=None, offset=0,
+                strides=None, order=None, attrs=None):
+        obj = super(PartData, subtype).__new__(subtype, shape, dtype,
+                                                buffer, offset, strides,
+                                                order)
+        obj.attrs = attrs
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is None: return
+        self.attrs = getattr(obj, 'attrs', None)
+
+    def __find_attrs_by_named_id(self, attr_name, quant=None):
+        if quant:
+            ind = self.attrs['QUANTS'].index(quant)
+            return self.attrs[attr_name][ind]
+        else:
+            return tuple(self.attrs[attr_name])
+
+    def label(self, quant=None):
+        return self.__find_attrs_by_named_id('LABELS', quant)
+
+    def units(self, quant=None):
+        return self.__find_attrs_by_named_id('UNITS', quant)
+
+    @property
+    def timestamp(self):
+        try:
+            return self.attrs['TIMESTAMP']
+        except KeyError:
+            return '0' * 6
+
+    @timestamp.setter
+    def timestamp(self, ts):
+        try:
+            int(ts)
+            self.attrs['TIMESTAMP'] = str(ts)
+        except ValueError:
+            raise ValueError('Illigal timestamp format, must be integer of base 10')
