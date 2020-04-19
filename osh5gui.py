@@ -1,3 +1,9 @@
+"""
+osh5gui.py
+=========
+GUI for the OSIRIS HDF5 data.
+"""
+
 from sys import executable, argv
 from subprocess import check_output
 from PyQt5.QtWidgets import QFileDialog, QApplication

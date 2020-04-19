@@ -1,0 +1,646 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>osh5io &#8212; pyVisOS 1.0 documentation</title>
+    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for osh5io</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">osh5io.py</span>
+<span class="sd">=========</span>
+<span class="sd">Disk IO for the OSIRIS HDF5 data.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">__author__</span> <span class="o">=</span> <span class="s2">&quot;Han Wen&quot;</span>
+<span class="n">__copyright__</span> <span class="o">=</span> <span class="s2">&quot;Copyright 2018, PICKSC&quot;</span>
+<span class="n">__credits__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Adam Tableman&quot;</span><span class="p">,</span> <span class="s2">&quot;Frank Tsung&quot;</span><span class="p">,</span> <span class="s2">&quot;Thamine Dalichaouch&quot;</span><span class="p">]</span>
+<span class="n">__license__</span> <span class="o">=</span> <span class="s2">&quot;GPLv2&quot;</span>
+<span class="n">__version__</span> <span class="o">=</span> <span class="s2">&quot;0.1&quot;</span>
+<span class="n">__maintainer__</span> <span class="o">=</span> <span class="s2">&quot;Han Wen&quot;</span>
+<span class="n">__email__</span> <span class="o">=</span> <span class="s2">&quot;hanwen@ucla.edu&quot;</span>
+<span class="n">__status__</span> <span class="o">=</span> <span class="s2">&quot;Development&quot;</span>
+
+
+<span class="kn">import</span> <span class="nn">h5py</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">osh5def</span> <span class="k">import</span> <span class="n">H5Data</span><span class="p">,</span> <span class="n">fn_rule</span><span class="p">,</span> <span class="n">DataAxis</span><span class="p">,</span> <span class="n">OSUnits</span>
+
+
+<div class="viewcode-block" id="read_h5"><a class="viewcode-back" href="../osh5io.html#osh5io.read_h5">[docs]</a><span class="k">def</span> <span class="nf">read_h5</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">axis_name</span><span class="o">=</span><span class="s2">&quot;AXIS/AXIS&quot;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    HDF reader for Osiris/Visxd compatible HDF files... This will slurp in the data</span>
+<span class="sd">    and the attributes that describe the data (e.g. title, units, scale).</span>
+
+<span class="sd">    Usage:</span>
+<span class="sd">            diag_data = read_hdf(&#39;e1-000006.h5&#39;)      # diag_data is a subclass of numpy.ndarray with extra attributes</span>
+
+<span class="sd">            print(diag_data)                          # print the meta data</span>
+<span class="sd">            print(diag_data.view(numpy.ndarray))      # print the raw data</span>
+<span class="sd">            print(diag_data.shape)                    # prints the dimension of the raw data</span>
+<span class="sd">            print(diag_data.run_attrs[&#39;TIME&#39;])        # prints the simulation time associated with the hdf5 file</span>
+<span class="sd">            diag_data.data_attrs[&#39;UNITS&#39;]             # print units of the dataset points</span>
+<span class="sd">            list(diag_data.data_attrs)                # lists all attributes related to the data array</span>
+<span class="sd">            list(diag_data.run_attrs)                 # lists all attributes related to the run</span>
+<span class="sd">            print(diag_data.axes[0].attrs[&#39;UNITS&#39;])   # prints units of X-axis</span>
+<span class="sd">            list(diag_data.axes[0].attrs)             # lists all variables of the X-axis</span>
+
+<span class="sd">            diag_data[slice(3)]</span>
+<span class="sd">                print(rw.view(np.ndarray))</span>
+
+<span class="sd">    We will convert all byte strings stored in the h5 file to strings which are easier to deal with when writing codes</span>
+<span class="sd">    see also write_h5() function in this file</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fname</span> <span class="o">=</span> <span class="n">filename</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span> <span class="k">else</span> <span class="n">path</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span> <span class="o">+</span> <span class="n">filename</span>
+    <span class="n">data_file</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span>
+
+    <span class="n">n_data</span> <span class="o">=</span> <span class="n">scan_hdf5_file_for_main_data_array</span><span class="p">(</span><span class="n">data_file</span><span class="p">)</span>
+
+    <span class="n">timestamp</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">run_attrs</span><span class="p">,</span> <span class="n">data_attrs</span><span class="p">,</span> <span class="n">axes</span><span class="p">,</span> <span class="n">data_bundle</span><span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="p">{},</span> <span class="p">{},</span> <span class="p">[],</span> <span class="p">[]</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">timestamp</span> <span class="o">=</span> <span class="n">fn_rule</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">filename</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+        <span class="n">timestamp</span> <span class="o">=</span> <span class="s1">&#39;000000&#39;</span>
+
+    <span class="n">axis_number</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># try to open up another AXIS object in the HDF&#39;s attribute directory</span>
+            <span class="c1">#  (they are named /AXIS/AXIS1, /AXIS/AXIS2, /AXIS/AXIS3 ...)</span>
+            <span class="n">axis_to_look_for</span> <span class="o">=</span> <span class="n">axis_name</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">axis_number</span><span class="p">)</span>
+            <span class="n">axis</span> <span class="o">=</span> <span class="n">data_file</span><span class="p">[</span><span class="n">axis_to_look_for</span><span class="p">]</span>
+            <span class="c1"># convert byte string attributes to string</span>
+            <span class="n">attrs</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">axis</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">attrs</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">v</span>
+                <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                    <span class="n">attrs</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">v</span>
+
+            <span class="n">axis_min</span> <span class="o">=</span> <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">axis_max</span> <span class="o">=</span> <span class="n">axis</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">axis_numberpoints</span> <span class="o">=</span> <span class="n">n_data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="n">axis_number</span><span class="p">]</span>
+
+            <span class="n">data_axis</span> <span class="o">=</span> <span class="n">DataAxis</span><span class="p">(</span><span class="n">axis_min</span><span class="p">,</span> <span class="n">axis_max</span><span class="p">,</span> <span class="n">axis_numberpoints</span><span class="p">,</span> <span class="n">attrs</span><span class="o">=</span><span class="n">attrs</span><span class="p">)</span>
+            <span class="n">axes</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">data_axis</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">axis_number</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="c1"># we need a loop here primarily (I think) for n_ene_bin phasespace data</span>
+    <span class="k">for</span> <span class="n">the_data_hdf_object</span> <span class="ow">in</span> <span class="n">n_data</span><span class="p">:</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">the_data_hdf_object</span><span class="o">.</span><span class="n">name</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>  <span class="c1"># ignore the beginning &#39;/&#39;</span>
+
+        <span class="c1"># now read in attributes of the ROOT of the hdf5..</span>
+        <span class="c1">#   there&#39;s lots of good info there. strip out the array if value is a string</span>
+
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">data_file</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">run_attrs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">value</span>
+            <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                <span class="n">run_attrs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">value</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;TIME UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">OSUnits</span><span class="p">(</span><span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;TIME UNITS&#39;</span><span class="p">])</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;TIME UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">OSUnits</span><span class="p">(</span><span class="s1">&#39;1 / \omega_p&#39;</span><span class="p">)</span>
+        <span class="c1"># attach attributes assigned to the data array to</span>
+        <span class="c1">#    the H5Data.data_attrs object, remove trivial dimension before assignment</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">the_data_hdf_object</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">data_attrs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">value</span>
+            <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                <span class="n">data_attrs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">value</span>
+
+        <span class="c1"># convert unit string to osunit object</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">OSUnits</span><span class="p">(</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">])</span>
+        <span class="k">except</span><span class="p">:</span>
+<span class="c1">#             data_attrs[&#39;UNITS&#39;] = OSUnits(&#39;a.u.&#39;)</span>
+            <span class="k">pass</span>
+        <span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;NAME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">name</span>
+
+        <span class="c1"># data_bundle.data = the_data_hdf_object[()]</span>
+        <span class="n">data_bundle</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">H5Data</span><span class="p">(</span><span class="n">the_data_hdf_object</span><span class="p">,</span> <span class="n">timestamp</span><span class="o">=</span><span class="n">timestamp</span><span class="p">,</span>
+                                  <span class="n">data_attrs</span><span class="o">=</span><span class="n">data_attrs</span><span class="p">,</span> <span class="n">run_attrs</span><span class="o">=</span><span class="n">run_attrs</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">))</span>
+    <span class="n">data_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data_bundle</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data_bundle</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data_bundle</span></div>
+
+
+<div class="viewcode-block" id="read_h5_openpmd"><a class="viewcode-back" href="../osh5io.html#osh5io.read_h5_openpmd">[docs]</a><span class="k">def</span> <span class="nf">read_h5_openpmd</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    HDF reader for OpenPMD compatible HDF files... This will slurp in the data</span>
+<span class="sd">    and the attributes that describe the data (e.g. title, units, scale).</span>
+
+<span class="sd">    Usage:</span>
+<span class="sd">            diag_data = read_hdf_openpmd(&#39;EandB000006.h5&#39;)      # diag_data is a subclass of numpy.ndarray with extra attributes</span>
+
+<span class="sd">            print(diag_data)                          # print the meta data</span>
+<span class="sd">            print(diag_data.view(numpy.ndarray))      # print the raw data</span>
+<span class="sd">            print(diag_data.shape)                    # prints the dimension of the raw data</span>
+<span class="sd">            print(diag_data.run_attrs[&#39;TIME&#39;])        # prints the simulation time associated with the hdf5 file</span>
+<span class="sd">            diag_data.data_attrs[&#39;UNITS&#39;]             # print units of the dataset points</span>
+<span class="sd">            list(diag_data.data_attrs)                # lists all attributes related to the data array</span>
+<span class="sd">            list(diag_data.run_attrs)                 # lists all attributes related to the run</span>
+<span class="sd">            print(diag_data.axes[0].attrs[&#39;UNITS&#39;])   # prints units of X-axis</span>
+<span class="sd">            list(diag_data.axes[0].attrs)             # lists all variables of the X-axis</span>
+
+<span class="sd">            diag_data[slice(3)]</span>
+<span class="sd">                print(rw.view(np.ndarray))</span>
+
+<span class="sd">    We will convert all byte strings stored in the h5 file to strings which are easier to deal with when writing codes</span>
+<span class="sd">    see also write_h5() function in this file</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fname</span> <span class="o">=</span> <span class="n">filename</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span> <span class="k">else</span> <span class="n">path</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span> <span class="o">+</span> <span class="n">filename</span>
+    <span class="k">with</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">data_file</span><span class="p">:</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">timestamp</span> <span class="o">=</span> <span class="n">fn_rule</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">filename</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+            <span class="n">timestamp</span> <span class="o">=</span> <span class="s1">&#39;00000000&#39;</span>
+
+        <span class="n">basePath</span> <span class="o">=</span> <span class="n">data_file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;basePath&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;%T&#39;</span><span class="p">,</span> <span class="n">timestamp</span><span class="p">)</span>
+        <span class="n">meshPath</span> <span class="o">=</span> <span class="n">basePath</span> <span class="o">+</span> <span class="n">data_file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;meshesPath&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">run_attrs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="o">.</span><span class="n">upper</span><span class="p">():</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">data_file</span><span class="p">[</span><span class="n">basePath</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="n">basePath</span> <span class="o">=</span> <span class="n">data_file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;basePath&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;%T&#39;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">timestamp</span><span class="p">)))</span>
+            <span class="n">meshPath</span> <span class="o">=</span> <span class="n">basePath</span> <span class="o">+</span> <span class="n">data_file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;meshesPath&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span>
+            <span class="n">run_attrs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="o">.</span><span class="n">upper</span><span class="p">():</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span>
+                         <span class="n">data_file</span><span class="p">[</span><span class="n">basePath</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="n">run_attrs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;TIME UNITS&#39;</span><span class="p">,</span> <span class="n">OSUnits</span><span class="p">(</span><span class="s1">&#39;1 / \omega_p&#39;</span><span class="p">))</span>
+
+        <span class="c1"># read field data</span>
+        <span class="n">lname_dict</span><span class="p">,</span> <span class="n">fldl</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;E1&#39;</span><span class="p">:</span> <span class="s1">&#39;E_x&#39;</span><span class="p">,</span> <span class="s1">&#39;E2&#39;</span><span class="p">:</span> <span class="s1">&#39;E_y&#39;</span><span class="p">,</span> <span class="s1">&#39;E3&#39;</span><span class="p">:</span> <span class="s1">&#39;E_z&#39;</span><span class="p">,</span>
+                            <span class="s1">&#39;B1&#39;</span><span class="p">:</span> <span class="s1">&#39;B_x&#39;</span><span class="p">,</span> <span class="s1">&#39;B2&#39;</span><span class="p">:</span> <span class="s1">&#39;B_y&#39;</span><span class="p">,</span> <span class="s1">&#39;B3&#39;</span><span class="p">:</span> <span class="s1">&#39;B_z&#39;</span><span class="p">,</span>
+                            <span class="s1">&#39;jx&#39;</span><span class="p">:</span> <span class="s1">&#39;J_x&#39;</span><span class="p">,</span> <span class="s1">&#39;jy&#39;</span><span class="p">:</span> <span class="s1">&#39;J_y&#39;</span><span class="p">,</span> <span class="s1">&#39;jz&#39;</span><span class="p">:</span> <span class="s1">&#39;J_z&#39;</span><span class="p">,</span> <span class="s1">&#39;rho&#39;</span><span class="p">:</span> <span class="sa">r</span><span class="s1">&#39;\roh&#39;</span><span class="p">},</span> <span class="p">{}</span>
+        <span class="c1"># k is the field label and v is the field dataset</span>
+
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">data_file</span><span class="p">[</span><span class="n">meshPath</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># openPMD doesn&#39;t enforce attrs that are required in OSIRIS dataset</span>
+            <span class="n">data_attrs</span><span class="p">,</span> <span class="n">dflt_ax_unit</span> <span class="o">=</span> \
+                <span class="p">{</span><span class="s1">&#39;UNITS&#39;</span><span class="p">:</span> <span class="n">OSUnits</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;m_e c \omega_p e^{-1} &#39;</span><span class="p">),</span>
+                 <span class="s1">&#39;LONG_NAME&#39;</span><span class="p">:</span> <span class="n">lname_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="p">),</span> <span class="s1">&#39;NAME&#39;</span><span class="p">:</span> <span class="n">k</span><span class="p">},</span> <span class="sa">r</span><span class="s1">&#39;c \omega_p^{-1}&#39;</span>
+            <span class="n">data_attrs</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">ia</span><span class="p">:</span> <span class="n">va</span> <span class="k">for</span> <span class="n">ia</span><span class="p">,</span> <span class="n">va</span> <span class="ow">in</span> <span class="n">v</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">items</span><span class="p">()})</span>
+
+            <span class="n">ax_label</span><span class="p">,</span> <span class="n">ax_off</span><span class="p">,</span> <span class="n">g_spacing</span><span class="p">,</span> <span class="n">ax_pos</span><span class="p">,</span> <span class="n">unitsi</span> <span class="o">=</span> \
+                <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;axisLabels&#39;</span><span class="p">),</span> <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;gridGlobalOffset&#39;</span><span class="p">),</span> \
+                <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;gridSpacing&#39;</span><span class="p">),</span> <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;position&#39;</span><span class="p">),</span> <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;unitSI&#39;</span><span class="p">)</span>
+            <span class="n">ax_min</span> <span class="o">=</span> <span class="p">(</span><span class="n">ax_off</span> <span class="o">+</span> <span class="n">ax_pos</span> <span class="o">*</span> <span class="n">g_spacing</span><span class="p">)</span> <span class="o">*</span> <span class="n">unitsi</span>
+            <span class="n">ax_max</span> <span class="o">=</span> <span class="n">ax_min</span> <span class="o">+</span> <span class="n">v</span><span class="o">.</span><span class="n">shape</span> <span class="o">*</span> <span class="n">g_spacing</span> <span class="o">*</span> <span class="n">unitsi</span>
+
+            <span class="c1"># prepare the axes data</span>
+            <span class="n">axes</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">aln</span><span class="p">,</span> <span class="n">an</span><span class="p">,</span> <span class="n">amax</span><span class="p">,</span> <span class="n">amin</span><span class="p">,</span> <span class="n">anp</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">ax_label</span><span class="p">,</span><span class="n">ax_label</span><span class="p">,</span>
+                                                <span class="n">ax_max</span><span class="p">,</span> <span class="n">ax_min</span><span class="p">,</span> <span class="n">v</span><span class="o">.</span><span class="n">shape</span><span class="p">):</span>
+                <span class="n">ax_attrs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">:</span> <span class="n">aln</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">),</span>
+                            <span class="s1">&#39;NAME&#39;</span><span class="p">:</span> <span class="n">an</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">),</span> <span class="s1">&#39;UNITS&#39;</span><span class="p">:</span> <span class="n">dflt_ax_unit</span><span class="p">}</span>
+                <span class="n">data_axis</span> <span class="o">=</span> <span class="n">DataAxis</span><span class="p">(</span><span class="n">amin</span><span class="p">,</span> <span class="n">amax</span><span class="p">,</span> <span class="n">anp</span><span class="p">,</span> <span class="n">attrs</span><span class="o">=</span><span class="n">ax_attrs</span><span class="p">)</span>
+                <span class="n">axes</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">data_axis</span><span class="p">)</span>
+
+            <span class="n">fldl</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">H5Data</span><span class="p">(</span><span class="n">v</span><span class="p">[()],</span> <span class="n">timestamp</span><span class="o">=</span><span class="n">timestamp</span><span class="p">,</span> <span class="n">data_attrs</span><span class="o">=</span><span class="n">data_attrs</span><span class="p">,</span>
+                             <span class="n">run_attrs</span><span class="o">=</span><span class="n">run_attrs</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fldl</span></div>
+
+
+<span class="k">def</span> <span class="nf">__read_dataset_and_convert_to_h5data</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">data_attrs</span><span class="p">,</span> <span class="n">dflt_ax_unit</span><span class="p">,</span>
+                                         <span class="n">timestamp</span><span class="p">,</span> <span class="n">run_attrs</span><span class="p">):</span>
+    <span class="n">ax_label</span><span class="p">,</span> <span class="n">ax_off</span><span class="p">,</span> <span class="n">g_spacing</span><span class="p">,</span> <span class="n">ax_pos</span><span class="p">,</span> <span class="n">unitsi</span> <span class="o">=</span> \
+        <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;axisLabels&#39;</span><span class="p">),</span> <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;gridGlobalOffset&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> \
+        <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;gridSpacing&#39;</span><span class="p">),</span> <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;position&#39;</span><span class="p">,</span>
+                                                      <span class="mi">0</span><span class="p">),</span> <span class="n">data_attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span>
+            <span class="s1">&#39;unitSI&#39;</span><span class="p">,</span> <span class="mf">1.</span><span class="p">)</span>
+    <span class="n">ax_min</span> <span class="o">=</span> <span class="p">(</span><span class="n">ax_off</span> <span class="o">+</span> <span class="n">ax_pos</span> <span class="o">*</span> <span class="n">g_spacing</span><span class="p">)</span> <span class="o">*</span> <span class="n">unitsi</span>
+    <span class="n">ax_max</span> <span class="o">=</span> <span class="n">ax_min</span> <span class="o">+</span> <span class="n">v</span><span class="o">.</span><span class="n">shape</span> <span class="o">*</span> <span class="n">g_spacing</span> <span class="o">*</span> <span class="n">unitsi</span>
+
+    <span class="c1"># prepare the axes data</span>
+    <span class="n">axes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">aln</span><span class="p">,</span> <span class="n">an</span><span class="p">,</span> <span class="n">amax</span><span class="p">,</span> <span class="n">amin</span><span class="p">,</span> <span class="n">anp</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">ax_label</span><span class="p">,</span> <span class="n">ax_label</span><span class="p">,</span>
+                                        <span class="n">ax_max</span><span class="p">,</span> <span class="n">ax_min</span><span class="p">,</span> <span class="n">v</span><span class="o">.</span><span class="n">shape</span><span class="p">):</span>
+        <span class="n">ax_attrs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">:</span> <span class="n">aln</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">),</span>
+                    <span class="s1">&#39;NAME&#39;</span><span class="p">:</span> <span class="n">an</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">),</span> <span class="s1">&#39;UNITS&#39;</span><span class="p">:</span> <span class="n">dflt_ax_unit</span><span class="p">}</span>
+        <span class="n">data_axis</span> <span class="o">=</span> <span class="n">DataAxis</span><span class="p">(</span><span class="n">amin</span><span class="p">,</span> <span class="n">amax</span><span class="p">,</span> <span class="n">anp</span><span class="p">,</span> <span class="n">attrs</span><span class="o">=</span><span class="n">ax_attrs</span><span class="p">)</span>
+        <span class="n">axes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data_axis</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">H5Data</span><span class="p">(</span><span class="n">v</span><span class="p">[()],</span> <span class="n">timestamp</span><span class="o">=</span><span class="n">timestamp</span><span class="p">,</span> <span class="n">data_attrs</span><span class="o">=</span><span class="n">data_attrs</span><span class="p">,</span>
+                  <span class="n">run_attrs</span><span class="o">=</span><span class="n">run_attrs</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="n">axes</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">scan_hdf5_file_for_main_data_array</span><span class="p">(</span><span class="n">h5file</span><span class="p">):</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">h5file</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">h5py</span><span class="o">.</span><span class="n">Dataset</span><span class="p">):</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">h5file</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">res</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;Main data array not found&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">res</span>
+
+
+<div class="viewcode-block" id="write_h5"><a class="viewcode-back" href="../osh5io.html#osh5io.write_h5">[docs]</a><span class="k">def</span> <span class="nf">write_h5</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dataset_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">axis_name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Usage:</span>
+<span class="sd">        write(diag_data, &#39;/path/to/filename.h5&#39;)    # writes out Visxd compatible HDF5 data.</span>
+
+<span class="sd">    Since h5 format does not support python strings, we will convert all string data (units, names etc)</span>
+<span class="sd">    to bytes strings before writing.</span>
+
+<span class="sd">    see also read_h5() function in this file</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">H5Data</span><span class="p">):</span>
+        <span class="n">data_object</span> <span class="o">=</span> <span class="n">data</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+        <span class="n">data_object</span> <span class="o">=</span> <span class="n">H5Data</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>  <span class="c1"># maybe it&#39;s something we can wrap in a numpy array</span>
+            <span class="n">data_object</span> <span class="o">=</span> <span class="n">H5Data</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">data</span><span class="p">))</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span>
+                <span class="s2">&quot;Invalid data type.. we need a &#39;hdf5_data&#39;, numpy array, or somehitng that can go in a numy array&quot;</span><span class="p">)</span>
+
+    <span class="c1"># now let&#39;s make the H5Data() compatible with VisXd and such...</span>
+    <span class="c1"># take care of the NAME attribute.</span>
+    <span class="k">if</span> <span class="n">dataset_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">current_name_attr</span> <span class="o">=</span> <span class="n">dataset_name</span>
+    <span class="k">elif</span> <span class="n">data_object</span><span class="o">.</span><span class="n">name</span><span class="p">:</span>
+        <span class="n">current_name_attr</span> <span class="o">=</span> <span class="n">data_object</span><span class="o">.</span><span class="n">name</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">current_name_attr</span> <span class="o">=</span> <span class="s2">&quot;Data&quot;</span>
+
+    <span class="n">fname</span> <span class="o">=</span> <span class="n">path</span> <span class="k">if</span> <span class="n">path</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">filename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fname</span> <span class="o">+=</span> <span class="n">filename</span>
+    <span class="k">elif</span> <span class="n">data_object</span><span class="o">.</span><span class="n">timestamp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fname</span> <span class="o">+=</span> <span class="n">current_name_attr</span> <span class="o">+</span> <span class="s1">&#39;-&#39;</span> <span class="o">+</span> <span class="n">data_object</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">+</span> <span class="s1">&#39;.h5&#39;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;You did not specify a filename!!!&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">fname</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">overwrite</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">while</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">fname</span><span class="p">[:</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span><span class="o">+</span><span class="s1">&#39;.copy&#39;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">+</span><span class="s1">&#39;.h5&#39;</span><span class="p">):</span>
+                <span class="n">c</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">fname</span> <span class="o">=</span> <span class="n">fname</span><span class="p">[:</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span><span class="o">+</span><span class="s1">&#39;.copy&#39;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">+</span><span class="s1">&#39;.h5&#39;</span>
+    <span class="n">h5file</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span>
+
+    <span class="c1"># now put the data in a group called this...</span>
+    <span class="n">h5dataset</span> <span class="o">=</span> <span class="n">h5file</span><span class="o">.</span><span class="n">create_dataset</span><span class="p">(</span><span class="n">current_name_attr</span><span class="p">,</span> <span class="n">data_object</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">data_object</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">))</span>
+    <span class="c1"># these are required.. so make defaults ones...</span>
+    <span class="n">h5dataset</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">],</span> <span class="n">h5dataset</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;LONG_NAME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">])</span>
+    <span class="c1"># convert osunit class back to ascii</span>
+    <span class="n">data_attrs</span> <span class="o">=</span> <span class="n">data_object</span><span class="o">.</span><span class="n">data_attrs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">data_object</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)])</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="sa">b</span><span class="s1">&#39;a.u.&#39;</span><span class="p">])</span>
+    <span class="c1"># copy over any values we have in the &#39;H5Data&#39; object;</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">data_attrs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">h5dataset</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">value</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)])</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">value</span>
+    <span class="c1"># these are required so we make defaults..</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;DT&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;ITER&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;MOVE C&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;PERIODIC&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;TIME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;TIME UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="sa">b</span><span class="s1">&#39;1 / \omega_p&#39;</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;TYPE&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="sa">b</span><span class="s1">&#39;grid&#39;</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;XMIN&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;XMAX&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+    <span class="c1"># now make defaults/copy over the attributes in the root of the hdf5</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">data_object</span><span class="o">.</span><span class="n">run_attrs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<span class="c1">#         if key == &#39;TIME UNITS&#39;:</span>
+<span class="c1">#             h5file.attrs[&#39;TIME UNITS&#39;] = np.array([str(data_object.run_attrs[&#39;TIME UNITS&#39;]).encode(&#39;utf-8&#39;)])</span>
+<span class="c1">#         else:</span>
+        <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">value</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)])</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">OSUnits</span><span class="p">))</span> <span class="k">else</span> <span class="n">value</span>
+
+    <span class="n">number_axis_objects_we_need</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">data_object</span><span class="o">.</span><span class="n">axes</span><span class="p">)</span>
+    <span class="c1"># now go through and set/create our axes HDF entries.</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">axis_name</span><span class="p">:</span>
+        <span class="n">axis_name</span> <span class="o">=</span> <span class="s2">&quot;AXIS/AXIS&quot;</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">number_axis_objects_we_need</span><span class="p">):</span>
+        <span class="n">_axis_name</span> <span class="o">=</span> <span class="n">axis_name</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">number_axis_objects_we_need</span> <span class="o">-</span> <span class="n">i</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">_axis_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">h5file</span><span class="p">:</span>
+            <span class="n">axis_data</span> <span class="o">=</span> <span class="n">h5file</span><span class="o">.</span><span class="n">create_dataset</span><span class="p">(</span><span class="n">_axis_name</span><span class="p">,</span> <span class="p">(</span><span class="mi">2</span><span class="p">,),</span> <span class="s1">&#39;float64&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">axis_data</span> <span class="o">=</span> <span class="n">h5file</span><span class="p">[</span><span class="n">_axis_name</span><span class="p">]</span>
+
+        <span class="c1"># set the extent to the data we have...</span>
+        <span class="n">axis_data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">data_object</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">min</span>
+        <span class="n">axis_data</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">data_object</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">max</span>
+
+        <span class="c1"># fill in any values we have stored in the Axis object</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">data_object</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<span class="c1">#             if key == &#39;UNITS&#39;:</span>
+<span class="c1">#                 try:</span>
+<span class="c1">#                     axis_data.attrs[&#39;UNITS&#39;] = np.array([str(data_object.axes[i].attrs[&#39;UNITS&#39;]).encode(&#39;utf-8&#39;)])</span>
+<span class="c1">#                 except:</span>
+<span class="c1">#                     axis_data.attrs[&#39;UNITS&#39;] = np.array([b&#39;a.u.&#39;])</span>
+<span class="c1">#             else:</span>
+            <span class="n">axis_data</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">value</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)])</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">OSUnits</span><span class="p">))</span> <span class="k">else</span> <span class="n">value</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="write_h5_openpmd"><a class="viewcode-back" href="../osh5io.html#osh5io.write_h5_openpmd">[docs]</a><span class="k">def</span> <span class="nf">write_h5_openpmd</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dataset_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">axis_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">time_to_si</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">length_to_si</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">data_to_si</span><span class="o">=</span><span class="mf">1.0</span> <span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Usage:</span>
+<span class="sd">        write_h5_openpmd(diag_data, &#39;/path/to/filename.h5&#39;)    # writes out Visxd compatible HDF5 data.</span>
+
+<span class="sd">    Since h5 format does not support python strings, we will convert all string data (units, names etc)</span>
+<span class="sd">    to bytes strings before writing.</span>
+
+<span class="sd">    see also read_h5() function in this file</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">H5Data</span><span class="p">):</span>
+        <span class="n">data_object</span> <span class="o">=</span> <span class="n">data</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+        <span class="n">data_object</span> <span class="o">=</span> <span class="n">H5Data</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>  <span class="c1"># maybe it&#39;s something we can wrap in a numpy array</span>
+            <span class="n">data_object</span> <span class="o">=</span> <span class="n">H5Data</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">data</span><span class="p">))</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span>
+                <span class="s2">&quot;Invalid data type.. we need a &#39;hdf5_data&#39;, numpy array, or something that can go in a numy array&quot;</span><span class="p">)</span>
+
+    <span class="c1"># now let&#39;s make the H5Data() compatible with VisXd and such...</span>
+    <span class="c1"># take care of the NAME attribute.</span>
+    <span class="k">if</span> <span class="n">dataset_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">current_name_attr</span> <span class="o">=</span> <span class="n">dataset_name</span>
+    <span class="k">elif</span> <span class="n">data_object</span><span class="o">.</span><span class="n">name</span><span class="p">:</span>
+        <span class="n">current_name_attr</span> <span class="o">=</span> <span class="n">data_object</span><span class="o">.</span><span class="n">name</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">current_name_attr</span> <span class="o">=</span> <span class="s2">&quot;Data&quot;</span>
+
+    <span class="n">fname</span> <span class="o">=</span> <span class="n">path</span> <span class="k">if</span> <span class="n">path</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">filename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fname</span> <span class="o">+=</span> <span class="n">filename</span>
+    <span class="k">elif</span> <span class="n">data_object</span><span class="o">.</span><span class="n">timestamp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fname</span> <span class="o">+=</span> <span class="n">current_name_attr</span> <span class="o">+</span> <span class="s1">&#39;-&#39;</span> <span class="o">+</span> <span class="n">data_object</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">+</span> <span class="s1">&#39;.h5&#39;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;You did not specify a filename!!!&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">fname</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">overwrite</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">while</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">fname</span><span class="p">[:</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span><span class="o">+</span><span class="s1">&#39;.copy&#39;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">+</span><span class="s1">&#39;.h5&#39;</span><span class="p">):</span>
+                <span class="n">c</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">fname</span> <span class="o">=</span> <span class="n">fname</span><span class="p">[:</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span><span class="o">+</span><span class="s1">&#39;.copy&#39;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">+</span><span class="s1">&#39;.h5&#39;</span>
+    <span class="n">h5file</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span>
+
+    <span class="c1"># now put the data in a group called this...</span>
+ <span class="c1">#   h5dataset = h5file.create_dataset(current_name_attr, data_object.shape, data=data_object.view(np.ndarray))</span>
+    <span class="c1"># these are required.. so make defaults ones...</span>
+ <span class="c1">#   h5dataset.attrs[&#39;UNITS&#39;], h5dataset.attrs[&#39;LONG_NAME&#39;] = np.array([b&#39;&#39;]), np.array([b&#39;&#39;])</span>
+    <span class="c1"># convert osunit class back to ascii</span>
+    <span class="n">data_attrs</span> <span class="o">=</span> <span class="n">data_object</span><span class="o">.</span><span class="n">data_attrs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">data_object</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)])</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="sa">b</span><span class="s1">&#39;a.u.&#39;</span><span class="p">])</span>
+    <span class="c1"># copy over any values we have in the &#39;H5Data&#39; object;</span>
+<span class="c1">#    for key, value in data_attrs.items():</span>
+<span class="c1">#        h5dataset.attrs[key] = np.array([value.encode(&#39;utf-8&#39;)]) if isinstance(value, str) else value</span>
+    <span class="c1"># these are required so we make defaults..</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;DT&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;ITER&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;MOVE C&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;PERIODIC&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;TIME&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;TIME UNITS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="sa">b</span><span class="s1">&#39;1 / \omega_p&#39;</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;TYPE&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="sa">b</span><span class="s1">&#39;grid&#39;</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;XMIN&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;XMAX&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;openPMD&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;1.0.0&#39;</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;openPMDextension&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;iterationEncoding&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;fileBased&#39;</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;basePath&#39;</span><span class="p">]</span><span class="o">=</span><span class="s1">&#39;/data/%T&#39;</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;meshesPath&#39;</span><span class="p">]</span><span class="o">=</span><span class="s1">&#39;mesh/&#39;</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;particlesPath&#39;</span><span class="p">]</span><span class="o">=</span> <span class="s1">&#39;particles/&#39;</span>
+    <span class="c1"># now make defaults/copy over the attributes in the root of the hdf5</span>
+
+    <span class="n">baseid</span> <span class="o">=</span> <span class="n">h5file</span><span class="o">.</span><span class="n">create_group</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">)</span>
+    <span class="n">iterid</span> <span class="o">=</span> <span class="n">baseid</span><span class="o">.</span><span class="n">create_group</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;ITER&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]))</span>
+
+
+    <span class="n">meshid</span> <span class="o">=</span> <span class="n">iterid</span><span class="o">.</span><span class="n">create_group</span><span class="p">(</span><span class="s2">&quot;mesh&quot;</span><span class="p">)</span>
+    <span class="n">datasetid</span> <span class="o">=</span> <span class="n">meshid</span><span class="o">.</span><span class="n">create_dataset</span><span class="p">(</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;NAME&#39;</span><span class="p">],</span> <span class="n">data_object</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">data_object</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="p">)</span>
+
+   <span class="c1"># h5dataset = datasetid.create_dataset(current_name_attr, data_object.shape, data=data_object.view(np.ndarray))</span>
+
+
+ <span class="c1">#   for key, value in data_object.run_attrs.items():</span>
+ <span class="c1">#       h5file.attrs[key] = np.array([value.encode(&#39;utf-8&#39;)]) if isinstance(value, str) else value</span>
+
+
+
+    <span class="n">iterid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;dt&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;DT&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">iterid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;time&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;TIME&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">iterid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;timeUnitSI&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time_to_si</span>
+
+
+    <span class="n">number_axis_objects_we_need</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">data_object</span><span class="o">.</span><span class="n">axes</span><span class="p">)</span>
+
+    <span class="n">deltax</span><span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;XMAX&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="n">data</span><span class="o">.</span><span class="n">run_attrs</span><span class="p">[</span><span class="s1">&#39;XMIN&#39;</span><span class="p">]</span>
+    <span class="n">local_offset</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">number_axis_objects_we_need</span><span class="p">,</span> <span class="n">dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="n">local_globaloffset</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">number_axis_objects_we_need</span><span class="p">,</span> <span class="n">dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">local_position</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">number_axis_objects_we_need</span><span class="p">,</span> <span class="n">dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="n">local_position</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">local_position</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="n">local_gridspacing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">number_axis_objects_we_need</span><span class="p">,</span> <span class="n">dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+
+    <span class="k">if</span><span class="p">(</span><span class="n">number_axis_objects_we_need</span> <span class="o">==</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">local_axislabels</span><span class="o">=</span><span class="p">[</span><span class="sa">b</span><span class="s1">&#39;x1&#39;</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">/</span><span class="n">data_object</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">local_gridspacing</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">deltax</span><span class="p">)</span>
+
+        <span class="n">local_globaloffset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+
+        <span class="n">local_offset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+
+    <span class="k">elif</span> <span class="p">(</span><span class="n">number_axis_objects_we_need</span> <span class="o">==</span> <span class="mi">2</span><span class="p">):</span>
+        <span class="n">local_axislabels</span><span class="o">=</span><span class="p">[</span><span class="sa">b</span><span class="s1">&#39;x1&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;x2&#39;</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">/</span><span class="n">data_object</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">deltax</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">/</span><span class="n">data_object</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">temp</span><span class="o">=</span><span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">=</span><span class="n">deltax</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">=</span><span class="n">temp</span>
+        <span class="n">local_gridspacing</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">deltax</span><span class="p">)</span>
+
+        <span class="n">local_globaloffset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+        <span class="n">local_globaloffset</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+
+        <span class="n">local_offset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+        <span class="n">local_offset</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">local_axislabels</span><span class="o">=</span><span class="p">[</span><span class="sa">b</span><span class="s1">&#39;x1&#39;</span><span class="p">,</span><span class="sa">b</span><span class="s1">&#39;x2&#39;</span><span class="p">,</span><span class="sa">b</span><span class="s1">&#39;x3&#39;</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">/</span><span class="n">data_object</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">deltax</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">/</span><span class="n">data_object</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">deltax</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">/</span><span class="n">data_object</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">temp</span><span class="o">=</span><span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">=</span><span class="n">deltax</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">deltax</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">=</span><span class="n">temp</span>
+        <span class="n">local_gridspacing</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">deltax</span><span class="p">)</span>
+
+        <span class="n">local_globaloffset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+        <span class="n">local_globaloffset</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+        <span class="n">local_globaloffset</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+
+        <span class="n">local_offset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+        <span class="n">local_offset</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+        <span class="n">local_offset</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+
+
+
+    <span class="n">datasetid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;dataOrder&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;F&#39;</span>
+    <span class="n">datasetid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;cartesian&#39;</span>
+    <span class="n">datasetid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;geometryParameters&#39;</span><span class="p">]</span> <span class="o">=</span>  <span class="s1">&#39;cartesian&#39;</span>
+    <span class="n">datasetid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;axisLabels&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">local_axislabels</span>
+    <span class="n">datasetid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;gridUnitSI&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">length_to_si</span><span class="p">)</span>
+    <span class="n">datasetid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;unitSI&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">data_to_si</span><span class="p">)</span>
+    <span class="n">datasetid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;position&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">local_position</span>
+    <span class="n">datasetid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;gridSpacing&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">local_gridspacing</span>
+    <span class="n">datasetid</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;gridGlobalOffset&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">local_globaloffset</span>
+
+
+    <span class="c1"># # now go through and set/create our axes HDF entries.</span>
+    <span class="c1"># if not axis_name:</span>
+    <span class="c1">#     axis_name = &quot;AXIS/AXIS&quot;</span>
+    <span class="c1"># for i in range(0, number_axis_objects_we_need):</span>
+    <span class="c1">#     _axis_name = axis_name + str(number_axis_objects_we_need - i)</span>
+    <span class="c1">#     if _axis_name not in h5file:</span>
+    <span class="c1">#         axis_data = h5file.create_dataset(_axis_name, (2,), &#39;float64&#39;)</span>
+    <span class="c1">#     else:</span>
+    <span class="c1">#         axis_data = h5file[_axis_name]</span>
+
+    <span class="c1">#     # set the extent to the data we have...</span>
+    <span class="c1">#     axis_data[0] = data_object.axes[i].min</span>
+    <span class="c1">#     axis_data[1] = data_object.axes[i].max</span>
+
+    <span class="c1">#     # fill in any values we have stored in the Axis object</span>
+    <span class="c1">#     for key, value in data_object.axes[i].attrs.items():</span>
+    <span class="c1">#         if key == &#39;UNITS&#39;:</span>
+    <span class="c1">#             try:</span>
+    <span class="c1">#                 axis_data.attrs[&#39;UNITS&#39;] = np.array([str(data_object.axes[i].attrs[&#39;UNITS&#39;]).encode(&#39;utf-8&#39;)])</span>
+    <span class="c1">#             except:</span>
+    <span class="c1">#                 axis_data.attrs[&#39;UNITS&#39;] = np.array([b&#39;a.u.&#39;])</span>
+    <span class="c1">#         else:</span>
+    <span class="c1">#             axis_data.attrs[key] = np.array([value.encode(&#39;utf-8&#39;)]) if isinstance(value, str) else value</span>
+    <span class="n">h5file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">osh5utils</span> <span class="k">as</span> <span class="nn">ut</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mf">6.0</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+    <span class="n">ax</span><span class="p">,</span> <span class="n">ay</span> <span class="o">=</span> <span class="n">DataAxis</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;UNITS&#39;</span><span class="p">:</span> <span class="s1">&#39;1 / \omega_p&#39;</span><span class="p">}),</span> <span class="n">DataAxis</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;UNITS&#39;</span><span class="p">:</span> <span class="s1">&#39;c / \omega_p&#39;</span><span class="p">})</span>
+    <span class="n">da</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;UNITS&#39;</span><span class="p">:</span> <span class="s1">&#39;n_0&#39;</span><span class="p">,</span> <span class="s1">&#39;NAME&#39;</span><span class="p">:</span> <span class="s1">&#39;test&#39;</span><span class="p">,</span> <span class="p">}</span>
+    <span class="n">h5d</span> <span class="o">=</span> <span class="n">H5Data</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">timestamp</span><span class="o">=</span><span class="s1">&#39;123456&#39;</span><span class="p">,</span> <span class="n">data_attrs</span><span class="o">=</span><span class="n">da</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="p">[</span><span class="n">ay</span><span class="p">,</span> <span class="n">ax</span><span class="p">])</span>
+    <span class="n">write_h5</span><span class="p">(</span><span class="n">h5d</span><span class="p">,</span> <span class="s1">&#39;./test-123456.h5&#39;</span><span class="p">)</span>
+    <span class="n">rw</span> <span class="o">=</span> <span class="n">read_h5</span><span class="p">(</span><span class="s1">&#39;./test-123456.h5&#39;</span><span class="p">)</span>
+    <span class="n">h5d</span> <span class="o">=</span> <span class="n">read_h5</span><span class="p">(</span><span class="s1">&#39;./test-123456.h5&#39;</span><span class="p">)</span>  <span class="c1"># read from file to get all default attrs</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;rw is h5d: &quot;</span><span class="p">,</span> <span class="n">rw</span> <span class="ow">is</span> <span class="n">h5d</span><span class="p">,</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">rw</span><span class="p">))</span>
+
+    <span class="c1"># let&#39;s read/write a few times and see if there are mutations to the data</span>
+    <span class="c1"># you should also diff the output h5 files</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">write_h5</span><span class="p">(</span><span class="n">rw</span><span class="p">,</span> <span class="s1">&#39;./test&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;-123456.h5&#39;</span><span class="p">)</span>
+        <span class="n">rw</span> <span class="o">=</span> <span class="n">read_h5</span><span class="p">(</span><span class="s1">&#39;./test&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;-123456.h5&#39;</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="p">(</span><span class="n">rw</span> <span class="o">==</span> <span class="n">a</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">axrw</span><span class="p">,</span> <span class="n">axh5d</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">rw</span><span class="o">.</span><span class="n">axes</span><span class="p">,</span> <span class="n">h5d</span><span class="o">.</span><span class="n">axes</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="n">axrw</span><span class="o">.</span><span class="n">attrs</span> <span class="o">==</span> <span class="n">axh5d</span><span class="o">.</span><span class="n">attrs</span>
+            <span class="k">assert</span> <span class="p">(</span><span class="n">axrw</span> <span class="o">==</span> <span class="n">axh5d</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="n">h5d</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">==</span> <span class="n">rw</span><span class="o">.</span><span class="n">timestamp</span>
+        <span class="k">assert</span> <span class="n">h5d</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">rw</span><span class="o">.</span><span class="n">name</span>
+        <span class="k">assert</span> <span class="n">h5d</span><span class="o">.</span><span class="n">data_attrs</span> <span class="o">==</span> <span class="n">rw</span><span class="o">.</span><span class="n">data_attrs</span>
+        <span class="k">assert</span> <span class="n">h5d</span><span class="o">.</span><span class="n">run_attrs</span> <span class="o">==</span> <span class="n">rw</span><span class="o">.</span><span class="n">run_attrs</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;checking: &#39;</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;pass completed&#39;</span><span class="p">)</span>
+
+    <span class="c1"># test some other functionaries</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1"> meta info of rw: &#39;</span><span class="p">,</span> <span class="n">rw</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">unit of rw is &#39;</span><span class="p">,</span> <span class="n">rw</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">])</span>
+    <span class="n">rw</span> <span class="o">**=</span> <span class="mi">3</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;unit of rw^3 is &#39;</span><span class="p">,</span> <span class="n">rw</span><span class="o">.</span><span class="n">data_attrs</span><span class="p">[</span><span class="s1">&#39;UNITS&#39;</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;contents of rw^3: </span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">rw</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">))</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, PICKSC.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

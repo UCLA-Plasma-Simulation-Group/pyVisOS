@@ -1,0 +1,171 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>osh5io.py &#8212; pyVisOS 1.0 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="osh5gui.py" href="osh5gui.html" />
+    <link rel="prev" title="osh5def.py" href="osh5def.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <span class="target" id="module-osh5io"></span><div class="section" id="osh5io-py">
+<h1>osh5io.py<a class="headerlink" href="#osh5io-py" title="Permalink to this headline">¶</a></h1>
+<p>Disk IO for the OSIRIS HDF5 data.</p>
+<dl class="function">
+<dt id="osh5io.read_h5">
+<code class="descclassname">osh5io.</code><code class="descname">read_h5</code><span class="sig-paren">(</span><em>filename</em>, <em>path=None</em>, <em>axis_name='AXIS/AXIS'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5io.html#read_h5"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5io.read_h5" title="Permalink to this definition">¶</a></dt>
+<dd><p>HDF reader for Osiris/Visxd compatible HDF files… This will slurp in the data
+and the attributes that describe the data (e.g. title, units, scale).</p>
+<dl class="docutils">
+<dt>Usage:</dt>
+<dd><p class="first">diag_data = read_hdf(‘e1-000006.h5’)      # diag_data is a subclass of numpy.ndarray with extra attributes</p>
+<p>print(diag_data)                          # print the meta data
+print(diag_data.view(numpy.ndarray))      # print the raw data
+print(diag_data.shape)                    # prints the dimension of the raw data
+print(diag_data.run_attrs[‘TIME’])        # prints the simulation time associated with the hdf5 file
+diag_data.data_attrs[‘UNITS’]             # print units of the dataset points
+list(diag_data.data_attrs)                # lists all attributes related to the data array
+list(diag_data.run_attrs)                 # lists all attributes related to the run
+print(diag_data.axes[0].attrs[‘UNITS’])   # prints units of X-axis
+list(diag_data.axes[0].attrs)             # lists all variables of the X-axis</p>
+<dl class="last docutils">
+<dt>diag_data[slice(3)]</dt>
+<dd>print(rw.view(np.ndarray))</dd>
+</dl>
+</dd>
+</dl>
+<p>We will convert all byte strings stored in the h5 file to strings which are easier to deal with when writing codes
+see also write_h5() function in this file</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5io.read_h5_openpmd">
+<code class="descclassname">osh5io.</code><code class="descname">read_h5_openpmd</code><span class="sig-paren">(</span><em>filename</em>, <em>path=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5io.html#read_h5_openpmd"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5io.read_h5_openpmd" title="Permalink to this definition">¶</a></dt>
+<dd><p>HDF reader for OpenPMD compatible HDF files… This will slurp in the data
+and the attributes that describe the data (e.g. title, units, scale).</p>
+<dl class="docutils">
+<dt>Usage:</dt>
+<dd><p class="first">diag_data = read_hdf_openpmd(‘EandB000006.h5’)      # diag_data is a subclass of numpy.ndarray with extra attributes</p>
+<p>print(diag_data)                          # print the meta data
+print(diag_data.view(numpy.ndarray))      # print the raw data
+print(diag_data.shape)                    # prints the dimension of the raw data
+print(diag_data.run_attrs[‘TIME’])        # prints the simulation time associated with the hdf5 file
+diag_data.data_attrs[‘UNITS’]             # print units of the dataset points
+list(diag_data.data_attrs)                # lists all attributes related to the data array
+list(diag_data.run_attrs)                 # lists all attributes related to the run
+print(diag_data.axes[0].attrs[‘UNITS’])   # prints units of X-axis
+list(diag_data.axes[0].attrs)             # lists all variables of the X-axis</p>
+<dl class="last docutils">
+<dt>diag_data[slice(3)]</dt>
+<dd>print(rw.view(np.ndarray))</dd>
+</dl>
+</dd>
+</dl>
+<p>We will convert all byte strings stored in the h5 file to strings which are easier to deal with when writing codes
+see also write_h5() function in this file</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5io.write_h5">
+<code class="descclassname">osh5io.</code><code class="descname">write_h5</code><span class="sig-paren">(</span><em>data</em>, <em>filename=None</em>, <em>path=None</em>, <em>dataset_name=None</em>, <em>overwrite=True</em>, <em>axis_name=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5io.html#write_h5"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5io.write_h5" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="docutils">
+<dt>Usage:</dt>
+<dd>write(diag_data, ‘/path/to/filename.h5’)    # writes out Visxd compatible HDF5 data.</dd>
+</dl>
+<p>Since h5 format does not support python strings, we will convert all string data (units, names etc)
+to bytes strings before writing.</p>
+<p>see also read_h5() function in this file</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="osh5io.write_h5_openpmd">
+<code class="descclassname">osh5io.</code><code class="descname">write_h5_openpmd</code><span class="sig-paren">(</span><em>data</em>, <em>filename=None</em>, <em>path=None</em>, <em>dataset_name=None</em>, <em>overwrite=True</em>, <em>axis_name=None</em>, <em>time_to_si=1.0</em>, <em>length_to_si=1.0</em>, <em>data_to_si=1.0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5io.html#write_h5_openpmd"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5io.write_h5_openpmd" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="docutils">
+<dt>Usage:</dt>
+<dd>write_h5_openpmd(diag_data, ‘/path/to/filename.h5’)    # writes out Visxd compatible HDF5 data.</dd>
+</dl>
+<p>Since h5 format does not support python strings, we will convert all string data (units, names etc)
+to bytes strings before writing.</p>
+<p>see also read_h5() function in this file</p>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="osh5def.html" title="previous chapter">osh5def.py</a></li>
+      <li>Next: <a href="osh5gui.html" title="next chapter">osh5gui.py</a></li>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/osh5io.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, PICKSC.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+      |
+      <a href="_sources/osh5io.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

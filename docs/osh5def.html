@@ -1,0 +1,370 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>osh5def.py &#8212; pyVisOS 1.0 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="osh5io.py" href="osh5io.html" />
+    <link rel="prev" title="Welcome to pyVisOS’s documentation!" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <span class="target" id="module-osh5def"></span><div class="section" id="osh5def-py">
+<h1>osh5def.py<a class="headerlink" href="#osh5def-py" title="Permalink to this headline">¶</a></h1>
+<dl class="docutils">
+<dt>Define the OSIRIS HDF5 data class and basic functions.</dt>
+<dd>The basic idea is to make the data unit and axes consistent with the data
+itself. Therefore users should only modify the unit and axes by modifying
+the data or by dedicated functions (unit conversion for example).</dd>
+</dl>
+<dl class="class">
+<dt id="osh5def.H5Data">
+<em class="property">class </em><code class="descclassname">osh5def.</code><code class="descname">H5Data</code><a class="reference internal" href="_modules/osh5def.html#H5Data"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="attribute">
+<dt id="osh5def.H5Data.T">
+<code class="descname">T</code><a class="headerlink" href="#osh5def.H5Data.T" title="Permalink to this definition">¶</a></dt>
+<dd><p>Same as self.transpose(), except that self is returned if
+self.ndim &lt; 2.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.</span><span class="p">,</span><span class="mf">2.</span><span class="p">],[</span><span class="mf">3.</span><span class="p">,</span><span class="mf">4.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span>
+<span class="go">array([[ 1.,  2.],</span>
+<span class="go">       [ 3.,  4.]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="o">.</span><span class="n">T</span>
+<span class="go">array([[ 1.,  3.],</span>
+<span class="go">       [ 2.,  4.]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span><span class="mf">2.</span><span class="p">,</span><span class="mf">3.</span><span class="p">,</span><span class="mf">4.</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span>
+<span class="go">array([ 1.,  2.,  3.,  4.])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="o">.</span><span class="n">T</span>
+<span class="go">array([ 1.,  2.,  3.,  4.])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.argmax">
+<code class="descname">argmax</code><span class="sig-paren">(</span><em>axis=None</em>, <em>out=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.argmax"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.argmax" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return indices of the maximum values along the given axis.</p>
+<p>Refer to <cite>numpy.argmax</cite> for full documentation.</p>
+<p>numpy.argmax : equivalent function</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.argmin">
+<code class="descname">argmin</code><span class="sig-paren">(</span><em>axis=None</em>, <em>out=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.argmin"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.argmin" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return indices of the minimum values along the given axis of <cite>a</cite>.</p>
+<p>Refer to <cite>numpy.argmin</cite> for detailed documentation.</p>
+<p>numpy.argmin : equivalent function</p>
+</dd></dl>
+
+<dl class="staticmethod">
+<dt id="osh5def.H5Data.get_index_list">
+<em class="property">static </em><code class="descname">get_index_list</code><span class="sig-paren">(</span><em>ax</em>, <em>lst</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.get_index_list"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.get_index_list" title="Permalink to this definition">¶</a></dt>
+<dd><p>given a list-like lst, return a list of index along axis ax, clip to boundary if the value is out of bound.</p>
+</dd></dl>
+
+<dl class="staticmethod">
+<dt id="osh5def.H5Data.get_index_slice">
+<em class="property">static </em><code class="descname">get_index_slice</code><span class="sig-paren">(</span><em>ax</em>, <em>bd</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.get_index_slice"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.get_index_slice" title="Permalink to this definition">¶</a></dt>
+<dd><p>given a list-like bd that corresponds to a slice, return a list of index along axis ax that can be casted
+to slice, clip to boundary if the value is out of bound. Note that this method does not account for reverse
+indexing, aka bd[0] must be no bigger than bd[1].</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.has_axis">
+<code class="descname">has_axis</code><span class="sig-paren">(</span><em>axis_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.has_axis"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.has_axis" title="Permalink to this definition">¶</a></dt>
+<dd><p>check if H5Data has axis with name axis_name</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.index_of">
+<code class="descname">index_of</code><span class="sig-paren">(</span><em>axis_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.index_of"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.index_of" title="Permalink to this definition">¶</a></dt>
+<dd><p>return the index of the axis given its name. raise ValueError if not found</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.max">
+<code class="descname">max</code><span class="sig-paren">(</span><em>axis=None</em>, <em>out=None</em>, <em>keepdims=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.max"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.max" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the maximum along a given axis.</p>
+<p>Refer to <cite>numpy.amax</cite> for full documentation.</p>
+<p>numpy.amax : equivalent function</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.mean">
+<code class="descname">mean</code><span class="sig-paren">(</span><em>axis=None</em>, <em>dtype=None</em>, <em>out=None</em>, <em>keepdims=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.mean"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.mean" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the average of the array elements along given axis.</p>
+<p>Refer to <cite>numpy.mean</cite> for full documentation.</p>
+<p>numpy.mean : equivalent function</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.meta2dict">
+<code class="descname">meta2dict</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.meta2dict"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.meta2dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>return a deep copy of the meta data as a dictionary</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.min">
+<code class="descname">min</code><span class="sig-paren">(</span><em>axis=None</em>, <em>out=None</em>, <em>keepdims=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.min"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.min" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the minimum along a given axis.</p>
+<p>Refer to <cite>numpy.amin</cite> for full documentation.</p>
+<p>numpy.amin : equivalent function</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.ptp">
+<code class="descname">ptp</code><span class="sig-paren">(</span><em>axis=None</em>, <em>out=None</em>, <em>keepdims=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.ptp"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.ptp" title="Permalink to this definition">¶</a></dt>
+<dd><p>Peak to peak (maximum - minimum) value along a given axis.</p>
+<p>Refer to <cite>numpy.ptp</cite> for full documentation.</p>
+<p>numpy.ptp : equivalent function</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.sel">
+<code class="descname">sel</code><span class="sig-paren">(</span><em>new=False</em>, <em>**bound</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.sel"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.sel" title="Permalink to this definition">¶</a></dt>
+<dd><blockquote>
+<div>indexing H5Data object by axis name</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>bound</strong> – keyword dict specifying the axis name and range</li>
+<li><strong>new</strong> – if True return a copy of the object</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">a copy or a view of the H5Data object depending on what bound looks like</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Examples:</dt>
+<dd><p class="first"># use a dictionary
+a.sel({‘x1’: slice(0.4, 0.7, 0.02), ‘p1’: 0.5}) will return an H5Data oject whose x1 axis range</p>
+<blockquote>
+<div>is (0.4, 0.7) with 0.02 spacing and p1 axis equal to 0.5. aka the return will be one dimension
+less than a</div></blockquote>
+<p class="last"># use keyword format to do the same thing
+a.sel(x1=slice(0.4, 0.7, 0.02), p1=0.5)
+# use index other than silce or int will return a numpy ndarray (same as the numpy array advanced
+# indexing rule). The following return a numpy ndarray
+a.sel(x1=[0.2,0.5,0.8])</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.set_value">
+<code class="descname">set_value</code><span class="sig-paren">(</span><em>bound=None</em>, <em>val=(0</em>, <em>)</em>, <em>symmetric=True</em>, <em>inverse_select=False</em>, <em>method=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.set_value"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.set_value" title="Permalink to this definition">¶</a></dt>
+<dd><p>set values inside bound using val
+:param bound: lists of triples of elements marking the lower and higher bound of the bound, e.g.</p>
+<blockquote>
+<div>[(l1,u1), (l2,u2), (l3,u3)] in 3d data marks data[l1&lt;z&lt;u1, l2&lt;y&lt;u2, l3&lt;x&lt;u3]. See bound parameter
+in function subrange for more detail. There can be multiple lists like this marking multiple regions.
+Note that if ln or un is out of bound they will be clipped to the array boundary.</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>val</strong> – what value to set, default is (0,). val can also be list of arrays with the same size
+as each respective bound.</li>
+<li><strong>inverse_select</strong> – set array elements OUTSIDE specified bound to val. This will used more memory
+as temp array will be created. If true val can only be a number.</li>
+<li><strong>symmetric</strong> – if true then the mask will also apply to the center-symmetric regions where center is define
+as nx/2 for each dimension</li>
+<li><strong>method</strong> – how to set the value. if None the val will be assigned. User can provide function that accept
+two parameters, and the result is self[bound[i]] = user_func(self[bound[i]], val[i]). Note that
+method always acts on the specified bound regardless of inverse_select being true or not.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.squeeze">
+<code class="descname">squeeze</code><span class="sig-paren">(</span><em>axis=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.squeeze"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.squeeze" title="Permalink to this definition">¶</a></dt>
+<dd><p>Remove single-dimensional entries from the shape of <cite>a</cite>.</p>
+<p>Refer to <cite>numpy.squeeze</cite> for full documentation.</p>
+<p>numpy.squeeze : equivalent function</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.std">
+<code class="descname">std</code><span class="sig-paren">(</span><em>axis=None</em>, <em>dtype=None</em>, <em>out=None</em>, <em>ddof=0</em>, <em>keepdims=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.std"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.std" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the standard deviation of the array elements along given axis.</p>
+<p>Refer to <cite>numpy.std</cite> for full documentation.</p>
+<p>numpy.std : equivalent function</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.subrange">
+<code class="descname">subrange</code><span class="sig-paren">(</span><em>bound=None</em>, <em>new=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.subrange"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.subrange" title="Permalink to this definition">¶</a></dt>
+<dd><p>use .axes[:] data to index the array
+:param bound: see bound as using slice indexing with floating points. [1:3, :, 2:9:2, …, :8] for a 6-D array</p>
+<blockquote>
+<div>with dx=0.1 in all directions would look like bound=[(0.1, 0.3), None, (0.2, 0.9, 0.2), …, (None, 0.8)]</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>new</strong> – if true return a new array instead of a view</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.sum">
+<code class="descname">sum</code><span class="sig-paren">(</span><em>axis=None</em>, <em>dtype=None</em>, <em>out=None</em>, <em>keepdims=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.sum"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.sum" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the sum of the array elements over the given axis.</p>
+<p>Refer to <cite>numpy.sum</cite> for full documentation.</p>
+<p>numpy.sum : equivalent function</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.swapaxes">
+<code class="descname">swapaxes</code><span class="sig-paren">(</span><em>axis1</em>, <em>axis2</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.swapaxes"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.swapaxes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a view of the array with <cite>axis1</cite> and <cite>axis2</cite> interchanged.</p>
+<p>Refer to <cite>numpy.swapaxes</cite> for full documentation.</p>
+<p>numpy.swapaxes : equivalent function</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.transpose">
+<code class="descname">transpose</code><span class="sig-paren">(</span><em>*axes</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.transpose"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.transpose" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a view of the array with axes transposed.</p>
+<p>For a 1-D array, this has no effect. (To change between column and
+row vectors, first cast the 1-D array into a matrix object.)
+For a 2-D array, this is the usual matrix transpose.
+For an n-D array, if axes are given, their order indicates how the
+axes are permuted (see Examples). If axes are not provided and
+<code class="docutils literal notranslate"><span class="pre">a.shape</span> <span class="pre">=</span> <span class="pre">(i[0],</span> <span class="pre">i[1],</span> <span class="pre">...</span> <span class="pre">i[n-2],</span> <span class="pre">i[n-1])</span></code>, then
+<code class="docutils literal notranslate"><span class="pre">a.transpose().shape</span> <span class="pre">=</span> <span class="pre">(i[n-1],</span> <span class="pre">i[n-2],</span> <span class="pre">...</span> <span class="pre">i[1],</span> <span class="pre">i[0])</span></code>.</p>
+<p>axes : None, tuple of ints, or <cite>n</cite> ints</p>
+<blockquote>
+<div><ul class="simple">
+<li>None or no argument: reverses the order of the axes.</li>
+<li>tuple of ints: <cite>i</cite> in the <cite>j</cite>-th place in the tuple means <cite>a</cite>’s
+<cite>i</cite>-th axis becomes <cite>a.transpose()</cite>’s <cite>j</cite>-th axis.</li>
+<li><cite>n</cite> ints: same as an n-tuple of the same ints (this form is
+intended simply as a “convenience” alternative to the tuple form)</li>
+</ul>
+</div></blockquote>
+<dl class="docutils">
+<dt>out <span class="classifier-delimiter">:</span> <span class="classifier">ndarray</span></dt>
+<dd>View of <cite>a</cite>, with axes suitably permuted.</dd>
+</dl>
+<p>ndarray.T : Array property returning the array transposed.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span>
+<span class="go">array([[1, 2],</span>
+<span class="go">       [3, 4]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span><span class="o">.</span><span class="n">transpose</span><span class="p">()</span>
+<span class="go">array([[1, 3],</span>
+<span class="go">       [2, 4]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span><span class="o">.</span><span class="n">transpose</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+<span class="go">array([[1, 3],</span>
+<span class="go">       [2, 4]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<span class="go">array([[1, 3],</span>
+<span class="go">       [2, 4]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="method">
+<dt id="osh5def.H5Data.var">
+<code class="descname">var</code><span class="sig-paren">(</span><em>axis=None</em>, <em>dtype=None</em>, <em>out=None</em>, <em>ddof=0</em>, <em>keepdims=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/osh5def.html#H5Data.var"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#osh5def.H5Data.var" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the variance of the array elements, along given axis.</p>
+<p>Refer to <cite>numpy.var</cite> for full documentation.</p>
+<p>numpy.var : equivalent function</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Welcome to pyVisOS’s documentation!</a></li>
+      <li>Next: <a href="osh5io.html" title="next chapter">osh5io.py</a></li>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/osh5def.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, PICKSC.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+      |
+      <a href="_sources/osh5def.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
