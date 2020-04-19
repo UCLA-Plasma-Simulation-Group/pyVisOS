@@ -19,7 +19,7 @@ __status__ = "Development"
 import h5py
 import os
 import numpy as np
-from osh5def import H5Data, fn_rule, DataAxis, OSUnits
+from osh5def import H5Data, PartData, fn_rule, DataAxis, OSUnits
 
 
 def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
@@ -107,6 +107,10 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
             except IndexError:
                 data_attrs[key] = value.decode('utf-8') if isinstance(value, bytes) else value
 
+        # check if new data format is in use
+        if not data_attrs and 'SIMULATION' in data_file:
+            data_attrs['LONG_NAME'], data_attrs['UNITS'] = run_attrs.pop('LABEL', 'data'), run_attrs.pop('UNITS', OSUnits('a.u.'))
+            run_attrs['SIMULATION'] = {k:v for k,v in data_file['/SIMULATION'].attrs.items()}
         # convert unit string to osunit object
         try:
             data_attrs['UNITS'] = OSUnits(data_attrs['UNITS'])
@@ -123,6 +127,52 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         return data_bundle[0]
     else:
         return data_bundle
+
+
+def read_raw(filename, path=None):
+    """
+    Read particle raw data into a numpy sturctured array.
+    See numpy documents for detailed usage examples of the structured array.
+    The only modification is that the meta data of the particles are stored in .attrs attributes.
+    
+    Usage:
+            part = read_raw("raw-electron-000000.h5")   # part is a subclass of numpy.ndarray with extra attributes
+            
+            print(part.shape)                           # should be a 1D array with # of particles
+            print(part.attrs)                           # print all the meta data
+            print(part.attrs['TIME'])                   # prints the simulation time associated with the hdf5 file
+    """
+    fname = filename if not path else path + '/' + filename
+    try:
+        timestamp = fn_rule.findall(os.path.basename(filename))[0]
+    except IndexError:
+        timestamp = '000000'
+    with h5py.File(fname, 'r') as data:
+        quants = [k for k in data.keys()]
+        new_ver = 'SIMULATION' in quants
+        if new_ver:
+            quants.remove('SIMULATION')
+
+        # read in meta data
+        d = {k:v for k,v in data.attrs.items()}
+        # in the old version label and units are stored inside each quantity dataset
+        if not new_ver:
+            d['LABELS'] = [data[q].attrs['LONG_NAME'][0].decode() for q in quants]
+            d['UNITS'] = [data[q].attrs['UNITS'][0].decode() for q in quants]
+        else:
+            d.update({k:v for k, v in data['SIMULATION'].attrs.items()})
+            d['LABELS'] = [n.decode() for n in d['LABELS']]
+            d['UNITS'] = [n.decode() for n in d['UNITS']]
+        d['QUANTS'] = quants
+        #TODO: TIMESTAMP is not set in HDF5 file as of now (Aug 2019) so we make one up, check back when file format changes
+        d['TIMESTAMP'] = timestamp
+
+        dtype = [(q, data[q].dtype) for q in quants]
+        r = PartData(data[dtype[0][0]].shape, dtype=dtype, attrs=d)
+        for dt in dtype:
+            r[dt[0]] = data[dt[0]]
+
+    return r
 
 
 def read_h5_openpmd(filename, path=None):
@@ -282,36 +332,48 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
                 c += 1
             fname = fname[:-3]+'.copy'+str(c)+'.h5'
     h5file = h5py.File(fname)
+    run_attrs = data_object.run_attrs.copy()
 
     # now put the data in a group called this...
     h5dataset = h5file.create_dataset(current_name_attr, data_object.shape, data=data_object.view(np.ndarray))
-    # these are required.. so make defaults ones...
-    h5dataset.attrs['UNITS'], h5dataset.attrs['LONG_NAME'] = np.array([b'']), np.array([b''])
+
+    # these are required so we make defaults..
+    h5file.attrs['ITER'] = [0]
+    h5file.attrs['TIME'] = [0.0]
+    h5file.attrs['TIME UNITS'] = [b'1 / \omega_p']
+    h5file.attrs['TYPE'] = [b'grid']
     # convert osunit class back to ascii
     data_attrs = data_object.data_attrs.copy()
     try:
         data_attrs['UNITS'] = np.array([str(data_object.data_attrs['UNITS']).encode('utf-8')])
     except:
         data_attrs['UNITS'] = np.array([b'a.u.'])
-    # copy over any values we have in the 'H5Data' object;
-    for key, value in data_attrs.items():
-        h5dataset.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
-    # these are required so we make defaults..
-    h5file.attrs['DT'] = [1.0]
-    h5file.attrs['ITER'] = [0]
-    h5file.attrs['MOVE C'] = [0]
-    h5file.attrs['PERIODIC'] = [0]
-    h5file.attrs['TIME'] = [0.0]
-    h5file.attrs['TIME UNITS'] = [b'1 / \omega_p']
-    h5file.attrs['TYPE'] = [b'grid']
-    h5file.attrs['XMIN'] = [0.0]
-    h5file.attrs['XMAX'] = [0.0]
-    # now make defaults/copy over the attributes in the root of the hdf5
-    for key, value in data_object.run_attrs.items():
-#         if key == 'TIME UNITS':
-#             h5file.attrs['TIME UNITS'] = np.array([str(data_object.run_attrs['TIME UNITS']).encode('utf-8')])
-#         else:
-        h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, (str, OSUnits)) else value
+
+    # check if the data is read from a new format file
+    new_format = run_attrs.pop('SIMULATION', False)
+    if new_format:
+        # now make defaults/copy over the attributes in the root of the hdf5
+        for key, value in run_attrs.items():
+            h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, (str, OSUnits)) else value
+        h5file.attrs['LABEL'], h5file.attrs['UNITS'] = np.array([data_attrs['LONG_NAME'].encode('utf-8')]), data_attrs['UNITS']
+        simgroup = h5file.create_group('SIMULATION')
+        for k, v in new_format.items():
+            simgroup.attrs[k] = v
+    else:
+        # complete the list of required defaults
+        h5file.attrs['DT'] = [1.0]
+        h5file.attrs['MOVE C'] = [0]
+        h5file.attrs['PERIODIC'] = [0]
+        h5file.attrs['XMIN'] = [0.0]
+        h5file.attrs['XMAX'] = [0.0]
+        # these are required.. so make defaults ones...
+        h5dataset.attrs['UNITS'], h5dataset.attrs['LONG_NAME'] = np.array([b'']), np.array([b''])
+        # copy over any values we have in the 'H5Data' object;
+        for key, value in data_attrs.items():
+            h5dataset.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, str) else value
+        # now make defaults/copy over the attributes in the root of the hdf5
+        for key, value in run_attrs.items():
+            h5file.attrs[key] = np.array([value.encode('utf-8')]) if isinstance(value, (str, OSUnits)) else value
 
     number_axis_objects_we_need = len(data_object.axes)
     # now go through and set/create our axes HDF entries.

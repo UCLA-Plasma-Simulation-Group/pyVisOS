@@ -6,14 +6,35 @@ Vis tools for the OSIRIS HDF5 data.
 
 # import osh5def
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 import numpy as np
 import osh5def
+import subprocess
+import re
 # try:
 #     import osh5gui
 #     gui_fname = osh5gui.gui_fname
 # except ImportError:
 #     print('Fail to import GUI routines. Check your PyQT installation')
+
+class FixedWidthFormatter(matplotlib.ticker.ScalarFormatter):
+    def __init__(self, fformat="%1.1f", offset=True, mathText=True):
+        self.fformat = fformat
+        super().__init__(useOffset=offset, useMathText=mathText)
+        precision = fformat.split('.')
+        if len(precision) > 1:
+            precision = re.search(r'\d+', precision[1])
+            if precision is not None:
+                self._offset_threshold = max(int(precision.group()), 1)
+        self.set_powerlimits((0,0))
+
+    def _set_format(self, *args, **kwargs):
+        self.format = self.fformat
+        if self._usetex:
+            self.format = '$%s$' % self.format
+        elif self._useMathText:
+            self.format = '$%s$' % matplotlib.ticker._mathdefault(self.format)
 
 
 def change_default_units(units):
@@ -37,7 +58,7 @@ def time_format(time=0.0, unit=None, convert_tunit=False, wavelength=0.351, **kw
 
 
 def default_title(h5data, show_time=True, title=None, **kwargs):
-    tmp = tex(h5data.data_attrs['LONG_NAME']) if title is None else tex(title)
+    tmp = tex(h5data.data_attrs.get('LONG_NAME', '')) if title is None else tex(title)
     if show_time and not h5data.has_axis('t'):
         try:
             tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'], **kwargs)
@@ -73,7 +94,7 @@ def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, tit
     if convert_xaxis:
         xaxis, xunit = h5data.axes[0].to_phys_unit()
     else:
-        xaxis, xunit = h5data.axes[0], h5data.axes[0].attrs['UNITS']
+        xaxis, xunit = h5data.axes[0], h5data.axes[0].attrs.get('UNITS', '')
     if ax is not None:
         set_xlim, set_ylim, set_xlabel, set_ylabel, set_title = \
             ax.set_xlim, ax.set_ylim, ax.set_xlabel, ax.set_ylabel, ax.set_title
@@ -87,9 +108,9 @@ def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, tit
     else:
         plot_object = func(xaxis, h5data.view(np.ndarray), *args, **kwpassthrough)
     if xlabel is None:
-        xlabel = axis_format(h5data.axes[0].attrs['LONG_NAME'], xunit)
+        xlabel = axis_format(h5data.axes[0].attrs.get('LONG_NAME', ''), xunit)
     if ylabel is None:
-        ylabel = axis_format(h5data.data_attrs['LONG_NAME'], str(h5data.data_attrs['UNITS']))
+        ylabel = axis_format(h5data.data_attrs.get('LONG_NAME', ''), str(h5data.data_attrs.get('UNITS', '')))
     _xlim = xlim or (xaxis[0], xaxis[-1])
     set_xlim(_xlim)
     if ylim is not None:
@@ -109,23 +130,23 @@ def osplot1d(h5data, *args, ax=None, **kwpassthrough):
 
 def ossemilogx(h5data, *args, ax=None, **kwpassthrough):
     semilogx = plt.semilogx if ax is None else ax.semilogx
-    return __osplot1d(semilogx, h5data, *args, **kwpassthrough)
+    return __osplot1d(semilogx, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def ossemilogy(h5data, *args, ax=None, **kwpassthrough):
     semilogy = plt.semilogy if ax is None else ax.semilogy
-    return __osplot1d(semilogy, h5data, *args, **kwpassthrough)
+    return __osplot1d(semilogy, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def osloglog(h5data, *args, ax=None, **kwpassthrough):
     loglog = plt.loglog if ax is None else ax.loglog
-    return __osplot1d(loglog, h5data, *args, **kwpassthrough)
+    return __osplot1d(loglog, h5data, ax=ax, *args, **kwpassthrough)
 
 
 def add_colorbar(im, fig=None, cax=None, ax=None, cb=None, cblabel='', use_gridspec=True, **kwargs):
     if not cb:
-        cb = plt.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs) if fig is None \
-             else fig.colorbar(im, cax=cax, ax=ax, label=cblabel, **kwargs)
+        cb = plt.colorbar(im, cax=cax, ax=ax, label=cblabel, use_gridspec=use_gridspec, **kwargs) if fig is None \
+             else fig.colorbar(im, cax=cax, ax=ax, label=cblabel, use_gridspec=use_gridspec, **kwargs)
     else:
         cb.set_label(cblabel)
     return cb
@@ -142,7 +163,7 @@ def get_x_extent_and_unit(h5data, convert_xaxis=False, wavelength=0.351):
         extx = axis.min(), axis.max()
     else:
         extx = h5data.axes[1].ax.min(), h5data.axes[1].ax.max()
-        xunit = h5data.axes[1].attrs['UNITS']
+        xunit = h5data.axes[1].attrs.get('UNITS', '')
     return extx, xunit
 
 
@@ -152,7 +173,7 @@ def get_y_extent_and_unit(h5data, convert_yaxis=False, wavelength=0.351):
         exty = axis.min(), axis.max()
     else:
         exty = h5data.axes[0].ax.min(), h5data.axes[0].ax.max()
-        yunit = h5data.axes[0].attrs['UNITS']
+        yunit = h5data.axes[0].attrs.get('UNITS', '')
     return exty, yunit
 
 
@@ -180,7 +201,15 @@ def __osplot2d(func, h5data, *args, xlabel=None, ylabel=None, cblabel=None, titl
         plot_object.set_clim(clim)
 
     if colorbar:
-        clb = cblabel if cblabel is not None else h5data.data_attrs['UNITS'].tex()
+        if cblabel is not None:
+            clb = cblabel
+        else:
+            try:
+                clb = h5data.data_attrs['UNITS'].tex()
+            except KeyError:
+                clb = ''
+            except AttributeError:
+                clb = '$' + str(h5data.data_attrs['UNITS']) + '$'
         if colorbar_kw is None:
             colorbar_kw = {}
         ncb = add_colorbar(plot_object, fig=fig, ax=ax, cb=cb, cblabel=clb, **colorbar_kw)
@@ -255,3 +284,25 @@ def new_fig(h5data, *args, figsize=None, dpi=None, facecolor=None, edgecolor=Non
                tight_layout=tight_layout)
     osplot(h5data, *args, **kwpassthrough)
     plt.show()
+
+def movie( scan_dir, fname, fps=50, fig_size=(50,20), dpi=120 ):
+    """
+    make a mp4 movie out of a bunch of .png files
+    :scan_dir is directory containing .png files
+    :fname must be base name of .png files
+    :fps = frames per second
+    :dpi = image resolution
+    :fig_size = fig_size
+    """
+    f = scan_dir + fname
+
+    x = dpi * fig_size[0]
+    y = dpi * fig_size[1]
+    if(x*y > 4000 * 2000):
+        x, y = x//2, y//2
+
+    x, y = x//2*2, y//2*2
+
+    subprocess.call(["ffmpeg", "-framerate",str(fps),"-pattern_type","glob","-i", \
+        f+'*.png','-c:v','libx264','-vf','scale=' + str(x) +':' + str(y)+', \
+        format=yuv420p',f+'.mp4'])
