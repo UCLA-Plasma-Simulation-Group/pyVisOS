@@ -165,6 +165,7 @@ class OSUnits:
             if isinstance(s, bytes):
                 s = s.decode("utf-8")
             if 'a.u.' != s:
+                s = re.sub('/(?![^{]*})', ' / ', s)
                 sl = s.split()
                 nominator = True
                 while sl:
