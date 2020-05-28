@@ -21,6 +21,7 @@ try:
 except ImportError:
     import numpy.fft as fftmod
 # import numpy.fft as fftmod
+from multiprocessing import Pool
 
 
 utils_cache = {}
@@ -175,7 +176,11 @@ def stack(arr, axis=0, axesdata=None):
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
-def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None):
+def read_and_ndarray(f):
+    return osh5io.read_h5(f).view(np.ndarray)
+
+
+def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, cpu_count=1):
     """
     stack a directory of grid data and optionally save the result to a file
     :param dir_or_filelist: name of the directory
@@ -188,6 +193,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
                         returns False then this parameter will be ignored entirely.
     :param axesdata: user difined axes, see stack for more detail
     :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
+    :param cpu_count: Number of CPU's to spread job over for parallel computation
     :return: combined grid data, one dimension more than the preprocessed original data
     Usage of preprocess:
     The functino list should look like:
@@ -212,7 +218,10 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[0])))
         tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[-1])))
     else:
-        tmp = [osh5io.read_h5(f).view(np.ndarray) for f in flist[1:-1]]
+        if cpu_count>1:
+            tmp = Pool(cpu_count).map( read_and_ndarray, [f for f in flist[1:-1]] )
+        else:
+            tmp = [osh5io.read_h5(f).view(np.ndarray) for f in flist[1:-1]]
         # the first and last file should be H5data
         tmp.insert(0, osh5io.read_h5(flist[0]))
         tmp.append(osh5io.read_h5(flist[-1]))
