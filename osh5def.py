@@ -458,7 +458,10 @@ class H5Data(np.ndarray):
         v = super(H5Data, self).transpose(*axes)
         if axes is () or axes[0] is None:  # axes is none, numpy default is to reverse the order
             axes = range(len(v.axes)-1, -1, -1)
-        v.axes = [self.axes[i] for i in axes]
+        try:                               # called like transpose(2, 1, 0)
+            v.axes = [self.axes[i] for i in axes]
+        except TypeError:                  # called like transpose([2, 1, 0])
+            v.axes = [self.axes[i] for i in axes[0]]
         return v
 
     def __del_axis(self, axis):
