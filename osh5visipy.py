@@ -60,13 +60,13 @@ __2dplot_example_doc = """
 def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, grid=None, **kwargs):
     """%s""" % (__2dplot_param_doc + (__2dplot_example_doc % (('pltfunc', ) * 8)))
     if isinstance(data, str):
-        h5data = osh5io.read_h5(data)
+        h5data = osh5io.read_grid(data)
         wl = Generic2DPlotCtrl(h5data, *args, pltfunc=pltfunc, **kwargs).widgets_list
     elif isinstance(data, (tuple, list)):
         if not grid:
             raise ValueError('Specify the grid layout when plotting more than one quantity!')
         if isinstance(data[0], str):
-            data = [osh5io.read_h5(n) for n in data]
+            data = [osh5io.read_grid(n) for n in data]
         wl = MultiPanelCtrl((Generic2DPlotCtrl,) * len(data), data, grid, **kwargs).widgets_list
     else:
         wl = Generic2DPlotCtrl(data, *args, pltfunc=pltfunc, **kwargs).widgets_list
@@ -1857,7 +1857,7 @@ class DirSlicer(Generic2DPlotCtrl):
             fp = filefilter + '/*.h5' if os.path.isdir(filefilter) else filefilter
             self.datadir, self.flist, self.processing = os.path.abspath(os.path.dirname(fp)), sorted(glob.glob(fp)), processing
         try:
-            self.data = processing(osh5io.read_h5(self.flist[0]))
+            self.data = processing(osh5io.read_grid(self.flist[0]))
         except IndexError:
             raise IOError('No file found matching ' + fp)
 
@@ -1896,7 +1896,7 @@ class DirSlicer(Generic2DPlotCtrl):
 
     def update_slice(self, change):
         self.file_slider.description = os.path.basename(self.flist[change['new']])
-        self.data = self.processing(osh5io.read_h5(self.flist[change['new']]))
+        self.data = self.processing(osh5io.read_grid(self.flist[change['new']]))
         self.time_label.value = osh5vis.time_format(self.data.run_attrs['TIME'][0], self.data.run_attrs['TIME UNITS'])
         self.redraw(data=self.data, update_vminmax=True, newfile=True)
         self.update_lineouts()
