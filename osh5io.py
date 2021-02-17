@@ -60,12 +60,17 @@ def read_grid(filename, path=None, axis_name="AXIS/AXIS"):
     Read grid data from Osiris/OSHUN output. Data can be in hdf5 or zdf format
     """
     ext = os.path.basename(filename).split(sep='.')[-1]
+
     if ext == 'h5':
         return read_h5(filename, path=path, axis_name="AXIS/AXIS")
     elif ext == 'zdf':
         return read_zdf(filename, path=path)
     else:
-        raise ValueError('Unsupported file format: ' + ext)
+        # the file extension may not be specified, trying all supported formats
+        try:
+            return read_h5(filename+'.h5', path=path, axis_name="AXIS/AXIS")
+        except OSError:
+            return read_zdf(filename+'.zdf', path=path)
 
 
 def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
