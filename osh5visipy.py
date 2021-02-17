@@ -86,8 +86,8 @@ oscontourf_w.__doc__ = """%s"""  % (__2dplot_param_doc + (__2dplot_example_doc %
 
 def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     """
-    A slider for 3D data
-    :param data: (a list of) 3D H5Data or directory name (a string)
+    A slider for 3D data or a directory of 2D data
+    :param data: 3D H5Data or (a list of) directory name (a string)
     :param args: arguments passed to plotting widgets. reserved for future use
     :param show: whether to show the widgets
     :param slider_only: if True only show the slider otherwise show also other plot control (aka 'the tab')
@@ -106,8 +106,13 @@ def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     if isinstance(data, str):
         wl = DirSlicer(data, *args, **kwargs).widgets_list
     elif isinstance(data, (tuple, list)):
-        if isinstance(data[0], (str, tuple, list)):
+        if isinstance(data[0], (tuple, list)):
             wl = MPDirSlicer(data, *args, **kwargs).widgets_list
+        elif isinstance(data[0], str):
+            if os.path.isfile(data[0]):
+                wl = DirSlicer(data, *args, **kwargs).widgets_list
+            else:
+                wl = MPDirSlicer(data, *args, **kwargs).widgets_list
         else:
             raise NotImplementedError('Unexpected data. Cannot process input parameters')
     else:
