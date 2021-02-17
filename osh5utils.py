@@ -47,7 +47,8 @@ def metasl(func=None, axes=None, unit=None):
             else:
                 out = osh5def.H5Data(out, **saved)
         except:
-            raise TypeError('Output is not/cannot convert to H5Data')
+#             raise TypeError('Output is not/cannot convert to H5Data')
+            return out
         # Update unit if necessary
         if unit is not None:
             out.data_attrs['UNITS'] = osh5def.OSUnits(unit)
@@ -676,6 +677,8 @@ def rebin(a, fac, method='sum'):
      a=rand(6,4); b=rebin(a, fac=[3,2])
      a=rand(10); b=rebin(a, fac=[3])
     """
+    if np.prod(fac) == 1:  # early return if new grid is the same as the old one
+        return a
     index = tuple(slice(0, u - u % fac[i]) if u % fac[i] else slice(0, u) for i, u in enumerate(a.shape))
     a = a[index]
     # update axes first
@@ -683,6 +686,8 @@ def rebin(a, fac, method='sum'):
         ax = copy.deepcopy(a.axes)
         for i, x in enumerate(ax):
             x.ax = x.ax[::fac[i]]
+    else:
+        ax = None
     mthd = 'mean' if method.lower() == 'mean' else 'sum'
 
     @metasl(axes=ax)
