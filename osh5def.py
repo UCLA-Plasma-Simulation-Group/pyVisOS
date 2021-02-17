@@ -26,13 +26,14 @@ class DataAxis:
         if data is None:
             if axis_min > axis_max:
                 raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
-            self.ax = np.linspace(axis_min, axis_max - (axis_max - axis_min) / axis_npoints, axis_npoints)
+            self.ax = np.linspace(axis_min, axis_max, axis_npoints, endpoint=False)
         else:
             self.ax = data
         # now make attributes for axis that are required..
         if attrs is None:
             self.attrs = {'UNITS': OSUnits('a.u.'), 'LONG_NAME': "", 'NAME': ""}
         else:
+            attrs = cp.deepcopy(attrs)
             self.attrs = {'LONG_NAME': attrs.pop('LONG_NAME', ""), 'NAME': attrs.pop('NAME', "")}
             try:
                 u = attrs.pop('UNITS', 'a.u.')
