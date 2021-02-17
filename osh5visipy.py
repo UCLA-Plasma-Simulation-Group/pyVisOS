@@ -210,6 +210,18 @@ class Generic2DPlotCtrl(object):
         self.if_show_time = widgets.Checkbox(value=time_in_title and not t_in_axis, description='Time in title, ', layout=_items_layout)
         self.time_in_phys = widgets.Checkbox(value=phys_time, description='time in physical unit',
                                             layout={'width': 'initial'}, style={'description_width': 'initial'})
+        _linthres, _if_clip_cm = self.eps, False
+        if isinstance(norm, LogNorm):
+            if (norm.vmin is not None) or (norm.vmax is not None):
+                kwargs.update({ 'clim':( norm.vmin, norm.vmax ) })
+            _if_clip_cm = norm.clip
+            norm = 'Log'
+        elif isinstance(norm, SymLogNorm):
+            _linthres = norm.linthresh
+            if (norm.vmin is not None) or (norm.vmax is not None):
+                kwargs.update({ 'clim':( norm.vmin, norm.vmax ) })
+            _if_clip_cm = norm.clip
+            norm = 'SymLog'
         lognorm = norm == 'Log'
         self.__pp = np.abs if lognorm else do_nothing
         if 'clim' in kwargs:
@@ -234,12 +246,12 @@ class Generic2DPlotCtrl(object):
                                              disabled=self.if_vmin_auto.value, layout=_items_layout, style={'description_width': 'initial'})
         self.vmax_wgt = widgets.FloatText(value=vmax, description='vmax:', continuous_update=False,
                                           disabled=self.if_vmax_auto.value, layout=_items_layout, style={'description_width': 'initial'})
-        self.if_clip_cm = widgets.Checkbox(value=True, description='Clip', layout=_items_layout, style={'description_width': 'initial'})
+        self.if_clip_cm = widgets.Checkbox(value=_if_clip_cm, description='Clip', layout=_items_layout, style={'description_width': 'initial'})
         # PowerNorm specific
         self.gamma = widgets.FloatText(value=1, description='gamma:', continuous_update=False,
                                        layout=_items_layout, style={'description_width': 'initial'})
         # SymLogNorm specific
-        self.linthresh = widgets.FloatText(value=self.eps, description='linthresh:', continuous_update=False,
+        self.linthresh = widgets.FloatText(value=_linthres, description='linthresh:', continuous_update=False,
                                            layout=_items_layout, style={'description_width': 'initial'})
         self.linscale = widgets.FloatText(value=1.0, description='linscale:', continuous_update=False,
                                           layout=_items_layout, style={'description_width': 'initial'})
