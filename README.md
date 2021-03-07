@@ -29,7 +29,7 @@ Pip install this repo directly from github
 
 ``pip install git+https://github.com/UCLA-Plasma-Simulation-Group/pyVisOS.git@dev``
 
-Once installed, import any pyVisOS module directly in the normal way:
+Once installed, import any pyVisOS module in python in the normal way:
 
 ```
 import osh5vis
