@@ -23,3 +23,16 @@ Step 3 and 4 are the actual work we should be focusing on and pyVisOS provides a
 _independent_timeframe_pptm_: can be used if the analysis can be done in a way that data at different timestamps are independent. see _pynting_flux_example.py_ for details.
 
 **The codes are tested under python 3.5**
+
+## Installation
+Pip install this repo directly from github
+
+``pip install git+https://github.com/UCLA-Plasma-Simulation-Group/pyVisOS.git@dev``
+
+Once installed, import any pyVisOS module directly in the normal way:
+
+```
+import osh5vis
+import osh5io
+...
+```
