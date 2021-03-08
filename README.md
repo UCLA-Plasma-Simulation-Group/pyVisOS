@@ -25,7 +25,7 @@ _independent_timeframe_pptm_: can be used if the analysis can be done in a way t
 **The codes are tested under python 3.5**
 
 ## Installation
-Pip install this repo directly from github
+Pip install the dev branch of this repo directly from github
 
 ``pip install git+https://github.com/UCLA-Plasma-Simulation-Group/pyVisOS.git@dev``
 
