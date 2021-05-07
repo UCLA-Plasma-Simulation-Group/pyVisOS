@@ -186,7 +186,8 @@ def _get_downloadable_url(filename):
 class Generic2DPlotCtrl(object):
     tab_contents = ['Data', 'Axes', 'Overlay', 'Colorbar', 'Save', 'Figure']
     eps = 1e-40
-    colormaps_available = sorted(c for c in plt.colormaps() if not c.endswith("_r"))
+    colormaps_bulitin = tuple(sorted(c for c in plt.colormaps() if not c.endswith("_r")))
+    user_colormaps = {}
 
     def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), slice(None, )), title=None, norm='',
                  fig=None, figsize=None, time_in_title=True, phys_time=False, ax=None, output_widget=None,
@@ -197,6 +198,11 @@ class Generic2DPlotCtrl(object):
         self.callbacks = {} if register_callbacks is None else register_callbacks
         user_cmap, show_colorbar = kwargs.pop('cmap', 'jet'), kwargs.pop('colorbar', True)
         tab = []
+        self.colormaps_available = sorted((c, c) for c in self.colormaps_bulitin)
+        if not isinstance(user_cmap, str): # to use user defined cmap, we need to add it to the options
+            self.user_colormaps['U:'+user_cmap.name] = user_cmap
+        for k,v in self.user_colormaps.items():
+            self.colormaps_available.append( (k, v) )
         # # # -------------------- Tab0 --------------------------
         # title
         if title is None or title == True:
