@@ -450,7 +450,10 @@ class H5Data(np.ndarray):
         try:
             return getattr(self.values, label)
         except AttributeError:  # maybe it is an axis name
-            ind = self.index_of(label)
+            try:
+                ind = self.index_of(label)
+            except ValueError:
+                raise AttributeError()
             axes = np.meshgrid(*reversed([x.ax for x in self.axes]), sparse=True)
             return axes[self.ndim-1-ind].copy()
 
