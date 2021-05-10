@@ -47,7 +47,8 @@ def metasl(func=None, axes=None, unit=None):
             else:
                 out = osh5def.H5Data(out, **saved)
         except:
-            raise TypeError('Output is not/cannot convert to H5Data')
+#             raise TypeError('Output is not/cannot convert to H5Data')
+            return out
         # Update unit if necessary
         if unit is not None:
             out.data_attrs['UNITS'] = osh5def.OSUnits(unit)
@@ -177,7 +178,7 @@ def stack(arr, axis=0, axesdata=None):
 
 
 def read_and_ndarray(f):
-    return osh5io.read_h5(f).view(np.ndarray)
+    return osh5io.read_grid(f).view(np.ndarray)
 
 
 def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, cpu_count=1):
@@ -203,7 +204,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
      (func2, arg1n, arg2n, ..., argnn, {'kwarg1n': val1n, 'kwarg2n': val2n, ..., 'kwargnn', valnn})] where
      any of the *args and/or **args can be omitted. see also __parse_func_param for limitations.
         if preprocess=[(numpy.power, 2), (numpy.average, {'axis':0}), numpy.sqrt], then the data to be stacked is
-        numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
+        numpy.sqrt( numpy.average( numpy.power( read_grid(file_name), 2 ), axis=0 ) )
     """
     prfx = str(prefix).strip() if prefix else ''
 
@@ -213,18 +214,18 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         flist = dir_or_filelist[file_slice]
     if isinstance(preprocess, list) and preprocess:
         func_list = [__parse_func_param(item) for item in preprocess]
-        tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(fn)).view(np.ndarray) for fn in flist[1:-1]]
+        tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(fn)).view(np.ndarray) for fn in flist[1:-1]]
         # the first and last file should be H5data
-        tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[0])))
-        tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[-1])))
+        tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[0])))
+        tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[-1])))
     else:
         if cpu_count>1:
             tmp = Pool(cpu_count).map( read_and_ndarray, [f for f in flist[1:-1]] )
         else:
-            tmp = [osh5io.read_h5(f).view(np.ndarray) for f in flist[1:-1]]
+            tmp = [osh5io.read_grid(f).view(np.ndarray) for f in flist[1:-1]]
         # the first and last file should be H5data
-        tmp.insert(0, osh5io.read_h5(flist[0]))
-        tmp.append(osh5io.read_h5(flist[-1]))
+        tmp.insert(0, osh5io.read_grid(flist[0]))
+        tmp.append(osh5io.read_grid(flist[-1]))
     res = stack(tmp, axis=0, axesdata=axesdata)
     if save:
         if not isinstance(save, str):
@@ -578,7 +579,7 @@ def diff(x, n=1, axis=-1):
 
 def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False, iftf=ifftn, inplace=False, **additional_fft_kwargs):
     """decompose a vector field into transverse and longitudinal direction
-    fldarr: list of field components in the order of x, y, z
+    fldarr: list of field components in the order of x, y, z (x1, x2, x3)
     ffted: If the input fields have been Fourier transformed
     finalize: what function to call after all transforms,
         for example finalize=abs will be converted the fields to amplitude
@@ -602,7 +603,7 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     if not finalize:
         finalize = __idle
     if np.issubdtype(fldarr[0].dtype, np.floating):
-        ftf, iftf = fftn, ifftn if norft else rfftn, irfftn
+        ftf, iftf = (fftn, ifftn) if norft else (rfftn, irfftn)
 
     def wrap_up(data):
         if idim:
@@ -676,6 +677,8 @@ def rebin(a, fac, method='sum'):
      a=rand(6,4); b=rebin(a, fac=[3,2])
      a=rand(10); b=rebin(a, fac=[3])
     """
+    if np.prod(fac) == 1:  # early return if new grid is the same as the old one
+        return a
     index = tuple(slice(0, u - u % fac[i]) if u % fac[i] else slice(0, u) for i, u in enumerate(a.shape))
     a = a[index]
     # update axes first
@@ -683,6 +686,8 @@ def rebin(a, fac, method='sum'):
         ax = copy.deepcopy(a.axes)
         for i, x in enumerate(ax):
             x.ax = x.ax[::fac[i]]
+    else:
+        ax = None
     mthd = 'mean' if method.lower() == 'mean' else 'sum'
 
     @metasl(axes=ax)

@@ -20,6 +20,57 @@ import h5py
 import os
 import numpy as np
 from osh5def import H5Data, PartData, fn_rule, DataAxis, OSUnits
+try:
+    import zdf
+
+    def read_zdf(filename, path=None):
+        """
+        HDF reader for Osiris/Visxd compatible HDF files.
+        Returns: H5Data object.
+        """
+        fname = filename if not path else path + '/' + filename
+        data, info = zdf.read(filename)
+        run_attrs, data_attrs = {}, {}
+        nx = list(reversed(info.grid.nx))
+        axes = [DataAxis(ax.min, ax.max, nx[i],
+                         attrs={'LONG_NAME': ax.label,
+                                'NAME': ax.label.replace('_', ''),
+                                'UNITS': OSUnits(ax.units)})
+                for i, ax in enumerate(reversed(info.grid.axis))]
+
+        timestamp=fn_rule.findall(os.path.basename(filename))[0]
+
+        run_attrs['NX']=info.grid.nx
+        run_attrs['TIME UNITS'] = OSUnits(info.iteration.tunits)
+        run_attrs['TIME']=np.array([info.iteration.t])
+        run_attrs['TIMESTAMP']=timestamp
+
+        data_attrs['LONG_NAME']=info.grid.label
+        data_attrs['NAME']=info.grid.label.replace('_', '')
+        data_attrs['UNITS']=OSUnits(info.grid.units)
+        return H5Data(data, timestamp=timestamp, data_attrs=data_attrs, run_attrs=run_attrs, axes=axes)
+
+except ImportError:
+    def read_zdf(_):
+        raise NotImplementedError('Cannot import zdf reader, zdf format not supported')
+
+
+def read_grid(filename, path=None, axis_name="AXIS/AXIS"):
+    """
+    Read grid data from Osiris/OSHUN output. Data can be in hdf5 or zdf format
+    """
+    ext = os.path.basename(filename).split(sep='.')[-1]
+
+    if ext == 'h5':
+        return read_h5(filename, path=path, axis_name="AXIS/AXIS")
+    elif ext == 'zdf':
+        return read_zdf(filename, path=path)
+    else:
+        # the file extension may not be specified, trying all supported formats
+        try:
+            return read_h5(filename+'.h5', path=path, axis_name="AXIS/AXIS")
+        except OSError:
+            return read_zdf(filename+'.zdf', path=path)
 
 
 def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
