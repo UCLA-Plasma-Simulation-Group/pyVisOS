@@ -145,7 +145,8 @@ def metasl_map(mapping=(0, 0)):  # not well tested
             except IndexError:
                 raise IndexError('Output does not have ' + str(tp[1]) + ' elements')
             except:
-                raise TypeError('Output[' + str(tp[1]) + '] is not/cannot convert to H5Data')
+#                 raise TypeError('Output[' + str(tp[1]) + '] is not/cannot convert to H5Data')
+                return ol
             tmp = tuple(ol) if len(ol) > 1 else ol[0] if ol else out
             return tmp
         return sl
@@ -371,6 +372,8 @@ def __ft_interface(ftfunc, forward, omitlast):
     def ft_interface(a, s, axes, norm, **kwargs):
         # call fft and shift the result
         if omitlast:
+            if axes == None:
+                axes = [i for i in range(len(s)-1)]
             if isinstance(axes, int) or len(axes) < 2:  # no fftshift in the case of rfft
                 return ftfunc(a, s, axes, norm, **kwargs)
             else:
@@ -590,7 +593,7 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
         't' or 't1', 't2', ...: transverse components, 't' means all transverse components
         'l' or 'l1', 'l2', ...: longitudinal components, 'l' means all longitudinal components
     norft: if set to true then use full fft instead of rfft (only relevant when the field data is of real numbers)
-    iftf: the inverse fft method used if idim is not None
+    iftf: the inverse fft method used if idim is not None. Only used when ffted=True
     inplace: perform field decomposition inplace, setting this to True will change fldarr
     return: list of field components in the following order (if some are not requested they will be simply omitted):
         ['L', 'T', 't', 'l']
@@ -603,7 +606,12 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     if not finalize:
         finalize = __idle
     if np.issubdtype(fldarr[0].dtype, np.floating):
-        ftf, iftf = (fftn, ifftn) if norft else (rfftn, irfftn)
+        ftf, iftf = (fftn, (lambda *args, **kwargs: np.real(ifftn(*args, **kwargs)))) if norft else (rfftn, irfftn)
+    if idim:
+        if isinstance(idim, int):
+            idim = [idim]
+        ftaxes = [i for i in range(fldarr[0].ndim) if i not in idim]
+        ftaxes += idim
 
     def wrap_up(data):
         if idim:
@@ -627,10 +635,10 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     else:
         if inplace:
             for i, fi in enumerate(fldarr):
-                fldarr[i] = ftf(fi, **additional_fft_kwargs)
+                fldarr[i] = ftf(fi, axes=ftaxes, **additional_fft_kwargs)
             fftfld = fldarr
         else:
-            fftfld = [ftf(fi, **additional_fft_kwargs) for fi in fldarr]
+            fftfld = [ftf(fi, axes=ftaxes, **additional_fft_kwargs) for fi in fldarr]
     kv = np.meshgrid(*reversed([x.ax for x in fftfld[0].axes]), sparse=True)
     k2 = sum(ki**2 for ki in kv)  # |k|^2
     k2[k2 == 0.0] = float('inf')
