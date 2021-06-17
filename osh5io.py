@@ -382,7 +382,7 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
             while os.path.isfile(fname[:-3]+'.copy'+str(c)+'.h5'):
                 c += 1
             fname = fname[:-3]+'.copy'+str(c)+'.h5'
-    h5file = h5py.File(fname)
+    h5file = h5py.File(fname,'a')
     run_attrs = data_object.run_attrs.copy()
 
     # now put the data in a group called this...
