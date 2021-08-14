@@ -1,4 +1,8 @@
-"""Provide basic operations for H5Data"""
+"""
+osh5utils.py
+============
+Provide basic operations for H5Data.
+"""
 
 import osh5def
 import numpy as np
@@ -17,6 +21,7 @@ try:
 except ImportError:
     import numpy.fft as fftmod
 # import numpy.fft as fftmod
+from multiprocessing import Pool
 
 
 utils_cache = {}
@@ -42,7 +47,8 @@ def metasl(func=None, axes=None, unit=None):
             else:
                 out = osh5def.H5Data(out, **saved)
         except:
-            raise TypeError('Output is not/cannot convert to H5Data')
+#             raise TypeError('Output is not/cannot convert to H5Data')
+            return out
         # Update unit if necessary
         if unit is not None:
             out.data_attrs['UNITS'] = osh5def.OSUnits(unit)
@@ -139,7 +145,8 @@ def metasl_map(mapping=(0, 0)):  # not well tested
             except IndexError:
                 raise IndexError('Output does not have ' + str(tp[1]) + ' elements')
             except:
-                raise TypeError('Output[' + str(tp[1]) + '] is not/cannot convert to H5Data')
+#                 raise TypeError('Output[' + str(tp[1]) + '] is not/cannot convert to H5Data')
+                return ol
             tmp = tuple(ol) if len(ol) > 1 else ol[0] if ol else out
             return tmp
         return sl
@@ -171,7 +178,11 @@ def stack(arr, axis=0, axesdata=None):
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
-def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None):
+def read_and_ndarray(f):
+    return osh5io.read_grid(f).view(np.ndarray)
+
+
+def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, cpu_count=1):
     """
     stack a directory of grid data and optionally save the result to a file
     :param dir_or_filelist: name of the directory
@@ -184,6 +195,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
                         returns False then this parameter will be ignored entirely.
     :param axesdata: user difined axes, see stack for more detail
     :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
+    :param cpu_count: Number of CPU's to spread job over for parallel computation
     :return: combined grid data, one dimension more than the preprocessed original data
     Usage of preprocess:
     The functino list should look like:
@@ -193,7 +205,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
      (func2, arg1n, arg2n, ..., argnn, {'kwarg1n': val1n, 'kwarg2n': val2n, ..., 'kwargnn', valnn})] where
      any of the *args and/or **args can be omitted. see also __parse_func_param for limitations.
         if preprocess=[(numpy.power, 2), (numpy.average, {'axis':0}), numpy.sqrt], then the data to be stacked is
-        numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
+        numpy.sqrt( numpy.average( numpy.power( read_grid(file_name), 2 ), axis=0 ) )
     """
     prfx = str(prefix).strip() if prefix else ''
 
@@ -203,15 +215,18 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         flist = dir_or_filelist[file_slice]
     if isinstance(preprocess, list) and preprocess:
         func_list = [__parse_func_param(item) for item in preprocess]
-        tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(fn)).view(np.ndarray) for fn in flist[1:-1]]
+        tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(fn)).view(np.ndarray) for fn in flist[1:-1]]
         # the first and last file should be H5data
-        tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[0])))
-        tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[-1])))
+        tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[0])))
+        tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[-1])))
     else:
-        tmp = [osh5io.read_h5(f).view(np.ndarray) for f in flist[1:-1]]
+        if cpu_count>1:
+            tmp = Pool(cpu_count).map( read_and_ndarray, [f for f in flist[1:-1]] )
+        else:
+            tmp = [osh5io.read_grid(f).view(np.ndarray) for f in flist[1:-1]]
         # the first and last file should be H5data
-        tmp.insert(0, osh5io.read_h5(flist[0]))
-        tmp.append(osh5io.read_h5(flist[-1]))
+        tmp.insert(0, osh5io.read_grid(flist[0]))
+        tmp.append(osh5io.read_grid(flist[-1]))
     res = stack(tmp, axis=0, axesdata=axesdata)
     if save:
         if not isinstance(save, str):
@@ -356,7 +371,15 @@ def __ft_interface(ftfunc, forward, omitlast):
     @metasl
     def ft_interface(a, s, axes, norm, **kwargs):
         # call fft and shift the result
-        shftax = axes[:-1] if omitlast else axes
+        if omitlast:
+            if axes == None:
+                axes = [i for i in range(len(s)-1)]
+            if isinstance(axes, int) or len(axes) < 2:  # no fftshift in the case of rfft
+                return ftfunc(a, s, axes, norm, **kwargs)
+            else:
+                shftax = axes[:-1]
+        else:
+            shftax = axes
         if forward:
             return fftmod.fftshift(ftfunc(a, s, axes, norm, **kwargs), shftax)
         else:
@@ -366,7 +389,7 @@ def __ft_interface(ftfunc, forward, omitlast):
 
 def __shifted_ft_gen(ftfunc, forward, omitlast, ffunc, uafunc):
     def shifted_fft(a, s=None, axes=None, norm=None, **kwargs):
-        shape = s if s is not None else a.shape
+        shape = s if s is not None else (a.data_attrs['oshape'] if omitlast else a.shape)
         o = __ft_interface(ftfunc, forward=forward, omitlast=omitlast)(a, s=s, axes=axes, norm=norm, **kwargs)
         uafunc(o, axes, shape, omitlast, ffunc=ffunc)
         return o
@@ -559,7 +582,7 @@ def diff(x, n=1, axis=-1):
 
 def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False, iftf=ifftn, inplace=False, **additional_fft_kwargs):
     """decompose a vector field into transverse and longitudinal direction
-    fldarr: list of field components in the order of x, y, z
+    fldarr: list of field components in the order of x, y, z (x1, x2, x3)
     ffted: If the input fields have been Fourier transformed
     finalize: what function to call after all transforms,
         for example finalize=abs will be converted the fields to amplitude
@@ -570,7 +593,7 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
         't' or 't1', 't2', ...: transverse components, 't' means all transverse components
         'l' or 'l1', 'l2', ...: longitudinal components, 'l' means all longitudinal components
     norft: if set to true then use full fft instead of rfft (only relevant when the field data is of real numbers)
-    iftf: the inverse fft method used if idim is not None
+    iftf: the inverse fft method used if idim is not None. Only used when ffted=True
     inplace: perform field decomposition inplace, setting this to True will change fldarr
     return: list of field components in the following order (if some are not requested they will be simply omitted):
         ['L', 'T', 't', 'l']
@@ -583,7 +606,12 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     if not finalize:
         finalize = __idle
     if np.issubdtype(fldarr[0].dtype, np.floating):
-        ftf, iftf = fftn, ifftn if norft else rfftn, irfftn
+        ftf, iftf = (fftn, (lambda *args, **kwargs: np.real(ifftn(*args, **kwargs)))) if norft else (rfftn, irfftn)
+    if idim:
+        if isinstance(idim, int):
+            idim = [idim]
+        ftaxes = [i for i in range(fldarr[0].ndim) if i not in idim]
+        ftaxes += idim
 
     def wrap_up(data):
         if idim:
@@ -607,10 +635,10 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     else:
         if inplace:
             for i, fi in enumerate(fldarr):
-                fldarr[i] = ftf(fi, **additional_fft_kwargs)
+                fldarr[i] = ftf(fi, axes=ftaxes, **additional_fft_kwargs)
             fftfld = fldarr
         else:
-            fftfld = [ftf(fi, **additional_fft_kwargs) for fi in fldarr]
+            fftfld = [ftf(fi, axes=ftaxes, **additional_fft_kwargs) for fi in fldarr]
     kv = np.meshgrid(*reversed([x.ax for x in fftfld[0].axes]), sparse=True)
     k2 = sum(ki**2 for ki in kv)  # |k|^2
     k2[k2 == 0.0] = float('inf')
@@ -657,6 +685,8 @@ def rebin(a, fac, method='sum'):
      a=rand(6,4); b=rebin(a, fac=[3,2])
      a=rand(10); b=rebin(a, fac=[3])
     """
+    if np.prod(fac) == 1:  # early return if new grid is the same as the old one
+        return a
     index = tuple(slice(0, u - u % fac[i]) if u % fac[i] else slice(0, u) for i, u in enumerate(a.shape))
     a = a[index]
     # update axes first
@@ -664,6 +694,8 @@ def rebin(a, fac, method='sum'):
         ax = copy.deepcopy(a.axes)
         for i, x in enumerate(ax):
             x.ax = x.ax[::fac[i]]
+    else:
+        ax = None
     mthd = 'mean' if method.lower() == 'mean' else 'sum'
 
     @metasl(axes=ax)
@@ -762,6 +794,19 @@ def log_Gabor_Filter_2d(w, w0, s0):
     s0: the value of abs(s0-1) determines the width of the peak.
     """
     return np.exp( - np.log(w/w0)**2 / (2 * np.log(s0)**2) )
+
+
+def retangular_Bandpass_Filter(k, center, hwidth):
+    """
+    return array with the same shape as k.
+    The array returned is 1 where center-width < k < center+width, 0 otherwise
+    center: center of the bandpass filter
+    hwidth: half width of the bandpass filter
+    """
+    r = np.ones(k.shape)
+    r[k<center-hwidth] = 0
+    r[k>center+hwidth] = 0
+    return r
 
 
 def monogenic_signal(data, *args, filter_func=log_Gabor_Filter_2d, ffted=True, ifft=True, caching=False, **additional_fft_kwargs):
@@ -881,6 +926,105 @@ def monogenic_local_k(monogenic_local_phase, axis=-1, denoise=False, kmax=None):
     return r
 
 
+def _find_lineout_extent(h5data, point, slope, vardim, valdim):
+    """
+    this helper function finds the points crossing the array boundary for the lineout
+
+    vardim: the index of the independent _variable_
+    valdim: the index of the dependent variable (aka _value_), valdim = 1 - vardim
+    point: the coordinate of the point the line passing through, in the axes units.
+    slope: the equation of the line is (in 2D assuming the other axis's name is oax)
+           slope=(h5data.axes[valdim]-point[valdim])/(h5data.axes[vardim]-point[vardim])
+    """
+    y = [(h5data.axes[vardim].min - point[vardim]) * slope + point[valdim],
+         (h5data.axes[vardim].max - point[vardim]) * slope + point[valdim]]
+    x = [h5data.axes[vardim].min, h5data.axes[vardim].max]
+    for i in range(2):
+        if y[i] > h5data.axes[valdim].max:
+            x[i] = (h5data.axes[valdim].max - point[valdim]) / slope + point[vardim]
+            y[i] = h5data.axes[valdim].max
+        elif y[i] < h5data.axes[valdim].min:
+            x[i] = (h5data.axes[valdim].min - point[valdim]) / slope + point[vardim]
+            y[i] = h5data.axes[valdim].min
+    if vardim == 0:
+        return (x[0], y[0]), (x[1], y[1])
+    else:
+        return (y[0], x[0]), (y[1], x[1])
+
+
+def lineout(h5data, point, slope, variable='x1', linewidth=0, extent_fill=None, average='simple'):
+    """
+    This function return an 1D lineout of the data. Different from simple array indexing, this function
+    allows oblique slicing of the array and averaging over the "thickness" of the line.
+    (support only 2D data)
+
+    point: the coordinate of the point the line passing through, in the axes units.
+    slope: the equation of the line is (in 2D assuming the other axis's name is oax)
+           slope=(h5data.oax-point[h5data.index_of(oax)])/(h5data.variable-point[h5data.index_of(variable)])
+    linewidth: the thickness of the line in the non-variable direction. 0 means nearest grid points
+    extent_fill: the value to fill in when the lineout does not extent to the full '_variable_' axis,
+                 if None then only valid range in the '_variable_' axis will be returned
+    average: what average method to use when the line has thickness. valid options are:
+             'simple', 'abs', 'rms'
+    """
+    axes = np.meshgrid(*reversed([x.ax for x in h5data.axes]), sparse=True)
+    axes = {h5data.axes[i].name: axes[1-i] for i in range(2)}
+    vardim = h5data.index_of(variable)
+    valdim = 1 - vardim
+    if not linewidth:
+        sp, ep = _find_lineout_extent(h5data, list(point), slope, vardim, valdim)
+        bound = min(sp[vardim], ep[vardim]), max(sp[vardim], ep[vardim])
+        if vardim == 0:
+            tmp = h5data.loc[bound[0]:bound[1], :]
+            tmp = np.array([h5data.loc[v, (v-point[0])*slope+point[1]] for v in tmp.axes[0]])
+            r = copy.deepcopy(h5data[:,0])
+            if extent_fill is None:
+                r = r.loc[sp[0]:ep[0]]
+                r.values[:] = tmp
+            else:
+                r.values[:] = extent_fill
+                r.loc[sp[0]:ep[0]].values[:] = tmp
+        else:
+            tmp = h5data.loc[:, bound[0]:bound[1]]
+            tmp = np.array([h5data.loc[(v-point[1])*slope+point[0], v] for v in tmp.axes[1]])
+            r = copy.deepcopy(h5data[0,:])
+            if extent_fill is None:
+                r = r.loc[sp[1]:ep[1]]
+                r.values[:] = tmp
+            else:
+                r.values[:] = extent_fill
+                r.loc[sp[1]:ep[1]].values[:] = tmp
+    else:
+        p_tmp, vb = list(point), [0, 0]
+        vb[0] = point[valdim] - 0.5 * linewidth
+        p_tmp[valdim] = vb[0]
+        spL, epL = _find_lineout_extent(h5data, p_tmp, slope, vardim, valdim)
+        vb[1] = point[valdim] + 0.5 * linewidth
+        p_tmp[valdim] = vb[1]
+        spH, epH = _find_lineout_extent(h5data, p_tmp, slope, vardim, valdim)
+
+        x12b = ((min(spL[0], epL[0], spH[0], epH[0]), max(spL[0], epL[0], spH[0], epH[0])),
+                (min(spL[1], epL[1], spH[1], epH[1]), max(spL[1], epL[1], spH[1], epH[1])))
+
+        tmp = h5data.loc[x12b[0][0]:x12b[0][1], x12b[1][0]:x12b[1][1]].copy()
+        vara, vala = getattr(tmp, variable), getattr(tmp, tmp.axes[valdim].name)
+        fac = (vara.max() - vara.min()) / linewidth
+        tmp[np.logical_or(vala<vara*slope+vb[0], vala>vara*slope+vb[1])] = 0
+        if average == 'simple':
+            r = np.mean(tmp, axis=valdim) * fac
+        elif average == 'rms':
+            r = np.sqrt(np.mean(tmp*tmp, axis=valdim) * fac)
+        else:
+            r = np.mean(np.abs(tmp), axis=valdim) * fac
+
+        if extent_fill is not None:
+            tmp = h5data[:,0].copy() if vardim == 0 else h5data[0,:].copy()
+            tmp[:] = extent_fill
+            tmp.loc[x12b[vardim][0]:x12b[vardim][1]] = r
+            r = tmp
+    return r
+
+
 if __name__ == '__main__':
     fn = 'n0-123456.h5'
     d = osh5io.read_h5(fn)
@@ -899,4 +1043,3 @@ if __name__ == '__main__':
     print(repr(b))
     b = np.sqrt(b)
     # print(repr(b))
-

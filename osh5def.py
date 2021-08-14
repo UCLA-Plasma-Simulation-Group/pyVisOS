@@ -1,8 +1,12 @@
 #!/usr/bin/env python
 
-"""osh5def.py: Define the OSIRIS HDF5 data class and basic functions.
-    The basic idea is to make the data unit and axes consistent with the data itself. Therefore users should only modify
-    the unit and axes by modifying the data or by dedicated functions (unit conversion for example).
+"""
+osh5def.py
+==========
+Define the OSIRIS HDF5 data class and basic functions.
+    The basic idea is to make the data unit and axes consistent with the data
+    itself. Therefore users should only modify the unit and axes by modifying
+    the data or by dedicated functions (unit conversion for example).
 """
 
 import numpy as np
@@ -22,13 +26,14 @@ class DataAxis:
         if data is None:
             if axis_min > axis_max:
                 raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
-            self.ax = np.linspace(axis_min, axis_max - (axis_max - axis_min) / axis_npoints, axis_npoints)
+            self.ax = np.linspace( axis_min, axis_max, axis_npoints, endpoint=False )
         else:
             self.ax = data
         # now make attributes for axis that are required..
         if attrs is None:
             self.attrs = {'UNITS': OSUnits('a.u.'), 'LONG_NAME': "", 'NAME': ""}
         else:
+            attrs = cp.deepcopy(attrs)
             self.attrs = {'LONG_NAME': attrs.pop('LONG_NAME', ""), 'NAME': attrs.pop('NAME', "")}
             try:
                 u = attrs.pop('UNITS', 'a.u.')
@@ -161,6 +166,7 @@ class OSUnits:
             if isinstance(s, bytes):
                 s = s.decode("utf-8")
             if 'a.u.' != s:
+                s = re.sub('/(?![^{]*})', ' / ', s)
                 sl = s.split()
                 nominator = True
                 while sl:
@@ -212,7 +218,7 @@ class OSUnits:
         res = OSUnits('a.u.')
         res.power = self.power - other.power
         return res
-    
+
     __floordiv__ = __truediv__
     __div__ = __truediv__
 
@@ -440,6 +446,17 @@ class H5Data(np.ndarray):
             return v.view(np.ndarray)
         return v
 
+    def __getattr__(self, label):
+        try:
+            return getattr(self.values, label)
+        except AttributeError:  # maybe it is an axis name
+            try:
+                ind = self.index_of(label)
+            except ValueError:
+                raise AttributeError()
+            axes = np.meshgrid(*reversed([x.ax for x in self.axes]), sparse=True)
+            return axes[self.ndim-1-ind].copy()
+
     def meta2dict(self):
         """return a deep copy of the meta data as a dictionary"""
         return cp.deepcopy(self.__dict__)
@@ -448,7 +465,10 @@ class H5Data(np.ndarray):
         v = super(H5Data, self).transpose(*axes)
         if axes is () or axes[0] is None:  # axes is none, numpy default is to reverse the order
             axes = range(len(v.axes)-1, -1, -1)
-        v.axes = [self.axes[i] for i in axes]
+        try:                               # called like transpose(2, 1, 0)
+            v.axes = [self.axes[i] for i in axes]
+        except TypeError:                  # called like transpose([2, 1, 0])
+            v.axes = [self.axes[i] for i in axes[0]]
         return v
 
     def __del_axis(self, axis):
@@ -531,7 +551,7 @@ class H5Data(np.ndarray):
         """
         # the document says that __array_wrap__ could be deprecated in the future but this is the most direct way...
         div, mul = 1, 2
-        op, __ufunc_mapping = None, {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': '', 'divide': div, 
+        op, __ufunc_mapping = None, {'sqrt': '1/2', 'cbrt': '1/3', 'square': '2', 'power': '', 'divide': div,
                                      'true_divide': div, 'floor_divide': div, 'reciprocal': '-1', 'multiply': mul}
         if context:
             op = __ufunc_mapping.get(context[0].__name__)
@@ -726,6 +746,7 @@ class H5Data(np.ndarray):
             if symmetric:
                 index.append(H5Data.__get_symmetric_bound(self.axes, index[0]))
             for idx in index:
+                idx = tuple(idx)
                 if inverse_select:  # record original data for later use
                     if method:
                         rec.append((idx, cp.deepcopy(method(v[idx], val[i % vallen]))))

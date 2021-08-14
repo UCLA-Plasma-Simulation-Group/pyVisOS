@@ -1,6 +1,12 @@
+"""
+osh5visipy.py
+=============
+Vis tools for the OSIRIS HDF5 data.
+"""
+
 from __future__ import print_function
 from functools import partial
-from ipywidgets import interact, Layout, Output
+from ipywidgets import Layout, Output
 import ipywidgets as widgets
 from IPython.display import display, FileLink, clear_output
 
@@ -54,13 +60,13 @@ __2dplot_example_doc = """
 def os2dplot_w(data, *args, pltfunc=osh5vis.osimshow, show=True, grid=None, **kwargs):
     """%s""" % (__2dplot_param_doc + (__2dplot_example_doc % (('pltfunc', ) * 8)))
     if isinstance(data, str):
-        h5data = osh5io.read_h5(data)
+        h5data = osh5io.read_grid(data)
         wl = Generic2DPlotCtrl(h5data, *args, pltfunc=pltfunc, **kwargs).widgets_list
     elif isinstance(data, (tuple, list)):
         if not grid:
             raise ValueError('Specify the grid layout when plotting more than one quantity!')
         if isinstance(data[0], str):
-            data = [osh5io.read_h5(n) for n in data]
+            data = [osh5io.read_grid(n) for n in data]
         wl = MultiPanelCtrl((Generic2DPlotCtrl,) * len(data), data, grid, **kwargs).widgets_list
     else:
         wl = Generic2DPlotCtrl(data, *args, pltfunc=pltfunc, **kwargs).widgets_list
@@ -80,8 +86,8 @@ oscontourf_w.__doc__ = """%s"""  % (__2dplot_param_doc + (__2dplot_example_doc %
 
 def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     """
-    A slider for 3D data
-    :param data: (a list of) 3D H5Data or directory name (a string)
+    A slider for 3D data or a directory of 2D data
+    :param data: 3D H5Data or (a list of) directory name (a string)
     :param args: arguments passed to plotting widgets. reserved for future use
     :param show: whether to show the widgets
     :param slider_only: if True only show the slider otherwise show also other plot control (aka 'the tab')
@@ -100,8 +106,13 @@ def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
     if isinstance(data, str):
         wl = DirSlicer(data, *args, **kwargs).widgets_list
     elif isinstance(data, (tuple, list)):
-        if isinstance(data[0], (str, tuple, list)):
+        if isinstance(data[0], (tuple, list)):
             wl = MPDirSlicer(data, *args, **kwargs).widgets_list
+        elif isinstance(data[0], str):
+            if os.path.isfile(data[0]):
+                wl = DirSlicer(data, *args, **kwargs).widgets_list
+            else:
+                wl = MPDirSlicer(data, *args, **kwargs).widgets_list
         else:
             raise NotImplementedError('Unexpected data. Cannot process input parameters')
     else:
@@ -175,7 +186,8 @@ def _get_downloadable_url(filename):
 class Generic2DPlotCtrl(object):
     tab_contents = ['Data', 'Axes', 'Overlay', 'Colorbar', 'Save', 'Figure']
     eps = 1e-40
-    colormaps_available = sorted(c for c in plt.colormaps() if not c.endswith("_r"))
+    colormaps_bulitin = tuple(sorted(c for c in plt.colormaps() if not c.endswith("_r")))
+    user_colormaps = {}
 
     def __init__(self, data, pltfunc=osh5vis.osimshow, slcs=(slice(None, ), slice(None, )), title=None, norm='',
                  fig=None, figsize=None, time_in_title=True, phys_time=False, ax=None, output_widget=None,
@@ -186,6 +198,11 @@ class Generic2DPlotCtrl(object):
         self.callbacks = {} if register_callbacks is None else register_callbacks
         user_cmap, show_colorbar = kwargs.pop('cmap', 'jet'), kwargs.pop('colorbar', True)
         tab = []
+        self.colormaps_available = sorted((c, c) for c in self.colormaps_bulitin)
+        if not isinstance(user_cmap, str): # to use user defined cmap, we need to add it to the options
+            self.user_colormaps['U:'+user_cmap.name] = user_cmap
+        for k,v in self.user_colormaps.items():
+            self.colormaps_available.append( (k, v) )
         # # # -------------------- Tab0 --------------------------
         # title
         if title is None or title == True:
@@ -199,6 +216,18 @@ class Generic2DPlotCtrl(object):
         self.if_show_time = widgets.Checkbox(value=time_in_title and not t_in_axis, description='Time in title, ', layout=_items_layout)
         self.time_in_phys = widgets.Checkbox(value=phys_time, description='time in physical unit',
                                             layout={'width': 'initial'}, style={'description_width': 'initial'})
+        _linthres, _if_clip_cm = self.eps, False
+        if isinstance(norm, LogNorm):
+            if (norm.vmin is not None) or (norm.vmax is not None):
+                kwargs.update({ 'clim':( norm.vmin, norm.vmax ) })
+            _if_clip_cm = norm.clip
+            norm = 'Log'
+        elif isinstance(norm, SymLogNorm):
+            _linthres = norm.linthresh
+            if (norm.vmin is not None) or (norm.vmax is not None):
+                kwargs.update({ 'clim':( norm.vmin, norm.vmax ) })
+            _if_clip_cm = norm.clip
+            norm = 'SymLog'
         lognorm = norm == 'Log'
         self.__pp = np.abs if lognorm else do_nothing
         if 'clim' in kwargs:
@@ -223,12 +252,12 @@ class Generic2DPlotCtrl(object):
                                              disabled=self.if_vmin_auto.value, layout=_items_layout, style={'description_width': 'initial'})
         self.vmax_wgt = widgets.FloatText(value=vmax, description='vmax:', continuous_update=False,
                                           disabled=self.if_vmax_auto.value, layout=_items_layout, style={'description_width': 'initial'})
-        self.if_clip_cm = widgets.Checkbox(value=True, description='Clip', layout=_items_layout, style={'description_width': 'initial'})
+        self.if_clip_cm = widgets.Checkbox(value=_if_clip_cm, description='Clip', layout=_items_layout, style={'description_width': 'initial'})
         # PowerNorm specific
         self.gamma = widgets.FloatText(value=1, description='gamma:', continuous_update=False,
                                        layout=_items_layout, style={'description_width': 'initial'})
         # SymLogNorm specific
-        self.linthresh = widgets.FloatText(value=self.eps, description='linthresh:', continuous_update=False,
+        self.linthresh = widgets.FloatText(value=_linthres, description='linthresh:', continuous_update=False,
                                            layout=_items_layout, style={'description_width': 'initial'})
         self.linscale = widgets.FloatText(value=1.0, description='linscale:', continuous_update=False,
                                           layout=_items_layout, style={'description_width': 'initial'})
@@ -475,7 +504,7 @@ class Generic2DPlotCtrl(object):
         self.cmap_reverse = widgets.Checkbox(value=False, description='Reverse', disabled=not show_colorbar)
         # colorbar
         self.if_reset_cbar = widgets.Checkbox(value=True, description='Auto', disabled=not show_colorbar)
-        self.cbar = widgets.Text(value=cblabel if cblabel is not None else data.units.tex(), placeholder='a.u.', continuous_update=False,
+        self.cbar = widgets.Text(value=cblabel if cblabel is not None else osh5vis.tex(str(data.units)), placeholder='a.u.', continuous_update=False,
                                  description='Colorbar:', disabled=self.if_reset_cbar.value or not show_colorbar)
         # colorbar ticker formatter
         self.cbar_formatter = widgets.Text(value='', description='Ticker Format: %', placeholder='1.2f', continuous_update=False,
@@ -1213,7 +1242,7 @@ class Generic2DPlotCtrl(object):
 
     def __update_yanaopts(self, change):
         opts = self.__analysis_def[change['new']]
-        optlist = [k for k in opts[1].keys()]
+        optlist = [k for k in opts.keys()]
         self.yanaopts.options, self.yanaopts.value = optlist, optlist[0]
 
     def _get_yana_data_descr(self, start, end, opts, name, description_only=False):
@@ -1851,7 +1880,7 @@ class DirSlicer(Generic2DPlotCtrl):
             fp = filefilter + '/*.h5' if os.path.isdir(filefilter) else filefilter
             self.datadir, self.flist, self.processing = os.path.abspath(os.path.dirname(fp)), sorted(glob.glob(fp)), processing
         try:
-            self.data = processing(osh5io.read_h5(self.flist[0]))
+            self.data = processing(osh5io.read_grid(self.flist[0]))
         except IndexError:
             raise IOError('No file found matching ' + fp)
 
@@ -1890,7 +1919,7 @@ class DirSlicer(Generic2DPlotCtrl):
 
     def update_slice(self, change):
         self.file_slider.description = os.path.basename(self.flist[change['new']])
-        self.data = self.processing(osh5io.read_h5(self.flist[change['new']]))
+        self.data = self.processing(osh5io.read_grid(self.flist[change['new']]))
         self.time_label.value = osh5vis.time_format(self.data.run_attrs['TIME'][0], self.data.run_attrs['TIME UNITS'])
         self.redraw(data=self.data, update_vminmax=True, newfile=True)
         self.update_lineouts()
@@ -1916,7 +1945,8 @@ class MultiPanelCtrl(object):
         width, height = figsize or plt.rcParams.get('figure.figsize')
         self.out = output_widget or widgets.Output()
         nplots = self.nrows * self.ncols
-        xlabel, ylabel = [None,] * nplots, [None,] * nplots
+        xlabel, ylabel = kwargs.pop('xlabel', None), kwargs.pop('ylabel', None)
+        xlabel, ylabel = [xlabel,] * nplots, [ylabel,] * nplots
         if str(sharex).lower() in ('true', 'all', 'col'):
             for i in range(nplots - self.ncols):
                 xlabel[i] = False
