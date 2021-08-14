@@ -525,12 +525,15 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
     h5file.attrs['TYPE'] = [b'grid']
     h5file.attrs['XMIN'] = [0.0]
     h5file.attrs['XMAX'] = [0.0]
-    h5file.attrs['openPMD'] = '1.0.0'
-    h5file.attrs['openPMDextension'] = 0
-    h5file.attrs['iterationEncoding'] = 'fileBased'
-    h5file.attrs['basePath']='/data/%T'
-    h5file.attrs['meshesPath']='mesh/'
-    h5file.attrs['particlesPath']= 'particles/'
+    h5file.attrs['openPMD'] = np.string_("1.1.0")
+    h5file.attrs['openPMDextension'] = np.uint32(0)
+    h5file.attrs['iterationEncoding'] = np.string_('fileBased')
+    fileroot=str(filename.split('/')[-1])
+    fileroot=str(fileroot.split('-')[0])
+    h5file.attrs['iterationFormat'] = np.string_("%s-%%T.h5" %fileroot)
+    h5file.attrs['basePath']=np.string_('/data/%T/')
+    h5file.attrs['meshesPath']=np.string_('mesh/')
+    # h5file.attrs['particlesPath']= 'particles/' .encode('utf-8')
     # now make defaults/copy over the attributes in the root of the hdf5
 
     baseid = h5file.create_group("data")
@@ -548,14 +551,17 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
 
 
 
-    iterid.attrs['dt'] = data.run_attrs['DT'][0]
-    iterid.attrs['time'] = data.run_attrs['TIME'][0]
+    iterid.attrs['dt'] = data.run_attrs['TIME'][0]/float(data.run_attrs['ITER'][0])
+    iterid.attrs['time'] = data.run_attrs['TIME'][0] 
     iterid.attrs['timeUnitSI'] = time_to_si
 
 
     number_axis_objects_we_need = len(data_object.axes)
+ 
+    # deltax= data.run_attrs['XMAX'] - data.run_attrs['XMIN']
 
-    deltax= data.run_attrs['XMAX'] - data.run_attrs['XMIN']
+    deltax = np.zeros(number_axis_objects_we_need)
+    #  deltax = 
     local_offset = np.arange(number_axis_objects_we_need, dtype = np.float32)
     local_globaloffset = np.arange(number_axis_objects_we_need, dtype = np.float64)
     local_position = np.arange(number_axis_objects_we_need, dtype = np.float32)
@@ -565,8 +571,8 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
     local_gridspacing = np.arange(number_axis_objects_we_need, dtype = np.float32)
 
     if(number_axis_objects_we_need == 1):
-        local_axislabels=[b'x1']
-        deltax[0] = deltax[0]/data_object.shape[0]
+        local_axislabels=[b'x']
+        deltax[0] = data.axes[0][1]-data.axes[0][0]        
         local_gridspacing=np.float32(deltax)
 
         local_globaloffset[0] = np.float32(0.0)
@@ -574,12 +580,12 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[0]= np.float32(0.0)
 
     elif (number_axis_objects_we_need == 2):
-        local_axislabels=[b'x1', b'x2']
-        deltax[0] = deltax[0]/data_object.shape[0]
-        deltax[1] = deltax[1]/data_object.shape[1]
-        temp=deltax[0]
-        deltax[0]=deltax[1]
-        deltax[1]=temp
+        local_axislabels=[b'x', b'y']
+        deltax[0] = data.axes[0][1]-data.axes[0][0]        
+        deltax[1] = data.axes[1][1]-data.axes[1][0]
+        # temp=deltax[0]
+        # deltax[0]=deltax[1]
+        # deltax[1]=temp
         local_gridspacing=np.float32(deltax)
 
         local_globaloffset[0] = np.float32(0.0)
@@ -589,13 +595,11 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[1]= np.float32(0.0)
 
     else:
-        local_axislabels=[b'x1',b'x2',b'x3']
-        deltax[0] = deltax[0]/data_object.shape[0]
-        deltax[1] = deltax[1]/data_object.shape[1]
-        deltax[2] = deltax[2]/data_object.shape[2]
-        temp=deltax[0]
-        deltax[0]=deltax[2]
-        deltax[2]=temp
+        local_axislabels=[b'x',b'y',b'z']
+        deltax[0] = data.axes[0][1]-data.axes[0][0]        
+        deltax[1] = data.axes[1][1]-data.axes[1][0]
+        deltax[2] = data.axes[2][1]-data.axes[2][0]        
+    
         local_gridspacing=np.float32(deltax)
 
         local_globaloffset[0] = np.float32(0.0)
@@ -607,16 +611,21 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[2]= np.float32(0.0)
 
 
+     
+    datasetid.attrs['dataOrder'] = np.string_('F')
+    datasetid.attrs['geometry'] = np.string_('cartesian')
+    datasetid.attrs['geometryParameters'] =  np.string_('cartesian')
 
-    datasetid.attrs['dataOrder'] = 'F'
-    datasetid.attrs['geometry'] = 'cartesian'
-    datasetid.attrs['geometryParameters'] =  'cartesian'
     datasetid.attrs['axisLabels'] = local_axislabels
     datasetid.attrs['gridUnitSI'] = np.float64(length_to_si)
     datasetid.attrs['unitSI'] = np.float64(data_to_si)
     datasetid.attrs['position'] = local_position
     datasetid.attrs['gridSpacing'] = local_gridspacing
     datasetid.attrs['gridGlobalOffset'] = local_globaloffset
+    datasetid.attrs['time']=data.run_attrs['TIME'][0]
+    datasetid.attrs['timeOffset'] = 0.0
+    datasetid.attrs['unitDimension'] = ( 0., 1., -2., -1., 0., 0., 0.)
+    # datasetid.attrs['dt']=1.0
 
 
     # # now go through and set/create our axes HDF entries.
