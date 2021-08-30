@@ -252,56 +252,106 @@ def read_h5_openpmd(filename, path=None):
 
     """
     fname = filename if not path else path + '/' + filename
+    try:
+        timestamp = fn_rule.findall(os.path.basename(filename))[0]
+    except IndexError:
+        pass
     with h5py.File(fname, 'r') as data_file:
+        data_file = h5py.File(filename, 'r')
+        attrs_f = {k:v for k,v in data_file.attrs.items()}
+        bp = attrs_f.pop('basePath', b'/data/%T/')
+        dataPath = bp.replace(b'/%T', b'').decode()
+        mp = attrs_f.pop('meshesPath', b'').decode()
+        pp = attrs_f.pop('particlesPath', b'').decode()
 
-        try:
-            timestamp = fn_rule.findall(os.path.basename(filename))[0]
-        except IndexError:
-            timestamp = '00000000'
-
-        basePath = data_file.attrs['basePath'].decode('utf-8').replace('%T', timestamp)
-        meshPath = basePath + data_file.attrs['meshesPath'].decode('utf-8')
-
-        try:
-            run_attrs = {k.upper(): v for k, v in data_file[basePath].attrs.items()}
-        except KeyError:
-            basePath = data_file.attrs['basePath'].decode('utf-8').replace('%T', str(int(timestamp)))
-            meshPath = basePath + data_file.attrs['meshesPath'].decode('utf-8')
-            run_attrs = {k.upper(): v for k, v in
-                         data_file[basePath].attrs.items()}
-        run_attrs.setdefault('TIME UNITS', OSUnits('1 / \omega_p'))
-
-        # read field data
         lname_dict, fldl = {'E1': 'E_x', 'E2': 'E_y', 'E3': 'E_z',
                             'B1': 'B_x', 'B2': 'B_y', 'B3': 'B_z',
+                            'Ex': 'E_x', 'Ey': 'E_y', 'Ez': 'E_z',
+                            'Bx': 'B_x', 'By': 'B_y', 'Bz': 'B_z',
                             'jx': 'J_x', 'jy': 'J_y', 'jz': 'J_z', 'rho': r'\roh'}, {}
-        # k is the field label and v is the field dataset
-
-        for k, v in data_file[meshPath].items():
-            # openPMD doesn't enforce attrs that are required in OSIRIS dataset
-            data_attrs, dflt_ax_unit = \
-                {'UNITS': OSUnits(r'm_e c \omega_p e^{-1} '),
-                 'LONG_NAME': lname_dict.get(k, k), 'NAME': k}, r'c \omega_p^{-1}'
-            data_attrs.update({ia: va for ia, va in v.attrs.items()})
-
-            ax_label, ax_off, g_spacing, ax_pos, unitsi = \
-                data_attrs.pop('axisLabels'), data_attrs.pop('gridGlobalOffset'), \
-                data_attrs.pop('gridSpacing'), data_attrs.pop('position'), data_attrs.pop('unitSI')
-            ax_min = (ax_off + ax_pos * g_spacing) * unitsi
-            ax_max = ax_min + v.shape * g_spacing * unitsi
-
-            # prepare the axes data
-            axes = []
-            for aln, an, amax, amin, anp in zip(ax_label,ax_label,
-                                                ax_max, ax_min, v.shape):
-                ax_attrs = {'LONG_NAME': aln.decode('utf-8'),
-                            'NAME': an.decode('utf-8'), 'UNITS': dflt_ax_unit}
-                data_axis = DataAxis(amin, amax, anp, attrs=ax_attrs)
-                axes.insert(0, data_axis)
-
-            fldl[k] = H5Data(v[()], timestamp=timestamp, data_attrs=data_attrs,
-                             run_attrs=run_attrs, axes=axes)
+        for it, data_group in data_file[dataPath].items():
+            basePath = dataPath+it
+            base_attrs = {k.upper():v for k,v in data_file[basePath].attrs.items()}
+            base_attrs['TIME UNITS'] = OSUnits('')
+            base_attrs.update(attrs_f)
+            timestamp = '%07i'%int(it)
+            # get grid quantities
+            meshesPath = basePath + '/' + mp
+            # get general grid quantity attributes
+            grid_attrs = {k.upper():v for k,v in data_file[meshesPath].attrs.items()}
+            grid_attrs.update(base_attrs)
+            for fld, data in data_file[meshesPath].items():
+                data_attrs = {k:v for k, v in data.attrs.items()}
+                axisLabels = data_attrs.pop('axisLabels')
+                gridSpacing = data_attrs.pop('gridSpacing')
+                gridGlobalOffset = data_attrs.pop('gridGlobalOffset', 0)
+                gridUnitSI = data_attrs.pop('gridUnitSI', 1.0)
+                #TODO: make sure the axis always corresponds to real space (is it true? where else can we get the axis unitDimension?)
+                unitDimension = data_attrs.pop('unitDimension', np.array([0.,0.,0.,0.,0.,0.,0.]))
+                grid_units, g_fac = __convert_to_osiris_units(np.array([1.,0.,0.,0.,0.,0.,0.]), gridUnitSI)
+                gridUnitSI *= g_fac
+                unitSI = data_attrs.pop('unitSI', 1.0)
+                data_units, d_fac =  __convert_to_osiris_units(unitDimension, unitSI)
+                unitSI *= d_fac
+                # scalar data
+                if isinstance(data, h5py.Dataset):
+                    position = data_attrs.pop('position', 0)
+                    axis_min, axis_max = __get_openPMD_dataaxis_limits(gridGlobalOffset, position, gridSpacing, gridUnitSI, data.shape)
+                    data_attrs.update( {'LONG_NAME': lname_dict.get(fld, fld), 'NAME': fld} )
+                    axes = __generate_dataaxis(axisLabels, axis_max, axis_min, grid_units,
+                                               data.shape, data_attrs['dataOrder'].decode())
+                    fldl[it+'/'+data_attrs['NAME']] = (H5Data(data, timestamp=timestamp, data_attrs=data_attrs,
+                                                              run_attrs=grid_attrs, axes=axes))
+                # vector data
+                elif isinstance(data, h5py.Group):
+                    for k, v in data.items():
+                        comp_attrs = {kk:vv for kk,vv in v.attrs.items()}
+                        position = comp_attrs.pop('position', 0)
+                        data_attrs.update(comp_attrs)
+                        axis_min, axis_max = __get_openPMD_dataaxis_limits(gridGlobalOffset, position, gridSpacing, gridUnitSI, v.shape)
+                        data_attrs.update( {'LONG_NAME': lname_dict.get(fld+k, fld+'_'+k), 'NAME': fld+k} )
+                        axes = __generate_dataaxis(axisLabels, axis_max, axis_min, grid_units,
+                                                   v.shape, data_attrs['dataOrder'].decode())
+                        fldl[it+'/'+data_attrs['NAME']] = (H5Data(v, timestamp=timestamp, data_attrs=data_attrs,
+                                                                  run_attrs=grid_attrs, axes=axes))
+            #TODO: read the particle data (the particle data format is not settled in h5Data, so just return the data group ATM)
+            # get particle data
+            particlePath = basePath + '/' + pp
+            part_attrs = {k.upper():v for k,v in data_file[particlePath].attrs.items()}
+            part_attrs.update(base_attrs)
+            for spe, data in data_file[particlePath].items():
+                fldl[it+'/'+spe] = data
+        #
+        #         print(spe, ':', data)
+        #         for k, v in data.attrs.items():
+        #             print(k, v)
+        #         print('-----')
+        #         for q, d in data.items():
+        #             print(q, d)
     return fldl
+
+def __convert_to_osiris_units(openPMDunit, unitSI):
+    #TODO: convert openPMD unitDimenion to OSUnits
+    ...
+    return OSUnits(''), 1
+
+
+def __get_openPMD_dataaxis_limits(gridGlobalOffset, position, gridSpacing, gridUnitSI, data_shape):
+    axis_min = (gridGlobalOffset + position * gridSpacing) * gridUnitSI
+    axis_max = (gridGlobalOffset + (position + data_shape) * gridSpacing) * gridUnitSI
+    return axis_min, axis_max
+
+
+def __generate_dataaxis(ax_label, ax_max, ax_min, ax_unit, data_shape, order):
+    axes = []
+    for an, amax, amin, anp in zip(ax_label, ax_max, ax_min, data_shape):
+        ax_attrs = {'LONG_NAME': an.decode(), 'NAME': an.decode(), 'UNITS': ax_unit}
+        data_axis = DataAxis(amin, amax, anp, attrs=ax_attrs)
+        if order.upper() == 'F':
+            axes.insert(0, data_axis)
+        else:
+            axes.append(data_axis)
+    return axes
 
 
 def __read_dataset_and_convert_to_h5data(k, v, data_attrs, dflt_ax_unit,
