@@ -624,7 +624,7 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     if not finalize:
         finalize = __idle
     if np.issubdtype(fldarr[0].dtype, np.floating):
-        ftf, iftf = (fftn, partial(ifftn, result=np.real(result))) if norft else (rfftn, irfftn)
+        ftf, iftf = (fftn, (lambda *args, **kwargs: np.real(ifftn(*args, **kwargs)))) if norft else (rfftn, irfftn)
     if idim:
         if isinstance(idim, int):
             idim = [idim]
