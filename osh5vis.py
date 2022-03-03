@@ -92,7 +92,7 @@ def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, tit
                convert_tunit=False, convert_xaxis=False, wavelength=0.351, transpose=False,
                *args, **kwpassthrough):
     if convert_xaxis:
-        xaxis, xunit = h5data.axes[0].to_phys_unit()
+        xaxis, xunit = h5data.axes[0].to_phys_unit(wavelength=wavelength)
     else:
         xaxis, xunit = h5data.axes[0], h5data.axes[0].attrs.get('UNITS', '')
     if ax is not None:
