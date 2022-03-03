@@ -24,7 +24,7 @@
 __author__ = "Han Wen"
 __copyright__ = "Copyright 2018, PICKSC"
 __credits__ = ["Adam Tableman", "Frank Tsung", "Thamine Dalichaouch"]
-__license__ = "GPLv2"
+__license__ = "Custom License"
 __version__ = "0.1"
 __maintainer__ = "Han Wen"
 __email__ = "hanwen@ucla.edu"

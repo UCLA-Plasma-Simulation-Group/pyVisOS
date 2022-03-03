@@ -9,7 +9,7 @@ Disk IO for the OSIRIS HDF5 data.
 __author__ = "Han Wen"
 __copyright__ = "Copyright 2018, PICKSC"
 __credits__ = ["Adam Tableman", "Frank Tsung", "Thamine Dalichaouch"]
-__license__ = "GPLv2"
+__license__ = "Custom License"
 __version__ = "0.1"
 __maintainer__ = "Han Wen"
 __email__ = "hanwen@ucla.edu"
@@ -185,10 +185,10 @@ def read_raw(filename, path=None):
     Read particle raw data into a numpy sturctured array.
     See numpy documents for detailed usage examples of the structured array.
     The only modification is that the meta data of the particles are stored in .attrs attributes.
-    
+
     Usage:
             part = read_raw("raw-electron-000000.h5")   # part is a subclass of numpy.ndarray with extra attributes
-            
+
             print(part.shape)                           # should be a 1D array with # of particles
             print(part.attrs)                           # print all the meta data
             print(part.attrs['TIME'])                   # prints the simulation time associated with the hdf5 file
@@ -602,16 +602,16 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
 
 
     iterid.attrs['dt'] = data.run_attrs['TIME'][0]/float(data.run_attrs['ITER'][0])
-    iterid.attrs['time'] = data.run_attrs['TIME'][0] 
+    iterid.attrs['time'] = data.run_attrs['TIME'][0]
     iterid.attrs['timeUnitSI'] = time_to_si
 
 
     number_axis_objects_we_need = len(data_object.axes)
- 
+
     # deltax= data.run_attrs['XMAX'] - data.run_attrs['XMIN']
 
     deltax = np.zeros(number_axis_objects_we_need)
-    #  deltax = 
+    #  deltax =
     local_offset = np.arange(number_axis_objects_we_need, dtype = np.float32)
     local_globaloffset = np.arange(number_axis_objects_we_need, dtype = np.float64)
     local_position = np.arange(number_axis_objects_we_need, dtype = np.float32)
@@ -622,7 +622,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
 
     if(number_axis_objects_we_need == 1):
         local_axislabels=[b'x']
-        deltax[0] = data.axes[0][1]-data.axes[0][0]        
+        deltax[0] = data.axes[0][1]-data.axes[0][0]
         local_gridspacing=np.float32(deltax)
 
         local_globaloffset[0] = np.float32(0.0)
@@ -631,7 +631,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
 
     elif (number_axis_objects_we_need == 2):
         local_axislabels=[b'x', b'y']
-        deltax[0] = data.axes[0][1]-data.axes[0][0]        
+        deltax[0] = data.axes[0][1]-data.axes[0][0]
         deltax[1] = data.axes[1][1]-data.axes[1][0]
         # temp=deltax[0]
         # deltax[0]=deltax[1]
@@ -646,10 +646,10 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
 
     else:
         local_axislabels=[b'x',b'y',b'z']
-        deltax[0] = data.axes[0][1]-data.axes[0][0]        
+        deltax[0] = data.axes[0][1]-data.axes[0][0]
         deltax[1] = data.axes[1][1]-data.axes[1][0]
-        deltax[2] = data.axes[2][1]-data.axes[2][0]        
-    
+        deltax[2] = data.axes[2][1]-data.axes[2][0]
+
         local_gridspacing=np.float32(deltax)
 
         local_globaloffset[0] = np.float32(0.0)
@@ -661,7 +661,7 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[2]= np.float32(0.0)
 
 
-     
+
     datasetid.attrs['dataOrder'] = np.string_('F')
     datasetid.attrs['geometry'] = np.string_('cartesian')
     datasetid.attrs['geometryParameters'] =  np.string_('cartesian')
