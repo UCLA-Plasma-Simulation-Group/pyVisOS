@@ -26,13 +26,14 @@ class DataAxis:
         if data is None:
             if axis_min > axis_max:
                 raise Exception('illegal axis range: [ %(l)s, %(r)s ]' % {'l': axis_min, 'r': axis_max})
-            self.ax = np.linspace(axis_min, axis_max - (axis_max - axis_min) / axis_npoints, axis_npoints)
+            self.ax = np.linspace( axis_min, axis_max, axis_npoints, endpoint=False )
         else:
             self.ax = data
         # now make attributes for axis that are required..
         if attrs is None:
             self.attrs = {'UNITS': OSUnits('a.u.'), 'LONG_NAME': "", 'NAME': ""}
         else:
+            attrs = cp.deepcopy(attrs)
             self.attrs = {'LONG_NAME': attrs.pop('LONG_NAME', ""), 'NAME': attrs.pop('NAME', "")}
             try:
                 u = attrs.pop('UNITS', 'a.u.')
@@ -446,9 +447,15 @@ class H5Data(np.ndarray):
         return v
 
     def __getattr__(self, label):
-        ind = self.index_of(label)
-        axes = np.meshgrid(*reversed([x.ax for x in self.axes]), sparse=True)
-        return axes[self.ndim-1-ind].copy()
+        try:
+            return getattr(self.values, label)
+        except AttributeError:  # maybe it is an axis name
+            try:
+                ind = self.index_of(label)
+            except ValueError:
+                raise AttributeError()
+            axes = np.meshgrid(*reversed([x.ax for x in self.axes]), sparse=True)
+            return axes[self.ndim-1-ind].copy()
 
     def meta2dict(self):
         """return a deep copy of the meta data as a dictionary"""
@@ -458,7 +465,10 @@ class H5Data(np.ndarray):
         v = super(H5Data, self).transpose(*axes)
         if axes is () or axes[0] is None:  # axes is none, numpy default is to reverse the order
             axes = range(len(v.axes)-1, -1, -1)
-        v.axes = [self.axes[i] for i in axes]
+        try:                               # called like transpose(2, 1, 0)
+            v.axes = [self.axes[i] for i in axes]
+        except TypeError:                  # called like transpose([2, 1, 0])
+            v.axes = [self.axes[i] for i in axes[0]]
         return v
 
     def __del_axis(self, axis):

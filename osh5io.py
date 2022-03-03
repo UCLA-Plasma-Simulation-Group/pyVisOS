@@ -20,6 +20,57 @@ import h5py
 import os
 import numpy as np
 from osh5def import H5Data, PartData, fn_rule, DataAxis, OSUnits
+try:
+    import zdf
+
+    def read_zdf(filename, path=None):
+        """
+        HDF reader for Osiris/Visxd compatible HDF files.
+        Returns: H5Data object.
+        """
+        fname = filename if not path else path + '/' + filename
+        data, info = zdf.read(filename)
+        run_attrs, data_attrs = {}, {}
+        nx = list(reversed(info.grid.nx))
+        axes = [DataAxis(ax.min, ax.max, nx[i],
+                         attrs={'LONG_NAME': ax.label,
+                                'NAME': ax.label.replace('_', ''),
+                                'UNITS': OSUnits(ax.units)})
+                for i, ax in enumerate(reversed(info.grid.axis))]
+
+        timestamp=fn_rule.findall(os.path.basename(filename))[0]
+
+        run_attrs['NX']=info.grid.nx
+        run_attrs['TIME UNITS'] = OSUnits(info.iteration.tunits)
+        run_attrs['TIME']=np.array([info.iteration.t])
+        run_attrs['TIMESTAMP']=timestamp
+
+        data_attrs['LONG_NAME']=info.grid.label
+        data_attrs['NAME']=info.grid.label.replace('_', '')
+        data_attrs['UNITS']=OSUnits(info.grid.units)
+        return H5Data(data, timestamp=timestamp, data_attrs=data_attrs, run_attrs=run_attrs, axes=axes)
+
+except ImportError:
+    def read_zdf(_):
+        raise NotImplementedError('Cannot import zdf reader, zdf format not supported')
+
+
+def read_grid(filename, path=None, axis_name="AXIS/AXIS"):
+    """
+    Read grid data from Osiris/OSHUN output. Data can be in hdf5 or zdf format
+    """
+    ext = os.path.basename(filename).split(sep='.')[-1]
+
+    if ext == 'h5':
+        return read_h5(filename, path=path, axis_name="AXIS/AXIS")
+    elif ext == 'zdf':
+        return read_zdf(filename, path=path)
+    else:
+        # the file extension may not be specified, trying all supported formats
+        try:
+            return read_h5(filename+'.h5', path=path, axis_name="AXIS/AXIS")
+        except OSError:
+            return read_zdf(filename+'.zdf', path=path)
 
 
 def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
@@ -201,56 +252,106 @@ def read_h5_openpmd(filename, path=None):
 
     """
     fname = filename if not path else path + '/' + filename
+    try:
+        timestamp = fn_rule.findall(os.path.basename(filename))[0]
+    except IndexError:
+        pass
     with h5py.File(fname, 'r') as data_file:
+        data_file = h5py.File(filename, 'r')
+        attrs_f = {k:v for k,v in data_file.attrs.items()}
+        bp = attrs_f.pop('basePath', b'/data/%T/')
+        dataPath = bp.replace(b'/%T', b'').decode()
+        mp = attrs_f.pop('meshesPath', b'').decode()
+        pp = attrs_f.pop('particlesPath', b'').decode()
 
-        try:
-            timestamp = fn_rule.findall(os.path.basename(filename))[0]
-        except IndexError:
-            timestamp = '00000000'
-
-        basePath = data_file.attrs['basePath'].decode('utf-8').replace('%T', timestamp)
-        meshPath = basePath + data_file.attrs['meshesPath'].decode('utf-8')
-
-        try:
-            run_attrs = {k.upper(): v for k, v in data_file[basePath].attrs.items()}
-        except KeyError:
-            basePath = data_file.attrs['basePath'].decode('utf-8').replace('%T', str(int(timestamp)))
-            meshPath = basePath + data_file.attrs['meshesPath'].decode('utf-8')
-            run_attrs = {k.upper(): v for k, v in
-                         data_file[basePath].attrs.items()}
-        run_attrs.setdefault('TIME UNITS', OSUnits('1 / \omega_p'))
-
-        # read field data
         lname_dict, fldl = {'E1': 'E_x', 'E2': 'E_y', 'E3': 'E_z',
                             'B1': 'B_x', 'B2': 'B_y', 'B3': 'B_z',
-                            'jx': 'J_x', 'jy': 'J_y', 'jz': 'J_z', 'rho': r'\roh'}, {}
-        # k is the field label and v is the field dataset
-
-        for k, v in data_file[meshPath].items():
-            # openPMD doesn't enforce attrs that are required in OSIRIS dataset
-            data_attrs, dflt_ax_unit = \
-                {'UNITS': OSUnits(r'm_e c \omega_p e^{-1} '),
-                 'LONG_NAME': lname_dict.get(k, k), 'NAME': k}, r'c \omega_p^{-1}'
-            data_attrs.update({ia: va for ia, va in v.attrs.items()})
-
-            ax_label, ax_off, g_spacing, ax_pos, unitsi = \
-                data_attrs.pop('axisLabels'), data_attrs.pop('gridGlobalOffset'), \
-                data_attrs.pop('gridSpacing'), data_attrs.pop('position'), data_attrs.pop('unitSI')
-            ax_min = (ax_off + ax_pos * g_spacing) * unitsi
-            ax_max = ax_min + v.shape * g_spacing * unitsi
-
-            # prepare the axes data
-            axes = []
-            for aln, an, amax, amin, anp in zip(ax_label,ax_label,
-                                                ax_max, ax_min, v.shape):
-                ax_attrs = {'LONG_NAME': aln.decode('utf-8'),
-                            'NAME': an.decode('utf-8'), 'UNITS': dflt_ax_unit}
-                data_axis = DataAxis(amin, amax, anp, attrs=ax_attrs)
-                axes.insert(0, data_axis)
-
-            fldl[k] = H5Data(v[()], timestamp=timestamp, data_attrs=data_attrs,
-                             run_attrs=run_attrs, axes=axes)
+                            'Ex': 'E_x', 'Ey': 'E_y', 'Ez': 'E_z',
+                            'Bx': 'B_x', 'By': 'B_y', 'Bz': 'B_z',
+                            'jx': 'J_x', 'jy': 'J_y', 'jz': 'J_z', 'rho': r'\rho'}, {}
+        for it, data_group in data_file[dataPath].items():
+            basePath = dataPath+it
+            base_attrs = {k.upper():v for k,v in data_file[basePath].attrs.items()}
+            base_attrs['TIME UNITS'] = OSUnits('')
+            base_attrs.update(attrs_f)
+            timestamp = '%07i'%int(it)
+            # get grid quantities
+            meshesPath = basePath + '/' + mp
+            # get general grid quantity attributes
+            grid_attrs = {k.upper():v for k,v in data_file[meshesPath].attrs.items()}
+            grid_attrs.update(base_attrs)
+            for fld, data in data_file[meshesPath].items():
+                data_attrs = {k:v for k, v in data.attrs.items()}
+                axisLabels = data_attrs.pop('axisLabels')
+                gridSpacing = data_attrs.pop('gridSpacing')
+                gridGlobalOffset = data_attrs.pop('gridGlobalOffset', 0)
+                gridUnitSI = data_attrs.pop('gridUnitSI', 1.0)
+                #TODO: make sure the axis always corresponds to real space (is it true? where else can we get the axis unitDimension?)
+                unitDimension = data_attrs.pop('unitDimension', np.array([0.,0.,0.,0.,0.,0.,0.]))
+                grid_units, g_fac = __convert_to_osiris_units(np.array([1.,0.,0.,0.,0.,0.,0.]), gridUnitSI)
+                gridUnitSI *= g_fac
+                unitSI = data_attrs.pop('unitSI', 1.0)
+                data_units, d_fac =  __convert_to_osiris_units(unitDimension, unitSI)
+                unitSI *= d_fac
+                # scalar data
+                if isinstance(data, h5py.Dataset):
+                    position = data_attrs.pop('position', 0)
+                    axis_min, axis_max = __get_openPMD_dataaxis_limits(gridGlobalOffset, position, gridSpacing, gridUnitSI, data.shape)
+                    data_attrs.update( {'LONG_NAME': lname_dict.get(fld, fld), 'NAME': fld} )
+                    axes = __generate_dataaxis(axisLabels, axis_max, axis_min, grid_units,
+                                               data.shape, data_attrs['dataOrder'].decode())
+                    fldl[it+'/'+data_attrs['NAME']] = (H5Data(data, timestamp=timestamp, data_attrs=data_attrs,
+                                                              run_attrs=grid_attrs, axes=axes))
+                # vector data
+                elif isinstance(data, h5py.Group):
+                    for k, v in data.items():
+                        comp_attrs = {kk:vv for kk,vv in v.attrs.items()}
+                        position = comp_attrs.pop('position', 0)
+                        data_attrs.update(comp_attrs)
+                        axis_min, axis_max = __get_openPMD_dataaxis_limits(gridGlobalOffset, position, gridSpacing, gridUnitSI, v.shape)
+                        data_attrs.update( {'LONG_NAME': lname_dict.get(fld+k, fld+'_'+k), 'NAME': fld+k} )
+                        axes = __generate_dataaxis(axisLabels, axis_max, axis_min, grid_units,
+                                                   v.shape, data_attrs['dataOrder'].decode())
+                        fldl[it+'/'+data_attrs['NAME']] = (H5Data(v, timestamp=timestamp, data_attrs=data_attrs,
+                                                                  run_attrs=grid_attrs, axes=axes))
+            #TODO: read the particle data (the particle data format is not settled in h5Data, so just return the data group ATM)
+            # get particle data
+            particlePath = basePath + '/' + pp
+            part_attrs = {k.upper():v for k,v in data_file[particlePath].attrs.items()}
+            part_attrs.update(base_attrs)
+            for spe, data in data_file[particlePath].items():
+                fldl[it+'/'+spe] = data
+        #
+        #         print(spe, ':', data)
+        #         for k, v in data.attrs.items():
+        #             print(k, v)
+        #         print('-----')
+        #         for q, d in data.items():
+        #             print(q, d)
     return fldl
+
+def __convert_to_osiris_units(openPMDunit, unitSI):
+    #TODO: convert openPMD unitDimenion to OSUnits
+    ...
+    return OSUnits(''), 1
+
+
+def __get_openPMD_dataaxis_limits(gridGlobalOffset, position, gridSpacing, gridUnitSI, data_shape):
+    axis_min = (gridGlobalOffset + position * gridSpacing) * gridUnitSI
+    axis_max = (gridGlobalOffset + (position + data_shape) * gridSpacing) * gridUnitSI
+    return axis_min, axis_max
+
+
+def __generate_dataaxis(ax_label, ax_max, ax_min, ax_unit, data_shape, order):
+    axes = []
+    for an, amax, amin, anp in zip(ax_label, ax_max, ax_min, data_shape):
+        ax_attrs = {'LONG_NAME': an.decode(), 'NAME': an.decode(), 'UNITS': ax_unit}
+        data_axis = DataAxis(amin, amax, anp, attrs=ax_attrs)
+        if order.upper() == 'F':
+            axes.insert(0, data_axis)
+        else:
+            axes.append(data_axis)
+    return axes
 
 
 def __read_dataset_and_convert_to_h5data(k, v, data_attrs, dflt_ax_unit,
@@ -474,12 +575,15 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
     h5file.attrs['TYPE'] = [b'grid']
     h5file.attrs['XMIN'] = [0.0]
     h5file.attrs['XMAX'] = [0.0]
-    h5file.attrs['openPMD'] = '1.0.0'
-    h5file.attrs['openPMDextension'] = 0
-    h5file.attrs['iterationEncoding'] = 'fileBased'
-    h5file.attrs['basePath']='/data/%T'
-    h5file.attrs['meshesPath']='mesh/'
-    h5file.attrs['particlesPath']= 'particles/'
+    h5file.attrs['openPMD'] = np.string_("1.1.0")
+    h5file.attrs['openPMDextension'] = np.uint32(0)
+    h5file.attrs['iterationEncoding'] = np.string_('fileBased')
+    fileroot=str(filename.split('/')[-1])
+    fileroot=str(fileroot.split('-')[0])
+    h5file.attrs['iterationFormat'] = np.string_("%s-%%T.h5" %fileroot)
+    h5file.attrs['basePath']=np.string_('/data/%T/')
+    h5file.attrs['meshesPath']=np.string_('mesh/')
+    # h5file.attrs['particlesPath']= 'particles/' .encode('utf-8')
     # now make defaults/copy over the attributes in the root of the hdf5
 
     baseid = h5file.create_group("data")
@@ -497,14 +601,17 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
 
 
 
-    iterid.attrs['dt'] = data.run_attrs['DT'][0]
-    iterid.attrs['time'] = data.run_attrs['TIME'][0]
+    iterid.attrs['dt'] = data.run_attrs['TIME'][0]/float(data.run_attrs['ITER'][0])
+    iterid.attrs['time'] = data.run_attrs['TIME'][0] 
     iterid.attrs['timeUnitSI'] = time_to_si
 
 
     number_axis_objects_we_need = len(data_object.axes)
+ 
+    # deltax= data.run_attrs['XMAX'] - data.run_attrs['XMIN']
 
-    deltax= data.run_attrs['XMAX'] - data.run_attrs['XMIN']
+    deltax = np.zeros(number_axis_objects_we_need)
+    #  deltax = 
     local_offset = np.arange(number_axis_objects_we_need, dtype = np.float32)
     local_globaloffset = np.arange(number_axis_objects_we_need, dtype = np.float64)
     local_position = np.arange(number_axis_objects_we_need, dtype = np.float32)
@@ -514,8 +621,8 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
     local_gridspacing = np.arange(number_axis_objects_we_need, dtype = np.float32)
 
     if(number_axis_objects_we_need == 1):
-        local_axislabels=[b'x1']
-        deltax[0] = deltax[0]/data_object.shape[0]
+        local_axislabels=[b'x']
+        deltax[0] = data.axes[0][1]-data.axes[0][0]        
         local_gridspacing=np.float32(deltax)
 
         local_globaloffset[0] = np.float32(0.0)
@@ -523,12 +630,12 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[0]= np.float32(0.0)
 
     elif (number_axis_objects_we_need == 2):
-        local_axislabels=[b'x1', b'x2']
-        deltax[0] = deltax[0]/data_object.shape[0]
-        deltax[1] = deltax[1]/data_object.shape[1]
-        temp=deltax[0]
-        deltax[0]=deltax[1]
-        deltax[1]=temp
+        local_axislabels=[b'x', b'y']
+        deltax[0] = data.axes[0][1]-data.axes[0][0]        
+        deltax[1] = data.axes[1][1]-data.axes[1][0]
+        # temp=deltax[0]
+        # deltax[0]=deltax[1]
+        # deltax[1]=temp
         local_gridspacing=np.float32(deltax)
 
         local_globaloffset[0] = np.float32(0.0)
@@ -538,13 +645,11 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[1]= np.float32(0.0)
 
     else:
-        local_axislabels=[b'x1',b'x2',b'x3']
-        deltax[0] = deltax[0]/data_object.shape[0]
-        deltax[1] = deltax[1]/data_object.shape[1]
-        deltax[2] = deltax[2]/data_object.shape[2]
-        temp=deltax[0]
-        deltax[0]=deltax[2]
-        deltax[2]=temp
+        local_axislabels=[b'x',b'y',b'z']
+        deltax[0] = data.axes[0][1]-data.axes[0][0]        
+        deltax[1] = data.axes[1][1]-data.axes[1][0]
+        deltax[2] = data.axes[2][1]-data.axes[2][0]        
+    
         local_gridspacing=np.float32(deltax)
 
         local_globaloffset[0] = np.float32(0.0)
@@ -556,16 +661,21 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
         local_offset[2]= np.float32(0.0)
 
 
+     
+    datasetid.attrs['dataOrder'] = np.string_('F')
+    datasetid.attrs['geometry'] = np.string_('cartesian')
+    datasetid.attrs['geometryParameters'] =  np.string_('cartesian')
 
-    datasetid.attrs['dataOrder'] = 'F'
-    datasetid.attrs['geometry'] = 'cartesian'
-    datasetid.attrs['geometryParameters'] =  'cartesian'
     datasetid.attrs['axisLabels'] = local_axislabels
     datasetid.attrs['gridUnitSI'] = np.float64(length_to_si)
     datasetid.attrs['unitSI'] = np.float64(data_to_si)
     datasetid.attrs['position'] = local_position
     datasetid.attrs['gridSpacing'] = local_gridspacing
     datasetid.attrs['gridGlobalOffset'] = local_globaloffset
+    datasetid.attrs['time']=data.run_attrs['TIME'][0]
+    datasetid.attrs['timeOffset'] = 0.0
+    datasetid.attrs['unitDimension'] = ( 0., 1., -2., -1., 0., 0., 0.)
+    # datasetid.attrs['dt']=1.0
 
 
     # # now go through and set/create our axes HDF entries.

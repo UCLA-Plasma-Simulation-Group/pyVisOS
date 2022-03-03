@@ -21,6 +21,7 @@ try:
 except ImportError:
     import numpy.fft as fftmod
 # import numpy.fft as fftmod
+from multiprocessing import Pool
 
 
 utils_cache = {}
@@ -46,7 +47,8 @@ def metasl(func=None, axes=None, unit=None):
             else:
                 out = osh5def.H5Data(out, **saved)
         except:
-            raise TypeError('Output is not/cannot convert to H5Data')
+#             raise TypeError('Output is not/cannot convert to H5Data')
+            return out
         # Update unit if necessary
         if unit is not None:
             out.data_attrs['UNITS'] = osh5def.OSUnits(unit)
@@ -143,7 +145,8 @@ def metasl_map(mapping=(0, 0)):  # not well tested
             except IndexError:
                 raise IndexError('Output does not have ' + str(tp[1]) + ' elements')
             except:
-                raise TypeError('Output[' + str(tp[1]) + '] is not/cannot convert to H5Data')
+#                 raise TypeError('Output[' + str(tp[1]) + '] is not/cannot convert to H5Data')
+                return ol
             tmp = tuple(ol) if len(ol) > 1 else ol[0] if ol else out
             return tmp
         return sl
@@ -175,7 +178,11 @@ def stack(arr, axis=0, axesdata=None):
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
-def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None):
+def read_and_ndarray(f):
+    return osh5io.read_grid(f).view(np.ndarray)
+
+
+def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, cpu_count=1):
     """
     stack a directory of grid data and optionally save the result to a file
     :param dir_or_filelist: name of the directory
@@ -188,6 +195,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
                         returns False then this parameter will be ignored entirely.
     :param axesdata: user difined axes, see stack for more detail
     :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
+    :param cpu_count: Number of CPU's to spread job over for parallel computation
     :return: combined grid data, one dimension more than the preprocessed original data
     Usage of preprocess:
     The functino list should look like:
@@ -197,7 +205,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
      (func2, arg1n, arg2n, ..., argnn, {'kwarg1n': val1n, 'kwarg2n': val2n, ..., 'kwargnn', valnn})] where
      any of the *args and/or **args can be omitted. see also __parse_func_param for limitations.
         if preprocess=[(numpy.power, 2), (numpy.average, {'axis':0}), numpy.sqrt], then the data to be stacked is
-        numpy.sqrt( numpy.average( numpy.power( read_h5(file_name), 2 ), axis=0 ) )
+        numpy.sqrt( numpy.average( numpy.power( read_grid(file_name), 2 ), axis=0 ) )
     """
     prfx = str(prefix).strip() if prefix else ''
 
@@ -207,15 +215,18 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         flist = dir_or_filelist[file_slice]
     if isinstance(preprocess, list) and preprocess:
         func_list = [__parse_func_param(item) for item in preprocess]
-        tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(fn)).view(np.ndarray) for fn in flist[1:-1]]
+        tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(fn)).view(np.ndarray) for fn in flist[1:-1]]
         # the first and last file should be H5data
-        tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[0])))
-        tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_h5(flist[-1])))
+        tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[0])))
+        tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[-1])))
     else:
-        tmp = [osh5io.read_h5(f).view(np.ndarray) for f in flist[1:-1]]
+        if cpu_count>1:
+            tmp = Pool(cpu_count).map( read_and_ndarray, [f for f in flist[1:-1]] )
+        else:
+            tmp = [osh5io.read_grid(f).view(np.ndarray) for f in flist[1:-1]]
         # the first and last file should be H5data
-        tmp.insert(0, osh5io.read_h5(flist[0]))
-        tmp.append(osh5io.read_h5(flist[-1]))
+        tmp.insert(0, osh5io.read_grid(flist[0]))
+        tmp.append(osh5io.read_grid(flist[-1]))
     res = stack(tmp, axis=0, axesdata=axesdata)
     if save:
         if not isinstance(save, str):
@@ -361,6 +372,8 @@ def __ft_interface(ftfunc, forward, omitlast):
     def ft_interface(a, s, axes, norm, **kwargs):
         # call fft and shift the result
         if omitlast:
+            if axes == None:
+                axes = [i for i in range(len(s)-1)]
             if isinstance(axes, int) or len(axes) < 2:  # no fftshift in the case of rfft
                 return ftfunc(a, s, axes, norm, **kwargs)
             else:
@@ -569,7 +582,7 @@ def diff(x, n=1, axis=-1):
 
 def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False, iftf=ifftn, inplace=False, **additional_fft_kwargs):
     """decompose a vector field into transverse and longitudinal direction
-    fldarr: list of field components in the order of x, y, z
+    fldarr: list of field components in the order of x, y, z (x1, x2, x3)
     ffted: If the input fields have been Fourier transformed
     finalize: what function to call after all transforms,
         for example finalize=abs will be converted the fields to amplitude
@@ -580,7 +593,7 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
         't' or 't1', 't2', ...: transverse components, 't' means all transverse components
         'l' or 'l1', 'l2', ...: longitudinal components, 'l' means all longitudinal components
     norft: if set to true then use full fft instead of rfft (only relevant when the field data is of real numbers)
-    iftf: the inverse fft method used if idim is not None
+    iftf: the inverse fft method used if idim is not None. Only used when ffted=True
     inplace: perform field decomposition inplace, setting this to True will change fldarr
     return: list of field components in the following order (if some are not requested they will be simply omitted):
         ['L', 'T', 't', 'l']
@@ -593,7 +606,16 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     if not finalize:
         finalize = __idle
     if np.issubdtype(fldarr[0].dtype, np.floating):
-        ftf, iftf = (fftn, partial(ifftn, result=np.real(result))) if norft else (rfftn, irfftn)
+        ftf, iftf = (fftn, (lambda *args, **kwargs: np.real(ifftn(*args, **kwargs)))) if norft else (rfftn, irfftn)
+    if idim:
+        if isinstance(idim, int):
+            idim = [idim]
+        ftaxes = [i for i in range(fldarr[0].ndim) if i not in idim]
+        ftaxes += idim
+    else:
+        ftaxes = additional_fft_kwargs.pop('ftaxes', None)
+        if ftaxes is None:
+            ftaxes = [i for i in range(fldarr[0].ndim)]
 
     def wrap_up(data):
         if idim:
@@ -617,10 +639,10 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     else:
         if inplace:
             for i, fi in enumerate(fldarr):
-                fldarr[i] = ftf(fi, **additional_fft_kwargs)
+                fldarr[i] = ftf(fi, axes=ftaxes, **additional_fft_kwargs)
             fftfld = fldarr
         else:
-            fftfld = [ftf(fi, **additional_fft_kwargs) for fi in fldarr]
+            fftfld = [ftf(fi, axes=ftaxes, **additional_fft_kwargs) for fi in fldarr]
     kv = np.meshgrid(*reversed([x.ax for x in fftfld[0].axes]), sparse=True)
     k2 = sum(ki**2 for ki in kv)  # |k|^2
     k2[k2 == 0.0] = float('inf')
@@ -667,6 +689,8 @@ def rebin(a, fac, method='sum'):
      a=rand(6,4); b=rebin(a, fac=[3,2])
      a=rand(10); b=rebin(a, fac=[3])
     """
+    if np.prod(fac) == 1:  # early return if new grid is the same as the old one
+        return a
     index = tuple(slice(0, u - u % fac[i]) if u % fac[i] else slice(0, u) for i, u in enumerate(a.shape))
     a = a[index]
     # update axes first
@@ -674,6 +698,8 @@ def rebin(a, fac, method='sum'):
         ax = copy.deepcopy(a.axes)
         for i, x in enumerate(ax):
             x.ax = x.ax[::fac[i]]
+    else:
+        ax = None
     mthd = 'mean' if method.lower() == 'mean' else 'sum'
 
     @metasl(axes=ax)
