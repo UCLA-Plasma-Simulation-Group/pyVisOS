@@ -268,7 +268,7 @@ def read_h5_openpmd(filename, path=None):
                             'B1': 'B_x', 'B2': 'B_y', 'B3': 'B_z',
                             'Ex': 'E_x', 'Ey': 'E_y', 'Ez': 'E_z',
                             'Bx': 'B_x', 'By': 'B_y', 'Bz': 'B_z',
-                            'jx': 'J_x', 'jy': 'J_y', 'jz': 'J_z', 'rho': r'\roh'}, {}
+                            'jx': 'J_x', 'jy': 'J_y', 'jz': 'J_z', 'rho': r'\rho'}, {}
         for it, data_group in data_file[dataPath].items():
             basePath = dataPath+it
             base_attrs = {k.upper():v for k,v in data_file[basePath].attrs.items()}
