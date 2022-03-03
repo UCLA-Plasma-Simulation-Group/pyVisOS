@@ -593,7 +593,7 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
     if not finalize:
         finalize = __idle
     if np.issubdtype(fldarr[0].dtype, np.floating):
-        ftf, iftf = fftn, ifftn if norft else rfftn, irfftn
+        ftf, iftf = (fftn, partial(ifftn, result=np.real(result))) if norft else (rfftn, irfftn)
 
     def wrap_up(data):
         if idim:
