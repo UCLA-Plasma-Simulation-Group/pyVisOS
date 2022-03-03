@@ -612,6 +612,10 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
             idim = [idim]
         ftaxes = [i for i in range(fldarr[0].ndim) if i not in idim]
         ftaxes += idim
+    else:
+        ftaxes = additional_fft_kwargs.pop('ftaxes', None)
+        if ftaxes is None:
+            ftaxes = [i for i in range(fldarr[0].ndim)]
 
     def wrap_up(data):
         if idim:
