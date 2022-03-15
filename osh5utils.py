@@ -578,6 +578,18 @@ def diff(x, n=1, axis=-1):
                                     axis_npoints=x.axes[axis].size-n, attrs=copy.deepcopy(x.axes[axis].attrs))
     return r
 
+
+@enhence_num_indexing_kw('axis')
+def moveaxis(a, source, destination):
+    ax = copy.deepcopy(a.axes)
+    axis = ax.pop(source)
+    if destination < 0:
+        destination += len(a.shape)
+    ax.insert(destination, axis)
+    @metasl(axes=ax)
+    def _move(arr):
+        return np.moveaxis(arr, source, destination)
+    return _move(a)
 # ---------------------------------- NumPy Wrappers ---------------------------------------
 
 def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L', 't'), norft=False, iftf=ifftn, inplace=False, **additional_fft_kwargs):
