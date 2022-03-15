@@ -172,8 +172,8 @@ def stack(arr, axis=0, axesdata=None):
         ax.insert(axis, axesdata)
     else:  # we assume the new dimension is time
         taxis_attrs = {'UNITS': "\omega_p^{-1}", 'LONG_NAME': "time", 'NAME': "t"}
-        ax.insert(axis, osh5def.DataAxis(arr[0].run_attrs['TIME'],
-                                         arr[-1].run_attrs['TIME'], len(arr), attrs=taxis_attrs))
+        ax.insert(axis, osh5def.DataAxis(float(arr[0].run_attrs['TIME']),
+                                         float(arr[-1].run_attrs['TIME']), len(arr), attrs=taxis_attrs))
     r = np.stack(arr, axis=axis)
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
@@ -210,7 +210,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
     prfx = str(prefix).strip() if prefix else ''
 
     if isinstance(dir_or_filelist, str):
-        flist = sorted(glob.glob(dir_or_filelist + '/' + prfx + '*.h5'))[file_slice]
+        flist = sorted(glob.glob(dir_or_filelist + '/' + prfx + '*.*'))[file_slice]
     else:  # dir_or_filelist is a list of file names
         flist = dir_or_filelist[file_slice]
     if isinstance(preprocess, list) and preprocess:
