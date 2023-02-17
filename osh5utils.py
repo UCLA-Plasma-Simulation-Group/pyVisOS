@@ -191,7 +191,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
                         returns False then this parameter will be ignored entirely.
     :param axesdata: user difined axes, see stack for more detail
     :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
-    :param processes: Number of CPU's to spread job over for parallel computation
+    :param processes: Number of CPU's to spread job over for parallel computation, default to using all the CPUs in the system
     :return: combined grid data, one dimension more than the preprocessed original data
     Usage of preprocess:
     The functino list should look like:
