@@ -178,7 +178,7 @@ def stack(arr, axis=0, axesdata=None):
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
-def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, cpu_count=None):
+def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, processes=None):
     """
     stack a directory of grid data and optionally save the result to a file
     :param dir_or_filelist: name of the directory
@@ -191,7 +191,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
                         returns False then this parameter will be ignored entirely.
     :param axesdata: user difined axes, see stack for more detail
     :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
-    :param cpu_count: Number of CPU's to spread job over for parallel computation
+    :param processes: Number of CPU's to spread job over for parallel computation
     :return: combined grid data, one dimension more than the preprocessed original data
     Usage of preprocess:
     The functino list should look like:
@@ -210,12 +210,12 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         flist = dir_or_filelist[file_slice]
     if isinstance(preprocess, list) and preprocess:
         func_list = [__parse_func_param(item) for item in preprocess]
-        tmp = Pool(cpu_count).map( partial(__read_and_reduce_and_ndarray,func_list), [f for f in flist[1:-1]] )
+        tmp = Pool(processes).map( partial(__read_and_reduce_and_ndarray,func_list), [f for f in flist[1:-1]] )
         # the first and last file should be H5data
         tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[0])))
         tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[-1])))
     else:
-        tmp = Pool(cpu_count).map( __read_and_ndarray, [f for f in flist[1:-1]] )
+        tmp = Pool(processes).map( __read_and_ndarray, [f for f in flist[1:-1]] )
         # the first shall be last and the last shall be H5Data
         # so by the transitive property the first shall also be H5Data
         tmp.insert(0, osh5io.read_grid(flist[0]))
