@@ -178,11 +178,7 @@ def stack(arr, axis=0, axesdata=None):
     return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
 
 
-def read_and_ndarray(f):
-    return osh5io.read_grid(f).view(np.ndarray)
-
-
-def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, cpu_count=1):
+def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, processes=None):
     """
     stack a directory of grid data and optionally save the result to a file
     :param dir_or_filelist: name of the directory
@@ -195,7 +191,7 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
                         returns False then this parameter will be ignored entirely.
     :param axesdata: user difined axes, see stack for more detail
     :param save: name of the save file. user can also set it to true value and the output will use write_h5 defaults
-    :param cpu_count: Number of CPU's to spread job over for parallel computation
+    :param processes: Number of CPU's to spread job over for parallel computation, default to using all the CPUs in the system
     :return: combined grid data, one dimension more than the preprocessed original data
     Usage of preprocess:
     The functino list should look like:
@@ -208,23 +204,20 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         numpy.sqrt( numpy.average( numpy.power( read_grid(file_name), 2 ), axis=0 ) )
     """
     prfx = str(prefix).strip() if prefix else ''
-
     if isinstance(dir_or_filelist, str):
         flist = sorted(glob.glob(dir_or_filelist + '/' + prfx + '*.*'))[file_slice]
     else:  # dir_or_filelist is a list of file names
         flist = dir_or_filelist[file_slice]
     if isinstance(preprocess, list) and preprocess:
         func_list = [__parse_func_param(item) for item in preprocess]
-        tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(fn)).view(np.ndarray) for fn in flist[1:-1]]
+        tmp = Pool(processes).map( partial(__read_and_reduce_and_ndarray,func_list), [f for f in flist[1:-1]] )
         # the first and last file should be H5data
         tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[0])))
         tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[-1])))
     else:
-        if cpu_count>1:
-            tmp = Pool(cpu_count).map( read_and_ndarray, [f for f in flist[1:-1]] )
-        else:
-            tmp = [osh5io.read_grid(f).view(np.ndarray) for f in flist[1:-1]]
-        # the first and last file should be H5data
+        tmp = Pool(processes).map( __read_and_ndarray, [f for f in flist[1:-1]] )
+        # the first shall be last and the last shall be H5Data
+        # so by the transitive property the first shall also be H5Data
         tmp.insert(0, osh5io.read_grid(flist[0]))
         tmp.append(osh5io.read_grid(flist[-1]))
     res = stack(tmp, axis=0, axesdata=axesdata)
@@ -233,6 +226,14 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
             save = dir_or_filelist if isinstance(dir_or_filelist, str) else './' + res.name + '.h5'
         osh5io.write_h5(res, save)
     return res
+
+
+def __read_and_ndarray(f):
+    return osh5io.read_grid(f).view(np.ndarray)
+
+
+def __read_and_reduce_and_ndarray(func_list,f):
+    return reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(f)).view(np.ndarray)
 
 
 def __parse_func_param(item):
