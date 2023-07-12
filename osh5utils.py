@@ -210,7 +210,12 @@ def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=No
         flist = dir_or_filelist[file_slice]
     if isinstance(preprocess, list) and preprocess:
         func_list = [__parse_func_param(item) for item in preprocess]
-        tmp = Pool(processes).map( partial(__read_and_reduce_and_ndarray,func_list), [f for f in flist[1:-1]] )
+        try:
+            tmp = Pool(processes).map( partial(__read_and_reduce_and_ndarray,func_list), [f for f in flist[1:-1]] )
+        except:
+            # This is necessary if Pool can't pickle something in the preprocess list, e.g. lambda funcs
+            # Haven't found a better workaround than this
+            tmp = [reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(fn)).view(np.ndarray) for fn in flist[1:-1]]
         # the first and last file should be H5data
         tmp.insert(0, reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[0])))
         tmp.append(reduce(lambda x, y: y[0](x, *y[1], **y[2]), func_list, osh5io.read_grid(flist[-1])))
