@@ -59,7 +59,7 @@ def time_format(time=0.0, unit=None, convert_tunit=False, wavelength=0.351, **kw
 
 def default_title(h5data, show_time=True, title=None, **kwargs):
     tmp = tex(h5data.data_attrs.get('LONG_NAME', '')) if title is None else tex(title)
-    if show_time and not h5data.has_axis('t'):
+    if show_time and not (h5data.has_axis('t') or h5data.has_axis('w')):
         try:
             tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'], **kwargs)
         except:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
@@ -89,7 +89,7 @@ def osplot(h5data, *args, **kwpassthrough):
 
 
 def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, title=None, ax=None,
-               convert_tunit=False, convert_xaxis=False, wavelength=0.351, transpose=False,
+               show_time=True, convert_tunit=False, convert_xaxis=False, wavelength=0.351, transpose=False,
                *args, **kwpassthrough):
     if convert_xaxis:
         xaxis, xunit = h5data.axes[0].to_phys_unit(wavelength=wavelength)
@@ -118,7 +118,7 @@ def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, tit
     set_xlabel(xlabel)
     set_ylabel(ylabel)
     if title is None:
-        title = default_title(h5data, convert_tunit=convert_tunit, wavelength=wavelength)
+        title = default_title(h5data, show_time=show_time, convert_tunit=convert_tunit, wavelength=wavelength)
     set_title(title)
     return plot_object
 
