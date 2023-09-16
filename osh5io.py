@@ -218,8 +218,8 @@ def read_raw(filename, path=None):
         #TODO: TIMESTAMP is not set in HDF5 file as of now (Aug 2019) so we make one up, check back when file format changes
         d['TIMESTAMP'] = timestamp
 
-        dtype = [(q, data[q].dtype) for q in quants]
-        r = PartData(data[dtype[0][0]].shape, dtype=dtype, attrs=d)
+        dtype = [(q, data[q].dtype, (2,)) if q.lower() == 'tag' else (q, data[q].dtype) for q in quants]
+        r = PartData(data['p1'].shape, dtype=dtype, attrs=d)
         for dt in dtype:
             r[dt[0]] = data[dt[0]]
 

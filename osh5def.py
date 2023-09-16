@@ -463,7 +463,7 @@ class H5Data(np.ndarray):
 
     def transpose(self, *axes):
         v = super(H5Data, self).transpose(*axes)
-        if axes is () or axes[0] is None:  # axes is none, numpy default is to reverse the order
+        if axes == () or axes[0] is None:  # axes is none, numpy default is to reverse the order
             axes = range(len(v.axes)-1, -1, -1)
         try:                               # called like transpose(2, 1, 0)
             v.axes = [self.axes[i] for i in axes]
@@ -798,7 +798,7 @@ class PartData(np.ndarray):
     """
     A modified numpy structured array storing particles raw data. See numpy documents on structured array for detailed examples.
     The only modification is that the meta data of the particles are stored in .attrs attributes.
-    
+
     Simple indexing examples (assuming part is the PartData instance):
     part[123]: return the raw data (coordinates, momenta, charge etc) of particle 123.
     part['x1']: return the 'x1' coordinate of all particles.
