@@ -1,3 +1,5 @@
+![Logo Here](pyVisOS.png)
+
 # pyVisOS is a collection of lightweight utilities for manipulating HDF5 files
 
 pyVisOS is designed to be simple to use and easy to understand. The primary goal is to provide an in-memory representation of 
