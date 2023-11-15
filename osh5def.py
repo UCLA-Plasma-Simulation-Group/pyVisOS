@@ -534,6 +534,7 @@ class H5Data(np.ndarray):
         if axis is None:
             axis = [i for i, d in enumerate(self.shape) if d <= 1]
         for i in reversed(axis):
+            v.runtime_attrs.setdefault(v.axes[i].name, (v.axes[i][0], v.axes[i].units))
             del v.axes[i]
         return v
 
