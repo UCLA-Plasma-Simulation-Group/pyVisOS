@@ -52,8 +52,35 @@ try:
         return H5Data(data, timestamp=timestamp, data_attrs=data_attrs, run_attrs=run_attrs,
                       axes=axes, runtime_attrs=__process_filename(fname))
 
+
+    def read_zdf_raw(filename, path=None):
+        """
+        Read particle raw data from zdf file
+        Return: the data array and infomations used to create PartData object
+        """
+        fname = filename if not path else path + '/' + filename
+        try:
+            timestamp = fn_rule.findall(os.path.basename(filename))[0]
+        except IndexError:
+            timestamp = '000000'
+        data, info = zdf.read(filename)
+        # read in meta data
+        d = info.particles.__dict__
+        d['QUANTS'] = d.pop('quants')
+        tmp = d.pop('qunits')
+        d['UNITS'] = [tmp[q] for q in d['QUANTS']]
+        tmp = d.pop('qlabels')
+        d['LABELS'] = [tmp[q] for q in d['QUANTS']]
+        #TODO: TIMESTAMP is not set in HDF5 file as of now (Aug 2019) so we make one up, check back when file format changes
+        d['TIMESTAMP'] = timestamp
+
+        return data, d['QUANTS'], d
+
 except ImportError:
-    def read_zdf(_):
+    def read_zdf(*args, **kwargs):
+        raise NotImplementedError('Cannot import zdf reader, zdf format not supported')
+
+    def read_zdf_raw(*args, **kwargs):
         raise NotImplementedError('Cannot import zdf reader, zdf format not supported')
 
 
@@ -183,18 +210,10 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         return data_bundle
 
 
-def read_raw(filename, path=None):
+def read_h5_raw(filename, path=None):
     """
-    Read particle raw data into a numpy sturctured array.
-    See numpy documents for detailed usage examples of the structured array.
-    The only modification is that the meta data of the particles are stored in .attrs attributes.
-
-    Usage:
-            part = read_raw("raw-electron-000000.h5")   # part is a subclass of numpy.ndarray with extra attributes
-
-            print(part.shape)                           # should be a 1D array with # of particles
-            print(part.attrs)                           # print all the meta data
-            print(part.attrs['TIME'])                   # prints the simulation time associated with the hdf5 file
+    Read particle raw data from hdf5 file
+    Return: the data array and infomations used to create PartData object
     """
     fname = filename if not path else path + '/' + filename
     try:
@@ -217,14 +236,43 @@ def read_raw(filename, path=None):
             d.update({k:v for k, v in data['SIMULATION'].attrs.items()})
             d['LABELS'] = [n.decode() for n in d['LABELS']]
             d['UNITS'] = [n.decode() for n in d['UNITS']]
-        d['QUANTS'] = quants
         #TODO: TIMESTAMP is not set in HDF5 file as of now (Aug 2019) so we make one up, check back when file format changes
         d['TIMESTAMP'] = timestamp
 
-        dtype = [(q, data[q].dtype, (2,)) if q.lower() == 'tag' else (q, data[q].dtype) for q in quants]
-        r = PartData(data['p1'].shape, dtype=dtype, attrs=d)
-        for dt in dtype:
-            r[dt[0]] = data[dt[0]]
+    return data, quants, d
+
+
+def read_raw(filename, path=None):
+    """
+    Read particle raw data into a numpy sturctured array.
+    See numpy documents for detailed usage examples of the structured array.
+    The only modification is that the meta data of the particles are stored in .attrs attributes.
+
+    Usage:
+            part = read_raw("raw-electron-000000.h5")   # part is a subclass of numpy.ndarray with extra attributes
+            or part = read_raw("raw-electron-000000.zdf")   # read from zdf format
+
+            print(part.shape)                           # should be a 1D array with # of particles
+            print(part.attrs)                           # print all the meta data
+            print(part.attrs['TIME'])                   # prints the simulation time associated with the hdf5 file
+    """
+    ext = basename(filename).split(sep='.')[-1]
+
+    if ext == 'h5':
+        data, quants, attrs = read_h5_raw(filename, path=path)
+    elif ext == 'zdf':
+        data, quants, attrs = read_zdf_raw(filename, path=path)
+    else:
+        # the file extension may not be specified, trying all supported formats
+        try:
+            data, quants, attrs = read_h5_raw(filename+'.h5', path=path)
+        except OSError:
+            data, quants, attrs = read_zdf_raw(filename+'.zdf', path=path)
+
+    dtype = [(q, data[q].dtype, (2,)) if q.lower() == 'tag' else (q, data[q].dtype) for q in quants]
+    r = PartData(data['p1'].shape, dtype=dtype, attrs=attrs)
+    for dt in dtype:
+        r[dt[0]] = data[dt[0]]
 
     return r
 

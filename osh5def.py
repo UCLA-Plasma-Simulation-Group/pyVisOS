@@ -816,10 +816,19 @@ class PartData(np.ndarray):
             return tuple(self.attrs[attr_name])
 
     def label(self, quant=None):
-        return self.__find_attrs_by_named_id('LABELS', quant)
+        warnings.warn(".label will return the label of the species in the future. Use .label_of to return the label of quantities",
+                      DeprecationWarning, stacklevel=2)
+        return self.label_of(quant=quant)
 
     def units(self, quant=None):
-        return self.__find_attrs_by_named_id('UNITS', quant)
+        warnings.warn(".units will remove or change behavior in the future. Use .units_of to return the units of quantities",
+                      DeprecationWarning, stacklevel=2)
+        return self.units_of(quant=quant)
+
+    def label_of(self, quant=None):
+        return self.__find_attrs_by_named_id('LABELS', quant)
+
+    def units_of(self, quant=None):
 
     @property
     def timestamp(self):
