@@ -443,6 +443,7 @@ class H5Data(np.ndarray):
         try:
             return getattr(self.values, label)
         except AttributeError:  # maybe it is a user-defined runtime attribute
+            try:
                 return self.runtime_attrs[label]
             except KeyError:  # maybe it is an axis name
                 try:
@@ -832,6 +833,7 @@ class PartData(np.ndarray):
         return self.__find_attrs_by_named_id('LABELS', quant)
 
     def units_of(self, quant=None):
+        return self.__find_attrs_by_named_id('UNITS', quant)
 
     @property
     def timestamp(self):
