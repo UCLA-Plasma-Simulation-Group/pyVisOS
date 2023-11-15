@@ -20,6 +20,7 @@ import h5py
 import os
 import numpy as np
 from osh5def import H5Data, PartData, fn_rule, DataAxis, OSUnits
+import warnings
 try:
     import zdf
 
@@ -48,7 +49,8 @@ try:
         data_attrs['LONG_NAME']=info.grid.label
         data_attrs['NAME']=info.grid.label.replace('_', '')
         data_attrs['UNITS']=OSUnits(info.grid.units)
-        return H5Data(data, timestamp=timestamp, data_attrs=data_attrs, run_attrs=run_attrs, axes=axes)
+        return H5Data(data, timestamp=timestamp, data_attrs=data_attrs, run_attrs=run_attrs,
+                      axes=axes, runtime_attrs=__process_filename(fname))
 
 except ImportError:
     def read_zdf(_):
@@ -62,13 +64,13 @@ def read_grid(filename, path=None, axis_name="AXIS/AXIS"):
     ext = os.path.basename(filename).split(sep='.')[-1]
 
     if ext == 'h5':
-        return read_h5(filename, path=path, axis_name="AXIS/AXIS")
+        return read_h5(filename, path=path, axis_name=axis_name)
     elif ext == 'zdf':
         return read_zdf(filename, path=path)
     else:
         # the file extension may not be specified, trying all supported formats
         try:
-            return read_h5(filename+'.h5', path=path, axis_name="AXIS/AXIS")
+            return read_h5(filename+'.h5', path=path, axis_name=axis_name)
         except OSError:
             return read_zdf(filename+'.zdf', path=path)
 
@@ -108,6 +110,7 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         timestamp = fn_rule.findall(os.path.basename(filename))[0]
     except IndexError:
         timestamp = '000000'
+    run_attrs.update(__process_filename(fname))
 
     axis_number = 1
     while True:
@@ -171,8 +174,8 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         data_attrs['NAME'] = name
 
         # data_bundle.data = the_data_hdf_object[()]
-        data_bundle.append(H5Data(the_data_hdf_object, timestamp=timestamp,
-                                  data_attrs=data_attrs, run_attrs=run_attrs, axes=axes))
+        data_bundle.append(H5Data(the_data_hdf_object, timestamp=timestamp, data_attrs=data_attrs,
+                                  run_attrs=run_attrs, axes=axes, runtime_attrs=__process_filename(fname)))
     data_file.close()
     if len(data_bundle) == 1:
         return data_bundle[0]
@@ -269,6 +272,7 @@ def read_h5_openpmd(filename, path=None):
                             'Ex': 'E_x', 'Ey': 'E_y', 'Ez': 'E_z',
                             'Bx': 'B_x', 'By': 'B_y', 'Bz': 'B_z',
                             'jx': 'J_x', 'jy': 'J_y', 'jz': 'J_z', 'rho': r'\rho'}, {}
+        rt_attrs = __process_filename(fname)
         for it, data_group in data_file[dataPath].items():
             basePath = dataPath+it
             base_attrs = {k.upper():v for k,v in data_file[basePath].attrs.items()}
@@ -301,7 +305,7 @@ def read_h5_openpmd(filename, path=None):
                     axes = __generate_dataaxis(axisLabels, axis_max, axis_min, grid_units,
                                                data.shape, data_attrs['dataOrder'].decode())
                     fldl[it+'/'+data_attrs['NAME']] = (H5Data(data, timestamp=timestamp, data_attrs=data_attrs,
-                                                              run_attrs=grid_attrs, axes=axes))
+                                                              run_attrs=grid_attrs, axes=axes, runtime_attrs=rt_attrs))
                 # vector data
                 elif isinstance(data, h5py.Group):
                     for k, v in data.items():
@@ -313,7 +317,7 @@ def read_h5_openpmd(filename, path=None):
                         axes = __generate_dataaxis(axisLabels, axis_max, axis_min, grid_units,
                                                    v.shape, data_attrs['dataOrder'].decode())
                         fldl[it+'/'+data_attrs['NAME']] = (H5Data(v, timestamp=timestamp, data_attrs=data_attrs,
-                                                                  run_attrs=grid_attrs, axes=axes))
+                                                                  run_attrs=grid_attrs, axes=axes, runtime_attrs=rt_attrs))
             #TODO: read the particle data (the particle data format is not settled in h5Data, so just return the data group ATM)
             # get particle data
             particlePath = basePath + '/' + pp
@@ -329,6 +333,18 @@ def read_h5_openpmd(filename, path=None):
         #         for q, d in data.items():
         #             print(q, d)
     return fldl
+
+
+def get_simdir(filename):
+    idx = filename.find('/MS/')
+    return filename[:idx] if idx > 0 else os.path.dirname(filename)
+
+
+def __process_filename(filename):
+    return {'simdir': get_simdir(filename),
+            'dirname': os.path.dirname(filename),
+            'extension': os.path.splitext(filename)[-1]}
+
 
 def __convert_to_osiris_units(openPMDunit, unitSI):
     #TODO: convert openPMD unitDimenion to OSUnits
@@ -356,6 +372,7 @@ def __generate_dataaxis(ax_label, ax_max, ax_min, ax_unit, data_shape, order):
 
 def __read_dataset_and_convert_to_h5data(k, v, data_attrs, dflt_ax_unit,
                                          timestamp, run_attrs):
+    warnings.warn("__read_dataset_and_convert_to_h5data() will be remove in future versions", DeprecationWarning)
     ax_label, ax_off, g_spacing, ax_pos, unitsi = \
         data_attrs.pop('axisLabels'), data_attrs.pop('gridGlobalOffset', 0), \
         data_attrs.pop('gridSpacing'), data_attrs.pop('position',
@@ -710,7 +727,7 @@ if __name__ == '__main__':
     a = np.arange(6.0).reshape(2, 3)
     ax, ay = DataAxis(0, 3, 3, attrs={'UNITS': '1 / \omega_p'}), DataAxis(10, 11, 2, attrs={'UNITS': 'c / \omega_p'})
     da = {'UNITS': 'n_0', 'NAME': 'test', }
-    h5d = H5Data(a, timestamp='123456', data_attrs=da, axes=[ay, ax])
+    h5d = H5Data(a, timestamp='123456', data_attrs=da, axes=[ay, ax], runtime_attrs={})
     write_h5(h5d, './test-123456.h5')
     rw = read_h5('./test-123456.h5')
     h5d = read_h5('./test-123456.h5')  # read from file to get all default attrs

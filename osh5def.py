@@ -303,7 +303,7 @@ fn_rule = re.compile(r'.(\d+)\.')
 
 class H5Data(np.ndarray):
 
-    def __new__(cls, input_array, timestamp=None, data_attrs=None, run_attrs=None, axes=None):
+    def __new__(cls, input_array, timestamp=None, data_attrs=None, run_attrs=None, axes=None, runtime_attrs=None):
         """wrap input_array into our class, and we don't copy the data!"""
         obj = np.asarray(input_array).view(cls)
         if timestamp:
@@ -314,6 +314,8 @@ class H5Data(np.ndarray):
             obj.data_attrs = cp.deepcopy(data_attrs)  # there is OSUnits obj inside
         if run_attrs:
             obj.run_attrs = cp.deepcopy(run_attrs)
+        if runtime_attrs:
+            obj.runtime_attrs = cp.deepcopy(runtime_attrs)
         if axes:
             obj.axes = cp.deepcopy(axes)   # the elements are numpy arrays
         return obj
@@ -331,9 +333,10 @@ class H5Data(np.ndarray):
 #             self.data_attrs = cp.deepcopy(getattr(obj, 'data_attrs', {}))
 #             self.run_attrs = cp.deepcopy(getattr(obj, 'run_attrs', {}))
 #             self.axes = cp.deepcopy(getattr(obj, 'axes', []))
-        self.data_attrs, self.run_attrs, self.axes = (cp.deepcopy(getattr(obj, 'data_attrs', {})),
-                                                      cp.deepcopy(getattr(obj, 'run_attrs', {})),
-                                                      cp.deepcopy(getattr(obj, 'axes', [])))
+        self.data_attrs, self.run_attrs, self.axes, self.runtime_attrs = (cp.deepcopy(getattr(obj, 'data_attrs', {})),
+                                                                          cp.deepcopy(getattr(obj, 'run_attrs', {})),
+                                                                          cp.deepcopy(getattr(obj, 'axes', [])),
+                                                                          cp.deepcopy(getattr(obj, 'runtime_attrs', {})))
 
     @property
     def T(self):
@@ -346,18 +349,6 @@ class H5Data(np.ndarray):
     @name.setter
     def name(self, s):
         self.data_attrs['NAME'] = str(s)
-
-    @property
-    def long_name(self):
-        warnings.warn(".long_name will be removed from future version. "
-                      "Please use .label instead", DeprecationWarning)
-        return self.data_attrs.get('LONG_NAME', '')
-
-    @long_name.setter
-    def long_name(self, s):
-        warnings.warn(".long_name will be removed from future version. "
-                      "Please use .label instead", DeprecationWarning)
-        self.data_attrs['LONG_NAME'] = str(s)
 
     @property
     def label(self):
@@ -449,13 +440,15 @@ class H5Data(np.ndarray):
     def __getattr__(self, label):
         try:
             return getattr(self.values, label)
-        except AttributeError:  # maybe it is an axis name
-            try:
-                ind = self.index_of(label)
-            except ValueError:
-                raise AttributeError()
-            axes = np.meshgrid(*reversed([x.ax for x in self.axes]), sparse=True)
-            return axes[self.ndim-1-ind].copy()
+        except AttributeError:  # maybe it is a user-defined runtime attribute
+                return self.runtime_attrs[label]
+            except KeyError:  # maybe it is an axis name
+                try:
+                    ind = self.index_of(label)
+                except ValueError:
+                    raise AttributeError()
+                axes = np.meshgrid(*reversed([x.ax for x in self.axes]), sparse=True)
+                return axes[self.ndim-1-ind].copy()
 
     def meta2dict(self):
         """return a deep copy of the meta data as a dictionary"""
