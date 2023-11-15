@@ -418,8 +418,10 @@ class H5Data(np.ndarray):
         try:
             converted, nn, dn = [], ndim - len(idxl) + idxl.count(None) + 1, 0
             for idx in idxl:
-                if isinstance(idx, int):  # i is a trivial dimension now
+                if isinstance(idx, int):  # idx is a trivial dimension now, record its name and value before it is gone
                     try:
+                        v.runtime_attrs.setdefault(v.axes[dn].name,
+                                                   (v.axes[dn][idx], v.axes[dn].units))
                         del v.axes[dn]
                     except AttributeError:
                         break
