@@ -20,6 +20,7 @@ import h5py
 import os
 import numpy as np
 from osh5def import H5Data, PartData, fn_rule, DataAxis, OSUnits
+import warnings
 try:
     import zdf
 
@@ -48,10 +49,38 @@ try:
         data_attrs['LONG_NAME']=info.grid.label
         data_attrs['NAME']=info.grid.label.replace('_', '')
         data_attrs['UNITS']=OSUnits(info.grid.units)
-        return H5Data(data, timestamp=timestamp, data_attrs=data_attrs, run_attrs=run_attrs, axes=axes)
+        return H5Data(data, timestamp=timestamp, data_attrs=data_attrs, run_attrs=run_attrs,
+                      axes=axes, runtime_attrs=__process_filename(fname))
+
+
+    def read_zdf_raw(filename, path=None):
+        """
+        Read particle raw data from zdf file
+        Return: the data array and infomations used to create PartData object
+        """
+        fname = filename if not path else path + '/' + filename
+        try:
+            timestamp = fn_rule.findall(os.path.basename(filename))[0]
+        except IndexError:
+            timestamp = '000000'
+        data, info = zdf.read(filename)
+        # read in meta data
+        d = info.particles.__dict__
+        d['QUANTS'] = d.pop('quants')
+        tmp = d.pop('qunits')
+        d['UNITS'] = [tmp[q] for q in d['QUANTS']]
+        tmp = d.pop('qlabels')
+        d['LABELS'] = [tmp[q] for q in d['QUANTS']]
+        #TODO: TIMESTAMP is not set in HDF5 file as of now (Aug 2019) so we make one up, check back when file format changes
+        d['TIMESTAMP'] = timestamp
+
+        return data, d['QUANTS'], d
 
 except ImportError:
-    def read_zdf(_):
+    def read_zdf(*args, **kwargs):
+        raise NotImplementedError('Cannot import zdf reader, zdf format not supported')
+
+    def read_zdf_raw(*args, **kwargs):
         raise NotImplementedError('Cannot import zdf reader, zdf format not supported')
 
 
@@ -62,13 +91,13 @@ def read_grid(filename, path=None, axis_name="AXIS/AXIS"):
     ext = os.path.basename(filename).split(sep='.')[-1]
 
     if ext == 'h5':
-        return read_h5(filename, path=path, axis_name="AXIS/AXIS")
+        return read_h5(filename, path=path, axis_name=axis_name)
     elif ext == 'zdf':
         return read_zdf(filename, path=path)
     else:
         # the file extension may not be specified, trying all supported formats
         try:
-            return read_h5(filename+'.h5', path=path, axis_name="AXIS/AXIS")
+            return read_h5(filename+'.h5', path=path, axis_name=axis_name)
         except OSError:
             return read_zdf(filename+'.zdf', path=path)
 
@@ -108,6 +137,7 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         timestamp = fn_rule.findall(os.path.basename(filename))[0]
     except IndexError:
         timestamp = '000000'
+    run_attrs.update(__process_filename(fname))
 
     axis_number = 1
     while True:
@@ -171,8 +201,8 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         data_attrs['NAME'] = name
 
         # data_bundle.data = the_data_hdf_object[()]
-        data_bundle.append(H5Data(the_data_hdf_object, timestamp=timestamp,
-                                  data_attrs=data_attrs, run_attrs=run_attrs, axes=axes))
+        data_bundle.append(H5Data(the_data_hdf_object, timestamp=timestamp, data_attrs=data_attrs,
+                                  run_attrs=run_attrs, axes=axes, runtime_attrs=__process_filename(fname)))
     data_file.close()
     if len(data_bundle) == 1:
         return data_bundle[0]
@@ -180,18 +210,10 @@ def read_h5(filename, path=None, axis_name="AXIS/AXIS"):
         return data_bundle
 
 
-def read_raw(filename, path=None):
+def read_h5_raw(filename, path=None):
     """
-    Read particle raw data into a numpy sturctured array.
-    See numpy documents for detailed usage examples of the structured array.
-    The only modification is that the meta data of the particles are stored in .attrs attributes.
-
-    Usage:
-            part = read_raw("raw-electron-000000.h5")   # part is a subclass of numpy.ndarray with extra attributes
-
-            print(part.shape)                           # should be a 1D array with # of particles
-            print(part.attrs)                           # print all the meta data
-            print(part.attrs['TIME'])                   # prints the simulation time associated with the hdf5 file
+    Read particle raw data from hdf5 file
+    Return: the data array and infomations used to create PartData object
     """
     fname = filename if not path else path + '/' + filename
     try:
@@ -214,14 +236,43 @@ def read_raw(filename, path=None):
             d.update({k:v for k, v in data['SIMULATION'].attrs.items()})
             d['LABELS'] = [n.decode() for n in d['LABELS']]
             d['UNITS'] = [n.decode() for n in d['UNITS']]
-        d['QUANTS'] = quants
         #TODO: TIMESTAMP is not set in HDF5 file as of now (Aug 2019) so we make one up, check back when file format changes
         d['TIMESTAMP'] = timestamp
 
-        dtype = [(q, data[q].dtype, (2,)) if q.lower() == 'tag' else (q, data[q].dtype) for q in quants]
-        r = PartData(data['p1'].shape, dtype=dtype, attrs=d)
-        for dt in dtype:
-            r[dt[0]] = data[dt[0]]
+    return data, quants, d
+
+
+def read_raw(filename, path=None):
+    """
+    Read particle raw data into a numpy sturctured array.
+    See numpy documents for detailed usage examples of the structured array.
+    The only modification is that the meta data of the particles are stored in .attrs attributes.
+
+    Usage:
+            part = read_raw("raw-electron-000000.h5")   # part is a subclass of numpy.ndarray with extra attributes
+            or part = read_raw("raw-electron-000000.zdf")   # read from zdf format
+
+            print(part.shape)                           # should be a 1D array with # of particles
+            print(part.attrs)                           # print all the meta data
+            print(part.attrs['TIME'])                   # prints the simulation time associated with the hdf5 file
+    """
+    ext = basename(filename).split(sep='.')[-1]
+
+    if ext == 'h5':
+        data, quants, attrs = read_h5_raw(filename, path=path)
+    elif ext == 'zdf':
+        data, quants, attrs = read_zdf_raw(filename, path=path)
+    else:
+        # the file extension may not be specified, trying all supported formats
+        try:
+            data, quants, attrs = read_h5_raw(filename+'.h5', path=path)
+        except OSError:
+            data, quants, attrs = read_zdf_raw(filename+'.zdf', path=path)
+
+    dtype = [(q, data[q].dtype, (2,)) if q.lower() == 'tag' else (q, data[q].dtype) for q in quants]
+    r = PartData(data['p1'].shape, dtype=dtype, attrs=attrs)
+    for dt in dtype:
+        r[dt[0]] = data[dt[0]]
 
     return r
 
@@ -269,6 +320,7 @@ def read_h5_openpmd(filename, path=None):
                             'Ex': 'E_x', 'Ey': 'E_y', 'Ez': 'E_z',
                             'Bx': 'B_x', 'By': 'B_y', 'Bz': 'B_z',
                             'jx': 'J_x', 'jy': 'J_y', 'jz': 'J_z', 'rho': r'\rho'}, {}
+        rt_attrs = __process_filename(fname)
         for it, data_group in data_file[dataPath].items():
             basePath = dataPath+it
             base_attrs = {k.upper():v for k,v in data_file[basePath].attrs.items()}
@@ -301,7 +353,7 @@ def read_h5_openpmd(filename, path=None):
                     axes = __generate_dataaxis(axisLabels, axis_max, axis_min, grid_units,
                                                data.shape, data_attrs['dataOrder'].decode())
                     fldl[it+'/'+data_attrs['NAME']] = (H5Data(data, timestamp=timestamp, data_attrs=data_attrs,
-                                                              run_attrs=grid_attrs, axes=axes))
+                                                              run_attrs=grid_attrs, axes=axes, runtime_attrs=rt_attrs))
                 # vector data
                 elif isinstance(data, h5py.Group):
                     for k, v in data.items():
@@ -313,7 +365,7 @@ def read_h5_openpmd(filename, path=None):
                         axes = __generate_dataaxis(axisLabels, axis_max, axis_min, grid_units,
                                                    v.shape, data_attrs['dataOrder'].decode())
                         fldl[it+'/'+data_attrs['NAME']] = (H5Data(v, timestamp=timestamp, data_attrs=data_attrs,
-                                                                  run_attrs=grid_attrs, axes=axes))
+                                                                  run_attrs=grid_attrs, axes=axes, runtime_attrs=rt_attrs))
             #TODO: read the particle data (the particle data format is not settled in h5Data, so just return the data group ATM)
             # get particle data
             particlePath = basePath + '/' + pp
@@ -329,6 +381,18 @@ def read_h5_openpmd(filename, path=None):
         #         for q, d in data.items():
         #             print(q, d)
     return fldl
+
+
+def get_simdir(filename):
+    idx = filename.find('/MS/')
+    return filename[:idx] if idx > 0 else os.path.dirname(filename)
+
+
+def __process_filename(filename):
+    return {'simdir': get_simdir(filename),
+            'dirname': os.path.dirname(filename),
+            'extension': os.path.splitext(filename)[-1]}
+
 
 def __convert_to_osiris_units(openPMDunit, unitSI):
     #TODO: convert openPMD unitDimenion to OSUnits
@@ -356,6 +420,7 @@ def __generate_dataaxis(ax_label, ax_max, ax_min, ax_unit, data_shape, order):
 
 def __read_dataset_and_convert_to_h5data(k, v, data_attrs, dflt_ax_unit,
                                          timestamp, run_attrs):
+    warnings.warn("__read_dataset_and_convert_to_h5data() will be remove in future versions", DeprecationWarning)
     ax_label, ax_off, g_spacing, ax_pos, unitsi = \
         data_attrs.pop('axisLabels'), data_attrs.pop('gridGlobalOffset', 0), \
         data_attrs.pop('gridSpacing'), data_attrs.pop('position',
@@ -438,6 +503,10 @@ def write_h5(data, filename=None, path=None, dataset_name=None, overwrite=True, 
     # now put the data in a group called this...
     h5dataset = h5file.create_dataset(current_name_attr, data_object.shape, data=data_object.view(np.ndarray))
 
+    time, units = data_object.runtime_attrs.get('t', (None, None))
+    if time is not None:
+        run_attrs['TIME'] = [time]
+        run_attrs['TIME UNITS'] = units
     # these are required so we make defaults..
     h5file.attrs['ITER'] = [0]
     h5file.attrs['TIME'] = [0.0]
@@ -558,6 +627,11 @@ def write_h5_openpmd(data, filename=None, path=None, dataset_name=None, overwrit
  #   h5dataset.attrs['UNITS'], h5dataset.attrs['LONG_NAME'] = np.array([b'']), np.array([b''])
     # convert osunit class back to ascii
     data_attrs = data_object.data_attrs.copy()
+    time, units = data_object.runtime_attrs.get('t', (None, None))
+    if time is not None:
+        run_attrs['TIME'] = [time]
+    if units is not None:
+        run_attrs['TIME UNITS'] = units
     try:
         data_attrs['UNITS'] = np.array([str(data_object.data_attrs['UNITS']).encode('utf-8')])
     except:
@@ -710,7 +784,7 @@ if __name__ == '__main__':
     a = np.arange(6.0).reshape(2, 3)
     ax, ay = DataAxis(0, 3, 3, attrs={'UNITS': '1 / \omega_p'}), DataAxis(10, 11, 2, attrs={'UNITS': 'c / \omega_p'})
     da = {'UNITS': 'n_0', 'NAME': 'test', }
-    h5d = H5Data(a, timestamp='123456', data_attrs=da, axes=[ay, ax])
+    h5d = H5Data(a, timestamp='123456', data_attrs=da, axes=[ay, ax], runtime_attrs={})
     write_h5(h5d, './test-123456.h5')
     rw = read_h5('./test-123456.h5')
     h5d = read_h5('./test-123456.h5')  # read from file to get all default attrs

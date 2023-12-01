@@ -14,6 +14,8 @@ import numpy as np
 
 import osh5vis
 import osh5io
+from osh5def import H5Data
+
 import glob
 import os
 import matplotlib.pyplot as plt
@@ -110,9 +112,12 @@ def slicer_w(data, *args, show=True, slider_only=False, **kwargs):
             wl = MPDirSlicer(data, *args, **kwargs).widgets_list
         elif isinstance(data[0], str):
             if os.path.isfile(data[0]):
-                wl = DirSlicer(data, *args, **kwargs).widgets_list
+                data = [osh5io.read_grid(file) for file in data]
+                wl = MPDataSlicer(data, *args, **kwargs).widgets_list
             else:
                 wl = MPDirSlicer(data, *args, **kwargs).widgets_list
+        elif isinstance(data[0], H5Data):
+            wl = MPDataSlicer(data, *args, **kwargs).widgets_list
         else:
             raise NotImplementedError('Unexpected data. Cannot process input parameters')
     else:
@@ -1899,6 +1904,7 @@ class DirSlicer(Generic2DPlotCtrl):
         tmp[4] = self.__get_tab_save()
         self.refresh_tab_wgt(tmp)
         self.file_slider.observe(self.update_slice, 'value')
+        self.index_slider = self.file_slider
 
     @property
     def widgets_list(self):
@@ -2031,9 +2037,9 @@ class MultiPanelCtrl(object):
         self.ctrl.children = (self.ctrl.children[0], self.tabd[self.tb.index])
 
 
-class MPDirSlicer(MultiPanelCtrl):
+class MP_Slicer(MultiPanelCtrl):
     def __init__(self, filefilter_list, grid, interval=1000, processing=do_nothing, figsize=None, fig_ax=tuple(), output_widget=None,
-                 sharex=False, sharey=False, worker_kw_list=None, **kwargs):
+                 sharex=False, sharey=False, worker_kw_list=None, slicer_widget=DirSlicer, fig=None, **kwargs):
         if worker_kw_list is None:
             worker_kw_list = [{} for _ in range(grid[0] * grid[1])]
         if isinstance(processing, (list, tuple)):
@@ -2047,16 +2053,20 @@ class MPDirSlicer(MultiPanelCtrl):
             kw.update(p)
         #TODO: replicating some lines in the super class. there should be a better way >>>>>
         width, height = figsize or plt.rcParams.get('figure.figsize')
-        self.fig, self.ax = fig_ax or plt.subplots(*grid, figsize=(width, height), sharex=sharex, sharey=sharey, constrained_layout=True)
+        if fig:
+            self.fig = fig
+            self.ax = fig.subplots(*grid, sharex=sharex, sharey=sharey)
+        else:
+            self.fig, self.ax = fig_ax or plt.subplots(*grid, figsize=(width, height), sharex=sharex, sharey=sharey, constrained_layout=True)
 #         fp = filefilter_list[0] + '/*.h5' if os.path.isdir(filefilter_list[0]) else filefilter_list[0]
 #         flist = sorted(glob.glob(fp))
         # <<<<< all because we need to initialize SaveMovieManager before super().__init__()
         smm = SaveMovieManager(self.fig, self.plot_ith_slice_mp)
-        super(MPDirSlicer, self).__init__((DirSlicer,) * len(filefilter_list), filefilter_list, grid, worker_kw_list=worker_kw_list,
+        super(MP_Slicer, self).__init__((slicer_widget,) * len(filefilter_list), filefilter_list, grid, worker_kw_list=worker_kw_list,
                                           figsize=figsize, fig_ax=(self.fig, self.ax), output_widget=output_widget, sharex=sharex,
                                           sharey=sharey, onDestruction=self.self_destruct, savemovie=smm, **kwargs)
         # we need a master slider to control all subplot sliders
-        self.slider = widgets.IntSlider(min=0, max=self.worker[0].file_slider.max, description='', value=0,
+        self.slider = widgets.IntSlider(min=0, max=self.worker[0].index_slider.max, description='', value=0,
                                         continuous_update=False, style={'description_width': 'initial'})
         self.play = widgets.Play(interval=interval, value=0, min=0, max=self.slider.max, description='Press play')
         self.slider.observe(self.update_all_subplots, 'value')
@@ -2064,12 +2074,15 @@ class MPDirSlicer(MultiPanelCtrl):
 
     @property
     def widgets_list(self):
-        return self.ctrl, self.play, self.slider, self.worker[0].time_label, self.suptitle, self.out
+        try:
+            return self.ctrl, self.play, self.slider, self.worker[0].time_label, self.suptitle, self.out
+        except AttributeError:
+            return self.ctrl, self.play, self.slider, self.suptitle, self.out
 
     def self_destruct(self):
         try:
             self.worker[0].time_label.close()
-        except IndexError:
+        except (IndexError, AttributeError):
             pass
         self.play.close()
         self.slider.close()
@@ -2081,8 +2094,12 @@ class MPDirSlicer(MultiPanelCtrl):
 
     def update_all_subplots(self, change):
         for s in self.worker:
-            s.file_slider.value = change['new']
+            s.index_slider.value = change['new']
         self.update_suptitle(change)
+
+
+MPDirSlicer = MP_Slicer
+MPDataSlicer = partial(MP_Slicer, slicer_widget=Slicer)
 
 
 class Animation(Slicer):

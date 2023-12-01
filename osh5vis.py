@@ -61,7 +61,9 @@ def default_title(h5data, show_time=True, title=None, **kwargs):
     tmp = tex(h5data.data_attrs.get('LONG_NAME', '')) if title is None else tex(title)
     if show_time and not (h5data.has_axis('t') or h5data.has_axis('w')):
         try:
-            tmp += ', ' + time_format(h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS'], **kwargs)
+            time, units = h5data.runtime_attrs.get('t',
+                                                   (h5data.run_attrs['TIME'][0], h5data.run_attrs['TIME UNITS']))
+            tmp += ', ' + time_format(time, units, **kwargs)
         except:  # most likely we don't have 'TIME' or 'TIME UNITS' in run_attrs
             pass
     return tmp
@@ -123,22 +125,22 @@ def __osplot1d(func, h5data, xlabel=None, ylabel=None, xlim=None, ylim=None, tit
     return plot_object
 
 
-def osplot1d(h5data, *args, ax=None, **kwpassthrough):
+def osplot1d(h5data, *args, fig=None, ax=None, **kwpassthrough):
     plot = plt.plot if ax is None else ax.plot
     return __osplot1d(plot, h5data, ax=ax, *args, **kwpassthrough)
 
 
-def ossemilogx(h5data, *args, ax=None, **kwpassthrough):
+def ossemilogx(h5data, *args, fig=None, ax=None, **kwpassthrough):
     semilogx = plt.semilogx if ax is None else ax.semilogx
     return __osplot1d(semilogx, h5data, ax=ax, *args, **kwpassthrough)
 
 
-def ossemilogy(h5data, *args, ax=None, **kwpassthrough):
+def ossemilogy(h5data, *args, fig=None, ax=None, **kwpassthrough):
     semilogy = plt.semilogy if ax is None else ax.semilogy
     return __osplot1d(semilogy, h5data, ax=ax, *args, **kwpassthrough)
 
 
-def osloglog(h5data, *args, ax=None, **kwpassthrough):
+def osloglog(h5data, *args, fig=None, ax=None, **kwpassthrough):
     loglog = plt.loglog if ax is None else ax.loglog
     return __osplot1d(loglog, h5data, ax=ax, *args, **kwpassthrough)
 
