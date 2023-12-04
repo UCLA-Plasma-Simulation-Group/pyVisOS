@@ -225,6 +225,55 @@ def read_raw(filename, path=None):
 
     return r
 
+def read_h5_tracks(filename, path=None):
+    """
+    subroutine that reads a OSIRIS track file into an ordered list of NUMPY arrays.
+    Currently this subroutines supports the older (ver 1) track files
+    
+    and the attributes that describe the data (e.g. title, units, scale).
+    
+    tracks, quants = read_h5_tracks(filename)
+    print(tracks.shape())           # shows how many tracks are in the file
+    print(tracks[0].shape)          # this prints 2 numbers, the first number is the total number 
+                                    # of timesteps for the first track, and the second number is the number
+                                    # of particle quantities are stored in the track 
+    print(quants.index['x1'])       # this prints the array index for the quantity 'x1',
+                                    # possible track quantities include 't', 'x1','x2','x3','p1','p2','p3'
+                                    # 'E1', 'E2', 'E3', 'B1', 'B2', 'B3', and 'ene', for quasi 3D there is 
+                                    # an 'x4'
+    plt.plot(tracks[i][:,quants.index('p1')],tracks[i][:,quants.index('p2')])
+                                    # plots p1 vs p2 for the i-th particle
+    
+    ## Example Python Code 
+    
+    (a,b) = read_h5_tracks('FILENAME')
+    plt.figure()
+    for j in range(len(a)):
+        plt.plot(a[j][:,b.index('p1')],a[j][:b.index('p2')])
+    plt.show()
+
+    """
+    fname = filename if not path else path + '/' + filename
+    data_file = h5py.File(fname, 'r')
+    keys = list(data_file.keys())
+    num_tracks = len(keys)
+    quants = data_file.attrs['QUANTS']
+    quants_string = []
+    # here we convert the quant array from bytes to string 
+    for x in quants:
+        quants_string.append(x.decode())
+    # 
+
+    quants_string = []
+    particle_list = []
+    
+    for j in range(0,num_tracks-1):
+        key = keys[j]
+        track = data_file[key]
+        particle_list.append(track)
+
+    return(particle_list, quants_string)
+
 
 def read_h5_openpmd(filename, path=None):
     """
