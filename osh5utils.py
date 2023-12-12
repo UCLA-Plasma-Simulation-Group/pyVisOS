@@ -175,7 +175,8 @@ def stack(arr, axis=0, axesdata=None):
         ax.insert(axis, osh5def.DataAxis(float(arr[0].run_attrs['TIME']),
                                          float(arr[-1].run_attrs['TIME']), len(arr), attrs=taxis_attrs))
     r = np.stack(arr, axis=axis)
-    return osh5def.H5Data(r, md.timestamp, md.data_attrs, md.run_attrs, axes=ax)
+    return osh5def.H5Data(r, md.timestamp, data_attrs=md.data_attrs, run_attrs=md.run_attrs,
+                          axes=ax, runtime_attrs=md.runtime_attrs)
 
 
 def combine(dir_or_filelist, prefix=None, file_slice=slice(None,), preprocess=None, axesdata=None, save=None, processes=None):
@@ -395,7 +396,7 @@ def __ft_interface(ftfunc, forward, omitlast):
 
 def __shifted_ft_gen(ftfunc, forward, omitlast, ffunc, uafunc):
     def shifted_fft(a, s=None, axes=None, norm=None, **kwargs):
-        shape = s if s is not None else (a.data_attrs['oshape'] if omitlast else a.shape)
+        shape = s if s is not None else (a.runtime_attrs['oshape'] if omitlast else a.shape)
         o = __ft_interface(ftfunc, forward=forward, omitlast=omitlast)(a, s=s, axes=axes, norm=norm, **kwargs)
         uafunc(o, axes, shape, omitlast, ffunc=ffunc)
         return o
@@ -447,7 +448,7 @@ __shifted_irfft = partial(__shifted_ft_gen, forward=False, omitlast=True, ffunc=
 def __save_space_shape(a, s):
     if isinstance(a, osh5def.H5Data):
         shape = s if s is not None else a.shape
-        a.data_attrs.setdefault('oshape', shape)
+        a.runtime_attrs.setdefault('oshape', shape)
 
 
 def __restore_space_shape(xdfunc):
@@ -461,17 +462,17 @@ def __restore_space_shape(xdfunc):
 
 @__restore_space_shape
 def __rss_1d(a, _s, axes):
-    return a.data_attrs['oshape'][-1] if axes is None else a.data_attrs['oshape'][axes]
+    return a.runtime_attrs['oshape'][-1] if axes is None else a.runtime_attrs['oshape'][axes]
 
 
 @__restore_space_shape
 def __rss_2d(a, _s, axes):
-    return a.data_attrs['oshape'][-2:] if axes is None else tuple([a.data_attrs['oshape'][i] for i in axes])
+    return a.runtime_attrs['oshape'][-2:] if axes is None else tuple([a.runtime_attrs['oshape'][i] for i in axes])
 
 
 @__restore_space_shape
 def __rss_nd(a, _s, axes):
-    return a.data_attrs['oshape'] if axes is None else tuple([a.data_attrs['oshape'][i] for i in axes])
+    return a.runtime_attrs['oshape'] if axes is None else tuple([a.runtime_attrs['oshape'][i] for i in axes])
 
 
 @enhence_num_indexing_kw('axes')
@@ -646,7 +647,7 @@ def field_decompose(fldarr, ffted=True, idim=None, finalize=None, outquants=('L'
             # replace numbers in the string
             fld.name = re.sub("\d+", name, fld.name)
 #             fld.data_attrs['NAME'] = re.sub("\d+", name, fld.data_attrs.get('NAME', fld.name))
-            fld.data_attrs['LONG_NAME'] = re.sub("\d+", longname, fld.data_attrs.get('LONG_NAME', ''))
+            fld.label = re.sub("\d+", longname, fld.label)
         return fld
 
     if ffted:
